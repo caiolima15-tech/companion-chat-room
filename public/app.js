@@ -504,7 +504,7 @@ function openCharacterSelect() {
   if (!characterSelectOverlay) return;
   renderCharacterTiles();
   characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
-  selectedCharacterSlug = me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || null;
+  selectedCharacterSlug = me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || userAvatars[0] ? (me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || (userAvatars[0] ? `user:${userAvatars[0].id}` : null)) : null;
   updateEnterButtonState();
   const label = document.querySelector("#currentAccountLabel");
   if (label) {
