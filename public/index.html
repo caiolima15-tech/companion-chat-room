@@ -4,11 +4,6 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Bar 3D Multiplayer</title>
-    <script>
-      if (location.protocol === "file:") {
-        location.replace("http://localhost:3000/");
-      }
-    </script>
     <script type="importmap">
       {
         "imports": {
@@ -30,6 +25,7 @@
             <span class="live-dot"></span>
             <span id="roleBadge" class="role-badge">visitante</span>
             <span id="onlineCount">Conectando</span>
+            <button id="logoutButton" type="button" class="logout-btn">Sair</button>
           </div>
         </div>
 
@@ -38,6 +34,10 @@
           <div class="nameplates" id="nameplates"></div>
           <div class="world-hud">
             <button id="cameraButton" type="button">Câmera</button>
+            <label class="file-picker">
+              <input id="avatarInput" type="file" accept=".glb,model/gltf-binary">
+              Trocar avatar
+            </label>
             <button id="placeButton" class="admin-only" type="button" disabled>Colocar GLB</button>
             <label class="file-picker admin-only">
               <input id="glbInput" type="file" accept=".glb,model/gltf-binary">
@@ -64,7 +64,7 @@
           <label for="nameInput">Apelido</label>
           <div class="name-row">
             <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Seu nome">
-            <button id="joinButton" type="button">Entrar</button>
+            <button id="joinButton" type="button">Salvar</button>
           </div>
         </div>
 
@@ -77,10 +77,21 @@
       </aside>
     </main>
 
-    <div class="file-mode-hint">
-      Abra pelo servidor local: <a href="http://localhost:3000/">http://localhost:3000</a>
+    <!-- Auth overlay -->
+    <div id="authOverlay" class="auth-overlay" hidden>
+      <form id="authForm" class="auth-card">
+        <span class="kicker">Neon Tap Room</span>
+        <h2 id="authTitle">Entrar</h2>
+        <p id="authHint">Use email e senha pra entrar na sala.</p>
+        <input id="authEmail" type="email" placeholder="email@exemplo.com" required autocomplete="email">
+        <input id="authPassword" type="password" placeholder="Senha (min. 6)" required minlength="6" autocomplete="current-password">
+        <input id="authNickname" type="text" placeholder="Apelido" maxlength="18" hidden>
+        <div id="authError" class="auth-error" hidden></div>
+        <button type="submit" id="authSubmit">Entrar</button>
+        <button type="button" id="authSwitch" class="auth-link">Criar conta</button>
+      </form>
     </div>
 
-    <script src="/app.js" type="module"></script>
+    <script type="module" src="/app.js"></script>
   </body>
 </html>
