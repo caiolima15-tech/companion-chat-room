@@ -744,7 +744,7 @@ async function trackMe(updateRoster = true) {
     await movementChannel?.send({
       type: "broadcast",
       event: "pos",
-      payload: { id: myId, x: me.x, y: me.y, facing: me.facing },
+      payload: { id: myId, x: me.x, y: me.y, facing: me.facing, running: !!me.running },
     });
   } catch {}
 }
