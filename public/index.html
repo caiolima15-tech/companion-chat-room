@@ -254,6 +254,18 @@
           });
           mo.observe(chatLog, { childList: true });
         }
+
+        // Keyboard tracking: lift chat (and send button inside it) when the on-screen keyboard appears
+        if (window.visualViewport) {
+          const vv = window.visualViewport;
+          const updateKb = () => {
+            const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+            document.documentElement.style.setProperty('--kb-offset', offset + 'px');
+          };
+          vv.addEventListener('resize', updateKb);
+          vv.addEventListener('scroll', updateKb);
+          updateKb();
+        }
       })();
     </script>
   </body>
