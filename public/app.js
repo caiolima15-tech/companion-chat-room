@@ -216,25 +216,29 @@ logoutButton.addEventListener("click", async () => {
   location.reload();
 });
 
-// Auth state listener
+// TEMP: login desativado para teste. Entra como convidado anônimo.
 supabase.auth.onAuthStateChange((_event, session) => {
   if (session?.user) {
     hideAuth();
     bootstrapSession(session.user);
-  } else {
-    showAuth("signin");
   }
 });
 
-// Initial session check
 (async () => {
-  const { data } = await supabase.auth.getSession();
-  if (data.session?.user) {
-    hideAuth();
-    bootstrapSession(data.session.user);
-  } else {
-    showAuth("signin");
+  hideAuth();
+  const { data: existing } = await supabase.auth.getSession();
+  if (existing.session?.user) {
+    bootstrapSession(existing.session.user);
+    return;
   }
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) {
+    console.error("Falha no login anônimo:", error);
+    showAuth("signin");
+    showAuthError("Modo convidado falhou: " + (error.message || error));
+    return;
+  }
+  if (data.session?.user) bootstrapSession(data.session.user);
 })();
 
 async function bootstrapSession(user) {
