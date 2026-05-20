@@ -1124,6 +1124,26 @@ async function applyCharacter(entity, slug) {
     return;
   }
   entity.pendingCharacterSlug = slug;
+  // Remove personagem atual imediatamente e mostra fumaça de loading
+  if (entity.character) {
+    entity.group.remove(entity.character);
+    entity.character = null;
+    entity.mixer = null;
+    entity.actions = {};
+    entity.currentAction = null;
+    entity.emoteAction = null;
+    entity.emoteUntil = 0;
+  }
+  if (!entity.loadingFx) {
+    entity.loadingFx = createLoadingSmoke();
+    entity.group.add(entity.loadingFx);
+  }
+  if (!entity.loadingSpinner) {
+    entity.loadingSpinner = document.createElement("div");
+    entity.loadingSpinner.className = "avatar-spinner";
+    entity.loadingSpinner.innerHTML = `<div class="avatar-spinner-ring"></div>`;
+    nameplatesLayer.appendChild(entity.loadingSpinner);
+  }
   try {
     const { base, clips } = await loadCharacterAssets(character);
     // Caso outra troca tenha começado enquanto carregávamos, aborta.
@@ -1131,8 +1151,7 @@ async function applyCharacter(entity, slug) {
     const cloned = cloneSkeleton(base);
     cloned.scale.copy(base.scale);
     cloned.position.set(0, 0, 0);
-    // Remove personagem antigo + efeitos de loading
-    if (entity.character) entity.group.remove(entity.character);
+    // Remove efeitos de loading
     if (entity.loadingFx) { entity.group.remove(entity.loadingFx); entity.loadingFx = null; }
     if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
