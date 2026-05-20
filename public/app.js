@@ -132,8 +132,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 6;
-controls.maxDistance = 24;
+controls.minDistance = 4;
+controls.maxDistance = 11;
 controls.target.set(0, 0.7, 0);
 
 const stage = new THREE.Group();
