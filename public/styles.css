@@ -704,10 +704,8 @@ input:focus {
 }
 
 .mobile-bar { display: none; }
-.mobile-emote-pop { display: none; }
 @media (max-width: 600px) {
   .mobile-bar { display: flex; }
-  .mobile-emote-pop { display: flex; }
 }
 
 /* Auth + logout additions */
