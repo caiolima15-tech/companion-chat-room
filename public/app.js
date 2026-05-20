@@ -145,6 +145,7 @@ function userAvatarToCharacter(av) {
     base_url: av.base_url,
     thumbnail_url: av.thumbnail_url || null,
     isUserAvatar: true,
+    userAvatarId: av.id,
     user_id: av.user_id,
   };
 }
