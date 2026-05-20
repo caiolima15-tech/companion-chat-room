@@ -879,7 +879,8 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          let retarg = bakeRetargetMixamoClip(base, src, clip);
+          if (!retarg) retarg = retargetClipToBones(clip, targetBones) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
