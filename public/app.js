@@ -7,12 +7,12 @@ import { clone as cloneSkeleton, retargetClip as retargetClipBake } from "/vendo
 
 // Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
 const SHARED_ANIM_LIBRARY = {
-  idle: "/assets/animations/idle.glb",
-  walk: "/assets/animations/walk.glb",
-  run: "/assets/animations/run.glb",
-  jump: "/assets/animations/jump.glb",
-  dance: "/assets/animations/dance.glb",
-  wave: "/assets/animations/wave.glb",
+  idle: "/assets/animations/idle.fbx",
+  walk: "/assets/animations/walk.fbx",
+  run: "/assets/animations/run.fbx",
+  jump: "/assets/animations/jump.fbx",
+  dance: "/assets/animations/dance.fbx",
+  wave: "/assets/animations/wave.fbx",
 };
 const sharedAnimSourceCache = new Map(); // url -> Promise<Object3D scene with .animations>
 function loadSharedAnimSource(url) {
