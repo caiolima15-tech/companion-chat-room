@@ -1282,7 +1282,57 @@ async function connectRealtime() {
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
     .subscribe();
+
+  // Catálogo de personagens (admin add/edit/delete) — recarrega para todos
+  if (catalogChannel) await supabase.removeChannel(catalogChannel);
+  catalogChannel = supabase
+    .channel("room-characters")
+    .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
+      await loadCharactersCatalog();
+      if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+    })
+    .subscribe();
+
+  // Avatares de usuários (Avaturn) — novos avatares aparecem na seleção sem reload
+  if (userAvatarsChannel) await supabase.removeChannel(userAvatarsChannel);
+  userAvatarsChannel = supabase
+    .channel("room-user-avatars")
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_avatars" }, async () => {
+      await loadUserAvatars();
+      if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+    })
+    .subscribe();
+
+  // Perfis — quando outro jogador troca nome / cor / personagem, atualiza ao vivo
+  if (profilesChannel) await supabase.removeChannel(profilesChannel);
+  profilesChannel = supabase
+    .channel("room-profiles")
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+      const row = payload.new;
+      if (!row || row.id === myId) return;
+      const idx = players.findIndex((p) => p.id === row.id);
+      if (idx < 0) return;
+      const prev = players[idx];
+      const next = {
+        ...prev,
+        name: row.nickname ?? prev.name,
+        color: row.color ?? prev.color,
+        avatar_url: row.avatar_url ?? prev.avatar_url,
+        character_slug: row.character_slug ?? prev.character_slug,
+      };
+      players[idx] = next;
+      const entity = playerEntities.get(row.id);
+      if (entity) {
+        entity.player = next;
+        if (next.character_slug && next.character_slug !== prev.character_slug) {
+          applyCharacter(entity, next.character_slug);
+        }
+        updateNameplate(next);
+      }
+    })
+    .subscribe();
 }
+
 
 function presencePayload() {
   return {
