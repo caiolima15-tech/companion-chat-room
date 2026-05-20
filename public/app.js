@@ -895,14 +895,16 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          // Para GLBs: pular o bake (gera bind-pose mismatch -> deita) e
-          // aplicar rename-only descartando a rotação absoluta do Hips.
-          let retarg = null;
-          if (!isGlb) retarg = bakeRetargetMixamoClip(base, src, clip);
+          // Bake retarget (resolve diferenças de bind pose entre Mixamo FBX e
+          // o rig do GLB) -> preserva o "swing" do Hips, evitando que a
+          // animação fique robótica. Se o bake falhar, cai no rename-only
+          // descartando a rotação absoluta do Hips para não tombar o avatar.
+          let retarg = bakeRetargetMixamoClip(base, src, clip);
           if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
-          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}${retarg === clip ? "" : " (baked)"}`);
+
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
@@ -947,12 +949,16 @@ async function applyCharacter(entity, slug) {
     entity.actions = {};
     for (const [name, clip] of Object.entries(clips)) {
       const action = entity.mixer.clipAction(clip);
-      if (EMOTE_SLOTS.has(name) || name === "jump") {
+      if (name === "dance") {
+        // Dança roda em loop até o jogador andar (cancela em setPlayerAction).
+        action.setLoop(THREE.LoopRepeat, Infinity);
+      } else if (EMOTE_SLOTS.has(name) || name === "jump") {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = false;
       }
       entity.actions[name] = action;
     }
+
     entity.currentAction = null;
     entity.characterSlug = slug;
     entity.emoteAction = null;
@@ -1685,7 +1691,16 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  if (entity.emoteAction) return; // emote em andamento bloqueia idle/walk/run
+  // Movimento (walk/run) cancela emotes em loop como dance.
+  if (entity.emoteAction) {
+    if (name === "walk" || name === "run") {
+      entity.emoteAction.fadeOut(0.15);
+      entity.emoteAction = null;
+      entity.emoteUntil = 0;
+    } else {
+      return; // emote one-shot em andamento bloqueia idle
+    }
+  }
   if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
@@ -1695,20 +1710,26 @@ function setPlayerAction(entity, name) {
   entity.currentAction = name;
 }
 
+
 function playEmote(entity, slot) {
   if (!entity?.actions?.[slot]) return;
-  // para tudo e roda o emote uma vez
   if (entity.currentAction && entity.actions[entity.currentAction]) {
     entity.actions[entity.currentAction].fadeOut(0.12);
   }
   const action = entity.actions[slot];
   action.reset();
-  action.setLoop(THREE.LoopOnce, 1);
-  action.clampWhenFinished = false;
+  if (slot === "dance") {
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.clampWhenFinished = false;
+  } else {
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = false;
+  }
   action.fadeIn(0.12).play();
   entity.emoteAction = action;
   entity.currentAction = null;
 }
+
 
 function triggerLocalEmote(slot) {
   if (!me || !myId) return;
