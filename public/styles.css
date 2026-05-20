@@ -639,48 +639,151 @@ input:focus {
   .controls button[data-step="down"]  { grid-column: 2; grid-row: 2; }
   .controls button[data-step="right"] { grid-column: 3; grid-row: 2; }
 
-  /* Chat panel becomes a bottom-sheet overlay */
+  /* Chat panel: translucent overlay on top of the 3D scene (no full sheet takeover) */
   .chat-panel {
     position: fixed;
-    left: 0; right: 0; bottom: 0;
-    height: 72dvh;
-    border-radius: 16px 16px 0 0;
-    transform: translateY(105%);
-    transition: transform .28s ease;
+    left: 0; right: 0;
+    bottom: 0;
+    top: auto;
+    height: 56dvh;
+    border-radius: 0;
+    border: 0;
+    background: linear-gradient(180deg,
+      rgba(10, 12, 16, 0) 0%,
+      rgba(10, 12, 16, 0.35) 28%,
+      rgba(10, 12, 16, 0.65) 100%);
+    backdrop-filter: blur(2px);
+    box-shadow: none;
+    transform: translateY(calc(100% - 64px));
+    transition: transform .28s ease, height .28s ease;
     z-index: 50;
-    box-shadow: 0 -18px 50px rgba(0,0,0,0.5);
+    pointer-events: none;
+    grid-template-rows: 0 minmax(0, 1fr) auto;
   }
+  .chat-panel > * { pointer-events: auto; }
+  .chat-panel .identity { display: none; }
+
   body.mobile-show-chat .chat-panel {
     transform: translateY(0);
+    height: 72dvh;
+    background: linear-gradient(180deg,
+      rgba(10, 12, 16, 0) 0%,
+      rgba(10, 12, 16, 0.55) 22%,
+      rgba(10, 12, 16, 0.78) 100%);
   }
 
-  /* Mobile bottom bar */
+  .chat-log {
+    padding: 10px 12px 8px;
+    background: transparent;
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 100%);
+            mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 100%);
+  }
+  .chat-item {
+    grid-template-columns: 28px 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .chat-dot {
+    width: 28px; height: 28px;
+    border-width: 2px;
+  }
+  .chat-name {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.85);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  }
+  .chat-text {
+    margin-top: 2px;
+    padding: 5px 10px;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    background: rgba(255,255,255,0.96);
+    color: #101217;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+  .system-line {
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.55);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+    margin: 4px 0 6px;
+  }
+  .chat-form {
+    padding: 8px 12px calc(64px + env(safe-area-inset-bottom));
+    background: transparent;
+    border-top: 0;
+    gap: 6px;
+  }
+  .chat-form input {
+    background: rgba(20,22,28,0.55);
+    backdrop-filter: blur(14px);
+    border-color: rgba(255,255,255,0.12);
+    color: #fff;
+    font-size: 0.85rem;
+    padding: 9px 12px;
+  }
+  .chat-form button {
+    background: transparent;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.78rem;
+    padding: 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 800;
+  }
+
+  /* === Liquid Glass mobile bar === */
   .mobile-bar {
-    position: absolute;
+    position: fixed;
     left: 0; right: 0; bottom: 0;
-    z-index: 45;
+    z-index: 1000;
     display: flex;
     justify-content: space-around;
     align-items: center;
-    gap: 4px;
-    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
-    background: rgba(10,12,16,0.82);
-    border-top: 1px solid rgba(255,255,255,0.08);
-    backdrop-filter: blur(12px);
+    gap: 8px;
+    padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04)),
+      rgba(14, 16, 22, 0.32);
+    backdrop-filter: blur(28px) saturate(180%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    border-top: 1px solid rgba(255,255,255,0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.18),
+      0 -10px 30px rgba(0,0,0,0.35);
   }
   .mobile-bar button {
     flex: 1;
     height: 44px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.04);
-    color: #f8fafc;
-    font-size: 1.3rem;
-    border: 1px solid rgba(255,255,255,0.08);
+    max-width: 96px;
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02));
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      0 4px 14px rgba(0,0,0,0.28);
     position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .mobile-bar button:active { transform: scale(0.94); }
+  .mobile-bar button svg {
+    width: 22px; height: 22px;
+    color: #fff;
+    opacity: 0.92;
   }
   .mobile-bar button.is-active {
-    background: var(--teal);
-    color: #0a0f14;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.08));
+    border-color: rgba(255,255,255,0.32);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.4),
+      0 0 22px rgba(255,255,255,0.18);
   }
   .mobile-bar-badge {
     position: absolute;
@@ -693,12 +796,13 @@ input:focus {
     font-weight: 900;
     padding: 0 4px;
     display: grid; place-items: center;
+    box-shadow: 0 0 0 2px rgba(14,16,22,0.6);
   }
 
   .mobile-backdrop {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.4);
-    z-index: 44;
+    background: rgba(0,0,0,0.35);
+    z-index: 999;
     border: 0;
   }
 }
