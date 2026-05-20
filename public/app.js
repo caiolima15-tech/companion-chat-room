@@ -1222,25 +1222,25 @@ chatForm.addEventListener("submit", async (event) => {
   const text = chatInput.value.trim();
   if (!text || !myId || !me) return;
   chatInput.value = "";
-  if (LOGIN_DISABLED_FOR_TEST) {
-    addMessage({ name: me.name, color: me.color, text });
-    me.speech = text;
-    await trackMe();
-    setTimeout(() => {
-      if (me) {
-        me.speech = "";
-        trackMe();
-      }
-    }, 4500);
-    return;
-  }
   const { error } = await supabase.from("chat_messages").insert({
     user_id: myId,
     nickname: me.name,
     color: me.color,
     text,
   });
-  if (error) addSystemLine("Falha ao enviar: " + error.message);
+  if (error) {
+    addSystemLine("Falha ao enviar: " + error.message);
+    return;
+  }
+  // Bolha local imediata (o postgres_changes também atualiza pros outros)
+  me.speech = text;
+  await trackMe();
+  setTimeout(() => {
+    if (me) {
+      me.speech = "";
+      trackMe();
+    }
+  }, 4500);
 });
 
 joinButton.addEventListener("click", saveNickname);
