@@ -881,8 +881,8 @@ function loadCharacterAssets(character) {
       }
     }
 
-    // Fallback mínimo: garante slot "idle" mesmo que nada carregue depois.
-    if (!clips.idle) clips.idle = new THREE.AnimationClip("idle", 1, []);
+
+
 
     // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
     await Promise.all(
