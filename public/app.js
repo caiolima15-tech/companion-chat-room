@@ -1185,7 +1185,13 @@ function loadEnvironment(mapId) {
       envGroup.add(env);
     },
     undefined,
-    (err) => console.error("Falha carregando cenário:", err),
+    (err) => {
+      console.error("Falha carregando cenário:", err);
+      if (map.id !== "bar") {
+        localStorage.removeItem("neon-tap-room-map");
+        loadEnvironment("bar");
+      }
+    },
   );
 }
 
