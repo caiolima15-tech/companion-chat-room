@@ -163,8 +163,6 @@
           <h2 style="margin:0;">Criar meu avatar</h2>
           <button id="avatarCreatorClose" type="button" class="auth-link">Fechar</button>
         </div>
-        <img src="/images/avaturn-banner.png" alt="Avaturn — Transforme-se em avatar"
-             style="flex:0 0 auto;display:block;width:100%;max-height:180px;object-fit:contain;border-radius:10px;background:#000;margin:6px 0 8px;">
         <p class="char-hint" style="flex:0 0 auto;margin:6px 0 10px;">
           Crie seu avatar abaixo. Quando terminar, escolha <strong>Avatar (T-pose)</strong>,
           marque <strong>Sem expressão facial</strong> e baixe o <code>.glb</code>. Depois arraste o arquivo aqui embaixo.
@@ -174,11 +172,20 @@
                   src="https://hub.avaturn.me/create/proceed"
                   allow="camera; microphone; clipboard-write; fullscreen"
                   style="border:0;width:100%;height:100%;display:block;"></iframe>
+          <button id="avatarCreatorBanner" type="button"
+                  style="position:absolute;inset:0;border:0;padding:0;margin:0;cursor:pointer;background:#000 center/contain no-repeat url('/images/avaturn-banner.png');z-index:2;"
+                  aria-label="Começar a criar avatar"></button>
           <a id="avatarCreatorOpen" href="https://hub.avaturn.me/create/proceed" target="_blank" rel="noopener noreferrer"
-             style="position:absolute;bottom:8px;right:8px;font-size:11px;color:#cfd3dc;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;text-decoration:none;">
+             style="position:absolute;bottom:8px;right:8px;font-size:11px;color:#cfd3dc;background:rgba(0,0,0,.55);padding:4px 8px;border-radius:6px;text-decoration:none;z-index:3;">
             abrir em nova aba ↗
           </a>
         </div>
+        <script>
+          (function(){
+            var b=document.getElementById('avatarCreatorBanner');
+            if(b)b.addEventListener('click',function(){b.remove();});
+          })();
+        </script>
         <div style="flex:0 0 auto;display:flex;gap:10px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">
           <label class="char-nick" style="flex:1 1 200px;">
             <span>Nome do avatar</span>
