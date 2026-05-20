@@ -1516,8 +1516,11 @@ function createPlayerEntity(player) {
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  // Personagem placeholder; substituído pelo FBX se houver character_slug
-  const character = createCharacter(player.color);
+  // Mannequin neutro cinza enquanto o GLB do personagem real carrega
+  // (estilo "loading mannequin" — sem texturas/cores).
+  const loading = !!player.character_slug;
+  const placeholderColor = loading ? "#6b7280" : (player.color || "#29d3bd");
+  const character = createCharacter(placeholderColor, { loading });
   group.add(character);
 
   const mixer = new THREE.AnimationMixer(character);
