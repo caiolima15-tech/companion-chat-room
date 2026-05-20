@@ -240,13 +240,23 @@ const keyState = new Set();
 
 // ============ Maps catalog ============
 const MAPS = [
-  { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
-  { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
-  { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
-  { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
-  { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
-  { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
+  { id: "bar",          name: "Bar Neon",     url: "/assets/maps/bar.glb",          mood: "night", bg: "#08090c", thumb: "🍻" },
+  { id: "barranco_bar", name: "Bar Barranco", url: "/assets/maps/barranco_bar.glb", mood: "night", bg: "#0c0a08", thumb: "🍷" },
+  { id: "old_bar",      name: "Bar Antigo",   url: "/assets/maps/old_bar.glb",      mood: "night", bg: "#1a120a", thumb: "🥃" },
+  { id: "milk_bar",     name: "Milk Bar",     url: "/assets/maps/milk_bar.glb",     mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
+  { id: "scifi",        name: "Sci-Fi",       url: "/assets/maps/scifi.glb",        mood: "night", bg: "#040814", thumb: "🛸" },
+  { id: "cinema",       name: "Cinema",       url: "/assets/maps/cinema.glb",       mood: "night", bg: "#0a0a14", thumb: "🎬" },
+  { id: "beach",        name: "Praia",        url: "/assets/maps/beach.glb",        mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
 ];
+
+// Portas com auto-abrir por aproximação (por mapa). hingeSide = 'min'|'max' do eixo `axis`.
+const MAP_DOORS = {
+  barranco_bar: [
+    { meshName: "Plane.048_bar_atlas_0", label: "Banheiro Masculino", axis: "x", hingeSide: "min", openAngle: -Math.PI / 2 },
+    { meshName: "Plane.049_bar_atlas_0", label: "Banheiro Feminino",  axis: "x", hingeSide: "max", openAngle:  Math.PI / 2 },
+  ],
+};
+const activeDoors = []; // { pivot, mesh, center, openAngle, currentAngle, label }
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
 let selectedMapId = currentMapId;
 
@@ -1640,8 +1650,52 @@ function clearEnvironment() {
   // Reset walkable but keep the invisible base floor
   walkableMeshes.length = 0;
   if (envBaseFloor) walkableMeshes.push(envBaseFloor);
+  activeDoors.length = 0;
   _fadedNow.clear();
   _fadedPrev.clear();
+}
+
+// Registra portas auto-abre: troca a mesh para um pivô no eixo da dobradiça
+function registerDoorsForMap(env, mapId) {
+  const defs = MAP_DOORS[mapId];
+  if (!defs || !defs.length) return;
+  for (const def of defs) {
+    let mesh = null;
+    env.traverse((n) => {
+      if (!mesh && n.isMesh && n.name === def.meshName) mesh = n;
+    });
+    if (!mesh) { console.warn(`[doors] mesh não encontrada: ${def.meshName}`); continue; }
+    mesh.updateWorldMatrix(true, false);
+    const wbox = new THREE.Box3().setFromObject(mesh);
+    const center = wbox.getCenter(new THREE.Vector3());
+    // Calcula o ponto da dobradiça (aresta vertical em min/max do eixo)
+    const hingeWorld = center.clone();
+    const axisIdx = def.axis === "x" ? 0 : def.axis === "z" ? 2 : 0;
+    const arr = hingeWorld.toArray();
+    arr[axisIdx] = def.hingeSide === "min" ? wbox.min[def.axis] : wbox.max[def.axis];
+    hingeWorld.fromArray(arr);
+    // Cria pivô e reposiciona a porta dentro dele preservando world
+    const pivot = new THREE.Group();
+    pivot.name = `DoorPivot_${def.meshName}`;
+    envGroup.add(pivot);
+    pivot.position.copy(envGroup.worldToLocal(hingeWorld.clone()));
+    pivot.attach(mesh);
+    // Remove a porta dos colliders pra deixar passar (e fica como occluder/visual só)
+    const ci = colliderMeshes.indexOf(mesh);
+    if (ci >= 0) colliderMeshes.splice(ci, 1);
+    activeDoors.push({
+      pivot,
+      mesh,
+      center: center.clone(),
+      openAngle: def.openAngle,
+      currentAngle: 0,
+      label: def.label,
+      triggerDist: 2.2,
+      releaseDist: 3.0,
+      isOpen: false,
+    });
+    console.log(`[doors] ${def.label} registrada (${def.meshName})`);
+  }
 }
 
 function loadEnvironment(mapId) {
@@ -1690,6 +1744,7 @@ function loadEnvironment(mapId) {
         }
       });
       envGroup.add(env);
+      registerDoorsForMap(env, map.id);
     },
     undefined,
     (err) => {
@@ -2565,8 +2620,33 @@ function animate() {
   }
   controls.update();
   updateCameraOcclusion();
+  updateDoors(delta);
   renderer.render(scene, camera);
   updateNameplates();
+}
+
+function updateDoors(delta) {
+  if (!activeDoors.length) return;
+  // Pega posição do meu jogador (ou de qualquer um próximo) p/ acionar
+  let myPos = null;
+  if (myId) {
+    const ent = playerEntities.get(myId);
+    if (ent) myPos = ent.group.position;
+  }
+  for (const door of activeDoors) {
+    let minDist = Infinity;
+    if (myPos) minDist = Math.hypot(myPos.x - door.center.x, myPos.z - door.center.z);
+    // Considera também outros players próximos (faz a porta abrir pra todos)
+    for (const ent of playerEntities.values()) {
+      const d = Math.hypot(ent.group.position.x - door.center.x, ent.group.position.z - door.center.z);
+      if (d < minDist) minDist = d;
+    }
+    if (!door.isOpen && minDist < door.triggerDist) door.isOpen = true;
+    else if (door.isOpen && minDist > door.releaseDist) door.isOpen = false;
+    const target = door.isOpen ? door.openAngle : 0;
+    door.currentAngle += (target - door.currentAngle) * Math.min(1, delta * 6.0);
+    door.pivot.rotation.y = door.currentAngle;
+  }
 }
 
 // ============ Event wiring ============
