@@ -2531,10 +2531,14 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (followCamera && myId) {
+  if (myId) {
     const entity = playerEntities.get(myId);
-    if (entity)
-      controls.target.lerp(new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z), delta * 2.2);
+    if (entity) {
+      const desired = new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z);
+      const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
+      controls.target.lerp(desired, delta * 4.0);
+      camera.position.copy(controls.target).add(offset);
+    }
   }
   controls.update();
   updateCameraOcclusion();
