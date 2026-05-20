@@ -277,23 +277,6 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 
 (async () => {
   hideAuth();
-  if (LOGIN_DISABLED_FOR_TEST) {
-    // Sempre garante uma sessão real (anon) no Supabase pra realtime/presence funcionar entre navegadores
-    const { data: existing } = await supabase.auth.getSession();
-    if (existing.session?.user) {
-      await bootstrapSession(existing.session.user);
-      return;
-    }
-    const { data: anon, error: anonErr } = await supabase.auth.signInAnonymously();
-    if (anonErr || !anon?.user) {
-      console.warn("Falha no signInAnonymously, usando guest local:", anonErr);
-      await bootstrapSession(getGuestUser());
-      return;
-    }
-    await bootstrapSession(anon.user);
-    return;
-  }
-
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
