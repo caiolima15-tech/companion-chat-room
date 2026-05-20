@@ -949,12 +949,16 @@ async function applyCharacter(entity, slug) {
     entity.actions = {};
     for (const [name, clip] of Object.entries(clips)) {
       const action = entity.mixer.clipAction(clip);
-      if (EMOTE_SLOTS.has(name) || name === "jump") {
+      if (name === "dance") {
+        // Dança roda em loop até o jogador andar (cancela em setPlayerAction).
+        action.setLoop(THREE.LoopRepeat, Infinity);
+      } else if (EMOTE_SLOTS.has(name) || name === "jump") {
         action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = false;
       }
       entity.actions[name] = action;
     }
+
     entity.currentAction = null;
     entity.characterSlug = slug;
     entity.emoteAction = null;
