@@ -1310,10 +1310,13 @@ function applyHeldMovement() {
 }
 
 function updatePlayerAnimation(delta) {
-  const speed = 1.4; // unidades por segundo (caminhada)
+  const walkSpeed = 1.4;
+  const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
     const distance = entity.group.position.distanceTo(entity.target);
     if (distance > 0.025) {
+      const running = !!entity.running;
+      const speed = running ? runSpeed : walkSpeed;
       const before = entity.group.position.clone();
       const step = Math.min(distance, speed * delta);
       const dir = entity.target.clone().sub(entity.group.position).normalize();
@@ -1322,9 +1325,11 @@ function updatePlayerAnimation(delta) {
       if (moved.lengthSq() > 0.00001) {
         entity.group.rotation.y = Math.atan2(moved.x, moved.z);
       }
-      setPlayerAction(entity, "walk");
+      setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
     } else {
       entity.group.position.copy(entity.target);
+      entity.running = false;
+      if (entity.player?.id === myId && me) me.running = false;
       setPlayerAction(entity, "idle");
     }
     if (entity.mixer) entity.mixer.update(delta);
