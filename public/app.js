@@ -251,7 +251,19 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 (async () => {
   hideAuth();
   if (LOGIN_DISABLED_FOR_TEST) {
-    await bootstrapSession(getGuestUser());
+    // Sempre garante uma sessão real (anon) no Supabase pra realtime/presence funcionar entre navegadores
+    const { data: existing } = await supabase.auth.getSession();
+    if (existing.session?.user) {
+      await bootstrapSession(existing.session.user);
+      return;
+    }
+    const { data: anon, error: anonErr } = await supabase.auth.signInAnonymously();
+    if (anonErr || !anon?.user) {
+      console.warn("Falha no signInAnonymously, usando guest local:", anonErr);
+      await bootstrapSession(getGuestUser());
+      return;
+    }
+    await bootstrapSession(anon.user);
     return;
   }
 
@@ -274,7 +286,7 @@ async function bootstrapSession(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const nickname = profile?.nickname || user.user_metadata?.nickname || "Visitante";
+  const nickname = profile?.nickname || user.user_metadata?.nickname || localStorage.getItem("neon-tap-room-nickname") || "Visitante";
   const color = profile?.color || randomColor();
   const avatarUrl = profile?.avatar_url || null;
   nameInput.value = nickname;
