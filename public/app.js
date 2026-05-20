@@ -1406,13 +1406,15 @@ function updateCameraOcclusion() {
 
 
 // ============ Character ============
-function createCharacter(color = "#29d3bd") {
+function createCharacter(color = "#29d3bd", opts = {}) {
+  const loading = !!opts.loading;
   const root = new THREE.Group();
   root.name = "BarPlayer";
-  const skin = material("#ffd4a3", 0.66);
-  const shirt = material(color, 0.62);
-  const dark = material("#171923", 0.72);
-  const shoes = material("#0f141c", 0.7);
+  // No estado de loading, tudo cinza neutro (sem skin/cabelo/olhos coloridos), como mannequin.
+  const skin = loading ? material("#9aa0a6", 0.85) : material("#ffd4a3", 0.66);
+  const shirt = loading ? material("#9aa0a6", 0.85) : material(color, 0.62);
+  const dark = loading ? material("#8a8f96", 0.85) : material("#171923", 0.72);
+  const shoes = loading ? material("#7d8288", 0.85) : material("#0f141c", 0.7);
 
   const torso = new THREE.Group();
   torso.name = "Torso";
