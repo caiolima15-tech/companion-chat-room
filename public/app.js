@@ -161,7 +161,7 @@ scene.background = new THREE.Color("#0e1117");
 scene.fog = new THREE.Fog("#0e1117", 16, 36);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90);
-camera.position.set(8.8, 8.4, 9.4);
+camera.position.set(4.6, 4.2, 5.0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -172,9 +172,9 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 4;
+controls.minDistance = 2.5;
 controls.maxDistance = 11;
-controls.target.set(0, 0.7, 0);
+controls.target.set(0, 1.0, 0);
 
 const stage = new THREE.Group();
 scene.add(stage);
@@ -770,11 +770,10 @@ function retargetClipToBones(clip, targetBoneNames) {
       candidate = candidate.replace(/^mixamorig:?/, "");
     }
     if (!targetBoneNames.has(candidate)) {
-      // tenta com prefixo se for o alvo que usa mixamorig
       const withPrefix = "mixamorig" + boneName;
       if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
     }
-    if (!targetBoneNames.has(candidate)) continue; // descarta track sem match
+    if (!targetBoneNames.has(candidate)) continue;
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
@@ -782,6 +781,42 @@ function retargetClipToBones(clip, targetBoneNames) {
   if (!tracks.length) return null;
   out.tracks = tracks;
   return out;
+}
+
+// Bake-retarget: resolve diferenças de bind pose / escala entre o rig do GLB e o FBX Mixamo.
+// Sem isso, o personagem fica "deitado" porque os tracks rotacionais são aplicados sobre uma bind pose diferente.
+function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
+  let targetSkinned = null, sourceSkinned = null;
+  targetRoot.traverse((o) => { if (!targetSkinned && o.isSkinnedMesh) targetSkinned = o; });
+  sourceRoot.traverse((o) => { if (!sourceSkinned && o.isSkinnedMesh) sourceSkinned = o; });
+  if (!targetSkinned || !sourceSkinned) return null;
+
+  const targetBoneSet = collectBoneNames(targetRoot);
+  const names = {};
+  let hipName = null;
+  for (const b of sourceSkinned.skeleton.bones) {
+    let candidate = b.name;
+    if (!targetBoneSet.has(candidate) && candidate.startsWith("mixamorig")) {
+      candidate = candidate.replace(/^mixamorig:?/, "");
+    }
+    if (targetBoneSet.has(candidate)) {
+      names[b.name] = candidate;
+      if (/hips?$/i.test(candidate)) hipName = candidate;
+    }
+  }
+  if (!Object.keys(names).length) return null;
+
+  try {
+    return retargetClipBake(targetSkinned, sourceSkinned, clip, {
+      names,
+      hip: hipName || "Hips",
+      useFirstFramePosition: true,
+      fps: 30,
+    });
+  } catch (e) {
+    console.warn("[retarget] bake falhou, usando rename-only", e);
+    return null;
+  }
 }
 
 function loadCharacterAssets(character) {
@@ -844,7 +879,8 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          let retarg = bakeRetargetMixamoClip(base, src, clip);
+          if (!retarg) retarg = retargetClipToBones(clip, targetBones) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
@@ -1370,13 +1406,15 @@ function updateCameraOcclusion() {
 
 
 // ============ Character ============
-function createCharacter(color = "#29d3bd") {
+function createCharacter(color = "#29d3bd", opts = {}) {
+  const loading = !!opts.loading;
   const root = new THREE.Group();
   root.name = "BarPlayer";
-  const skin = material("#ffd4a3", 0.66);
-  const shirt = material(color, 0.62);
-  const dark = material("#171923", 0.72);
-  const shoes = material("#0f141c", 0.7);
+  // No estado de loading, tudo cinza neutro (sem skin/cabelo/olhos coloridos), como mannequin.
+  const skin = loading ? material("#9aa0a6", 0.85) : material("#ffd4a3", 0.66);
+  const shirt = loading ? material("#9aa0a6", 0.85) : material(color, 0.62);
+  const dark = loading ? material("#8a8f96", 0.85) : material("#171923", 0.72);
+  const shoes = loading ? material("#7d8288", 0.85) : material("#0f141c", 0.7);
 
   const torso = new THREE.Group();
   torso.name = "Torso";
@@ -1480,8 +1518,11 @@ function createPlayerEntity(player) {
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  // Personagem placeholder; substituído pelo FBX se houver character_slug
-  const character = createCharacter(player.color);
+  // Mannequin neutro cinza enquanto o GLB do personagem real carrega
+  // (estilo "loading mannequin" — sem texturas/cores).
+  const loading = !!player.character_slug;
+  const placeholderColor = loading ? "#6b7280" : (player.color || "#29d3bd");
+  const character = createCharacter(placeholderColor, { loading });
   group.add(character);
 
   const mixer = new THREE.AnimationMixer(character);
