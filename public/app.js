@@ -1573,8 +1573,11 @@ function updatePlayerAnimation(delta) {
         setPlayerAction(entity, "idle");
       } else {
         entity.group.position.copy(candidate);
+        // Follow terrain: stairs, ramps, raised floors
+        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
         const moved = entity.group.position.clone().sub(before);
-        if (moved.lengthSq() > 0.00001) {
+        if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
           entity.group.rotation.y = Math.atan2(moved.x, moved.z);
         }
         setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
