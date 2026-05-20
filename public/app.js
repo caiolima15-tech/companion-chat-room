@@ -366,8 +366,18 @@ function openCharacterSelect() {
   characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
   selectedCharacterSlug = me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || null;
   updateEnterButtonState();
+  const label = document.querySelector("#currentAccountLabel");
+  if (label) {
+    supabase.auth.getUser().then(({ data }) => {
+      label.textContent = data?.user?.email ? `Conectado como ${data.user.email}` : "";
+    });
+  }
   characterSelectOverlay.hidden = false;
 }
+document.querySelector("#characterSelectLogout")?.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  location.reload();
+});
 function closeCharacterSelect() {
   if (characterSelectOverlay) characterSelectOverlay.hidden = true;
 }
