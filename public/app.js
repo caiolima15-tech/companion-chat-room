@@ -532,7 +532,7 @@ function loadCharacterAssets(character) {
         const url = character[`${slot}_url`];
         if (!url) return;
         try {
-          const fbx = await fbxLoader.loadAsync(url);
+          const fbx = await loadFbxFromUrl(url);
           const clip = fbx.animations?.[0];
           if (clip) {
             const renamed = clip.clone();
