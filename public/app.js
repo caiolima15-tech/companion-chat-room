@@ -2347,8 +2347,8 @@ function moveToWorld(point) {
   }
   trackMe(false).catch(() => {});
 }
+const joystickVec = { x: 0, y: 0 };
 function applyHeldMovement() {
-  if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
   let dy = 0;
@@ -2356,6 +2356,10 @@ function applyHeldMovement() {
   if (keyState.has("arrowdown") || keyState.has("s")) dy += amount;
   if (keyState.has("arrowleft") || keyState.has("a")) dx -= amount;
   if (keyState.has("arrowright") || keyState.has("d")) dx += amount;
+  if (joystickVec.x || joystickVec.y) {
+    dx += joystickVec.x * amount;
+    dy += joystickVec.y * amount;
+  }
   if (dx || dy) {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
@@ -2776,3 +2780,68 @@ buildMap();
 resize();
 renderPermissions();
 requestAnimationFrame(animate);
+
+// ===== Joystick (mobile) =====
+(function initJoystick() {
+  const pad = document.getElementById("joystick");
+  const stick = document.getElementById("joystickStick");
+  if (!pad || !stick) return;
+  const maxRadius = 38; // px deslocamento máximo do stick
+  let activePointerId = null;
+  let centerX = 0, centerY = 0;
+
+  function setStick(dx, dy) {
+    stick.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+  }
+  function reset() {
+    activePointerId = null;
+    joystickVec.x = 0;
+    joystickVec.y = 0;
+    pad.classList.remove("is-active");
+    setStick(0, 0);
+  }
+  pad.addEventListener("pointerdown", (e) => {
+    if (activePointerId !== null) return;
+    activePointerId = e.pointerId;
+    const rect = pad.getBoundingClientRect();
+    centerX = rect.left + rect.width / 2;
+    centerY = rect.top + rect.height / 2;
+    pad.setPointerCapture(e.pointerId);
+    pad.classList.add("is-active");
+    handleMove(e.clientX, e.clientY);
+    e.preventDefault();
+  });
+  pad.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== activePointerId) return;
+    handleMove(e.clientX, e.clientY);
+  });
+  const end = (e) => {
+    if (e.pointerId !== activePointerId) return;
+    try { pad.releasePointerCapture(e.pointerId); } catch {}
+    reset();
+  };
+  pad.addEventListener("pointerup", end);
+  pad.addEventListener("pointercancel", end);
+  pad.addEventListener("lostpointercapture", reset);
+
+  function handleMove(x, y) {
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const dist = Math.hypot(dx, dy);
+    const clamped = Math.min(dist, maxRadius);
+    const nx = dist > 0 ? dx / dist : 0;
+    const ny = dist > 0 ? dy / dist : 0;
+    setStick(nx * clamped, ny * clamped);
+    // Deadzone para evitar tremores
+    const intensity = clamped / maxRadius;
+    const dead = 0.15;
+    if (intensity < dead) {
+      joystickVec.x = 0;
+      joystickVec.y = 0;
+    } else {
+      const scale = (intensity - dead) / (1 - dead);
+      joystickVec.x = nx * scale;
+      joystickVec.y = ny * scale;
+    }
+  }
+})();
