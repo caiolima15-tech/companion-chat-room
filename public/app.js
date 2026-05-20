@@ -886,7 +886,7 @@ function loadCharacterAssets(character) {
     });
     const targetBones = collectBoneNames(base);
     const clips = {};
-    const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
+    const animSlots = ["idle", "walk", "run", "dance", "wave"];
 
     // 1) Animações embutidas no próprio GLB (prioridade máxima)
     if (base.animations?.length) {
