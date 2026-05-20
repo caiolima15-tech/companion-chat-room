@@ -2258,7 +2258,7 @@ document.addEventListener("keydown", (event) => {
     keyState.add(key);
     return;
   }
-  if (key === " " || key === "spacebar") { event.preventDefault(); triggerLocalEmote("jump"); return; }
+  if (key === " " || key === "spacebar") { event.preventDefault(); return; }
   if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
   if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
 });
