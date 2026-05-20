@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { OrbitControls } from "/vendor/OrbitControls.js";
 import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
+import { FBXLoader } from "/vendor/FBXLoader.js";
+import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ============ Supabase ============
