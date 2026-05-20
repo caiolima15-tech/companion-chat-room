@@ -474,12 +474,31 @@ characterAdminClose?.addEventListener("click", () => {
 });
 
 // ============ Character loader (FBX + animations) ============
+// Usamos XHR direto (evita o wrapper de fetch da preview que quebra em arquivos grandes)
+function fetchFbxBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url, true);
+    xhr.responseType = "arraybuffer";
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+      else reject(new Error(`HTTP ${xhr.status} em ${url}`));
+    };
+    xhr.onerror = () => reject(new Error(`Erro de rede em ${url}`));
+    xhr.send();
+  });
+}
+async function loadFbxFromUrl(url) {
+  const buffer = await fetchFbxBuffer(url);
+  return fbxLoader.parse(buffer, "");
+}
+
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
   if (characterCache.has(character.slug)) return characterCache.get(character.slug);
   const promise = (async () => {
     if (!character.base_url) throw new Error("Personagem sem base");
-    const baseFbx = await fbxLoader.loadAsync(character.base_url);
+    const baseFbx = await loadFbxFromUrl(character.base_url);
     // Normaliza escala (Mixamo costuma vir em centímetros)
     const box = new THREE.Box3().setFromObject(baseFbx);
     const size = box.getSize(new THREE.Vector3());
@@ -513,7 +532,7 @@ function loadCharacterAssets(character) {
         const url = character[`${slot}_url`];
         if (!url) return;
         try {
-          const fbx = await fbxLoader.loadAsync(url);
+          const fbx = await loadFbxFromUrl(url);
           const clip = fbx.animations?.[0];
           if (clip) {
             const renamed = clip.clone();
