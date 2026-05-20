@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Bar 3D Multiplayer</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/vendor/three.module.js"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="stage-panel" aria-label="Sala virtual 3D de bar">
+        <div class="topbar">
+          <div>
+            <span class="kicker">Bar online 3D</span>
+            <h1>Neon Tap Room</h1>
+          </div>
+          <div class="status">
+            <span class="live-dot"></span>
+            <span id="roleBadge" class="role-badge">visitante</span>
+            <span id="onlineCount">Conectando</span>
+            <button id="logoutButton" type="button" class="logout-btn">Sair</button>
+          </div>
+        </div>
+
+        <div class="world-shell" id="worldShell">
+          <canvas id="worldCanvas" aria-label="Mapa 3D multiplayer"></canvas>
+          <div class="nameplates" id="nameplates"></div>
+          <div class="world-hud">
+            <button id="cameraButton" type="button">Câmera</button>
+            <label class="file-picker">
+              <input id="avatarInput" type="file" accept=".glb,model/gltf-binary">
+              Trocar avatar
+            </label>
+            <button id="placeButton" class="admin-only" type="button" disabled>Colocar GLB</button>
+            <label class="file-picker admin-only">
+              <input id="glbInput" type="file" accept=".glb,model/gltf-binary">
+              Importar GLB
+            </label>
+            <button id="exportButton" class="admin-only" type="button">Exportar personagem</button>
+          </div>
+          <div class="asset-dock admin-only">
+            <div class="asset-title">GLBs no mapa</div>
+            <div id="assetList" class="asset-list">Nenhum GLB colocado</div>
+          </div>
+        </div>
+
+        <div class="controls" aria-label="Controles de movimento">
+          <button data-step="up" aria-label="Andar para frente">↑</button>
+          <button data-step="left" aria-label="Andar para esquerda">←</button>
+          <button data-step="down" aria-label="Andar para trás">↓</button>
+          <button data-step="right" aria-label="Andar para direita">→</button>
+        </div>
+      </section>
+
+      <aside class="chat-panel" aria-label="Chat da sala">
+        <div class="identity">
+          <label for="nameInput">Apelido</label>
+          <div class="name-row">
+            <input id="nameInput" maxlength="18" autocomplete="nickname" placeholder="Seu nome">
+            <button id="joinButton" type="button">Salvar</button>
+          </div>
+        </div>
+
+        <div class="chat-log" id="chatLog"></div>
+
+        <form class="chat-form" id="chatForm">
+          <input id="chatInput" maxlength="120" autocomplete="off" placeholder="Digite uma mensagem...">
+          <button type="submit">Enviar</button>
+        </form>
+      </aside>
+    </main>
+
+    <!-- Auth overlay -->
+    <div id="authOverlay" class="auth-overlay" hidden>
+      <form id="authForm" class="auth-card">
+        <span class="kicker">Neon Tap Room</span>
+        <h2 id="authTitle">Entrar</h2>
+        <p id="authHint">Use email e senha pra entrar na sala.</p>
+        <input id="authEmail" type="email" placeholder="email@exemplo.com" required autocomplete="email">
+        <input id="authPassword" type="password" placeholder="Senha (min. 6)" required minlength="6" autocomplete="current-password">
+        <input id="authNickname" type="text" placeholder="Apelido" maxlength="18" hidden>
+        <div id="authError" class="auth-error" hidden></div>
+        <button type="submit" id="authSubmit">Entrar</button>
+        <button type="button" id="authSwitch" class="auth-link">Criar conta</button>
+      </form>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
