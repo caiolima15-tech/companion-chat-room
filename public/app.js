@@ -75,6 +75,7 @@ let players = []; // all current players including me
 let selectedAsset = null;
 let placementMode = false;
 let movingAssetId = "";
+let editingAssetId = "";
 let followCamera = true;
 let lastMoveSent = 0;
 let isAdmin = false;
