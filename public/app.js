@@ -105,6 +105,11 @@ let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
 let lastSpeechClear = 0;
+let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}]
+let selectedCharacterSlug = null; // tile escolhido na tela de seleção
+const characterCache = new Map(); // slug -> Promise<{base, clips}>
+const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "jump", "dance", "wave"];
+const EMOTE_SLOTS = new Set(["jump", "dance", "wave"]);
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 const assetObjects = new Map();
