@@ -1745,6 +1745,7 @@ function animate() {
       controls.target.lerp(new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z), delta * 2.2);
   }
   controls.update();
+  updateCameraOcclusion();
   renderer.render(scene, camera);
   updateNameplates();
 }
