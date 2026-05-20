@@ -132,8 +132,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 6;
-controls.maxDistance = 24;
+controls.minDistance = 4;
+controls.maxDistance = 11;
 controls.target.set(0, 0.7, 0);
 
 const stage = new THREE.Group();
@@ -959,11 +959,17 @@ function makeBox(name, size, position, color, options = {}) {
 }
 
 // ============ Map (default scenery) ============
-const colliderMeshes = [];
+const colliderMeshes = [];   // walls / counters / chairs — block movement
+const walkableMeshes = [];   // floor / stairs / ramps — drive Y height
+const occluderMeshes = [];   // any visible env mesh — candidates for camera occlusion fade
 const _collRay = new THREE.Raycaster();
 const _collDir = new THREE.Vector3();
 const _collOrigin = new THREE.Vector3();
-const COLLISION_RADIUS = 0.45;
+const _groundRay = new THREE.Raycaster();
+const _down = new THREE.Vector3(0, -1, 0);
+const _groundOrigin = new THREE.Vector3();
+const COLLISION_RADIUS = 0.4;
+const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
 
 function buildMap() {
   scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
@@ -987,7 +993,7 @@ function buildMap() {
   tealAccent.position.set(5.7, 3.4, 3.6);
   scene.add(tealAccent);
 
-  // Invisible floor used for click-to-move raycast & shadow receiver
+  // Invisible base floor — used for click-to-move raycast & shadow receiver
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH),
     new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.9, transparent: true, opacity: 0 }),
@@ -996,6 +1002,7 @@ function buildMap() {
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   stage.add(floor);
+  walkableMeshes.push(floor);
 
   // We're now indoors — disable outdoor fog
   scene.fog = null;
@@ -1014,18 +1021,25 @@ function buildMap() {
       const scale = currentSize > 0 ? targetSize / currentSize : 1;
       env.scale.setScalar(scale);
       env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      env.updateMatrixWorld(true);
       env.traverse((node) => {
-        if (node.isMesh) {
-          const meshBox = new THREE.Box3().setFromObject(node);
-          // Hide ceilings / anything floating high above the floor so we can see the players
-          if (meshBox.min.y > 2.6) {
-            node.visible = false;
-            return;
-          }
-          node.castShadow = false;
-          node.receiveShadow = true;
-          // Treat anything above ankle height as a wall collider; floor is excluded
-          if (meshBox.max.y > 0.3) colliderMeshes.push(node);
+        if (!node.isMesh) return;
+        const meshBox = new THREE.Box3().setFromObject(node);
+        const height = meshBox.max.y - meshBox.min.y;
+        // Hide ceilings / anything floating high above the floor
+        if (meshBox.min.y > 2.6) { node.visible = false; return; }
+        node.castShadow = false;
+        node.receiveShadow = true;
+        occluderMeshes.push(node);
+
+        const name = (node.name || "") + " " + (node.parent?.name || "");
+        const isStair = STAIR_NAME_RE.test(name);
+        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05; // flat floor-ish piece
+        if (isStair || isLowSlope) {
+          walkableMeshes.push(node);
+        } else if (meshBox.max.y > 0.35) {
+          // Walls, counters, chairs, etc. — block movement
+          colliderMeshes.push(node);
         }
       });
       stage.add(env);
@@ -1035,7 +1049,20 @@ function buildMap() {
   );
 }
 
-// Returns true if moving from `from` to `to` would collide with a wall.
+// Returns the highest walkable surface Y under `pos` that is at or below the player's head.
+function groundHeightAt(pos, currentY) {
+  if (!walkableMeshes.length) return 0;
+  _groundOrigin.set(pos.x, (currentY ?? pos.y) + 4, pos.z);
+  _groundRay.set(_groundOrigin, _down);
+  _groundRay.far = 20;
+  const hits = _groundRay.intersectObjects(walkableMeshes, false);
+  for (const h of hits) {
+    if (h.point.y <= (currentY ?? pos.y) + 1.2) return h.point.y;
+  }
+  return currentY ?? 0;
+}
+
+// Returns true if moving from `from` to `to` would collide with a wall/counter/chair.
 function collidesAt(from, to) {
   if (!colliderMeshes.length) return false;
   _collDir.copy(to).sub(from);
@@ -1043,13 +1070,72 @@ function collidesAt(from, to) {
   const dist = _collDir.length();
   if (dist < 0.0001) return false;
   _collDir.normalize();
-  _collOrigin.copy(from);
-  _collOrigin.y = 0.9; // chest-height ray
-  _collRay.set(_collOrigin, _collDir);
-  _collRay.far = dist + COLLISION_RADIUS;
-  const hits = _collRay.intersectObjects(colliderMeshes, false);
-  return hits.length > 0 && hits[0].distance < dist + COLLISION_RADIUS;
+  // Two rays: knees & chest. Catches low chairs AND tall walls; stairs are walkable, not colliders.
+  for (const yOff of [0.35, 1.2]) {
+    _collOrigin.copy(from);
+    _collOrigin.y = from.y + yOff;
+    _collRay.set(_collOrigin, _collDir);
+    _collRay.far = dist + COLLISION_RADIUS;
+    const hits = _collRay.intersectObjects(colliderMeshes, false);
+    if (hits.length && hits[0].distance < dist + COLLISION_RADIUS) return true;
+  }
+  return false;
 }
+
+// ============ Camera occlusion (hide walls between camera and player) ============
+const _occRay = new THREE.Raycaster();
+const _occDir = new THREE.Vector3();
+const _occFrom = new THREE.Vector3();
+const _fadedNow = new Set();
+const _fadedPrev = new Set();
+const FADE_OPACITY = 0.12;
+
+function setMeshFaded(mesh, faded) {
+  if (!mesh.material) return;
+  if (faded) {
+    if (mesh.userData._origOpacity === undefined) {
+      mesh.userData._origOpacity = mesh.material.opacity ?? 1;
+      mesh.userData._origTransparent = mesh.material.transparent;
+      mesh.userData._origDepthWrite = mesh.material.depthWrite;
+    }
+    mesh.material.transparent = true;
+    mesh.material.opacity = FADE_OPACITY;
+    mesh.material.depthWrite = false;
+    mesh.material.needsUpdate = true;
+  } else if (mesh.userData._origOpacity !== undefined) {
+    mesh.material.opacity = mesh.userData._origOpacity;
+    mesh.material.transparent = mesh.userData._origTransparent;
+    mesh.material.depthWrite = mesh.userData._origDepthWrite;
+    mesh.material.needsUpdate = true;
+    delete mesh.userData._origOpacity;
+    delete mesh.userData._origTransparent;
+    delete mesh.userData._origDepthWrite;
+  }
+}
+
+function updateCameraOcclusion() {
+  _fadedNow.clear();
+  const entity = myId ? playerEntities.get(myId) : null;
+  if (entity && occluderMeshes.length) {
+    _occFrom.copy(camera.position);
+    _occDir.set(entity.group.position.x, entity.group.position.y + 1.1, entity.group.position.z).sub(_occFrom);
+    const dist = _occDir.length();
+    _occDir.normalize();
+    _occRay.set(_occFrom, _occDir);
+    _occRay.far = dist;
+    const hits = _occRay.intersectObjects(occluderMeshes, false);
+    for (const h of hits) {
+      if (h.distance < dist - 0.4) _fadedNow.add(h.object);
+    }
+  }
+  // Apply / restore
+  for (const m of _fadedNow) if (!_fadedPrev.has(m)) setMeshFaded(m, true);
+  for (const m of _fadedPrev) if (!_fadedNow.has(m)) setMeshFaded(m, false);
+  _fadedPrev.clear();
+  for (const m of _fadedNow) _fadedPrev.add(m);
+}
+
+
 
 // ============ Character ============
 function createCharacter(color = "#29d3bd") {
@@ -1542,8 +1628,11 @@ function updatePlayerAnimation(delta) {
         setPlayerAction(entity, "idle");
       } else {
         entity.group.position.copy(candidate);
+        // Follow terrain: stairs, ramps, raised floors
+        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
         const moved = entity.group.position.clone().sub(before);
-        if (moved.lengthSq() > 0.00001) {
+        if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
           entity.group.rotation.y = Math.atan2(moved.x, moved.z);
         }
         setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
@@ -1711,6 +1800,7 @@ function animate() {
       controls.target.lerp(new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z), delta * 2.2);
   }
   controls.update();
+  updateCameraOcclusion();
   renderer.render(scene, camera);
   updateNameplates();
 }
