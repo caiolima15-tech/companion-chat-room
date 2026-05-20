@@ -167,6 +167,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_avatars: {
+        Row: {
+          base_url: string
+          created_at: string
+          id: string
+          name: string
+          thumbnail_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          base_url: string
+          created_at?: string
+          id?: string
+          name?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          base_url?: string
+          created_at?: string
+          id?: string
+          name?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
