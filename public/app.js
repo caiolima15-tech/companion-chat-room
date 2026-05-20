@@ -1497,13 +1497,17 @@ function animate() {
 window.addEventListener("resize", resize);
 
 document.addEventListener("keydown", (event) => {
-  if (event.target.matches("input")) return;
+  if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
     event.preventDefault();
     keyState.add(key);
+    return;
   }
+  if (key === " " || key === "spacebar") { event.preventDefault(); triggerLocalEmote("jump"); return; }
+  if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
+  if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
 });
 document.addEventListener("keyup", (event) => {
   if (!event.key) return;
