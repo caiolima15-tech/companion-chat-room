@@ -1721,16 +1721,22 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  // Movimento (walk/run) cancela emotes em loop como dance.
+  // Movimento (walk/run/idle por chegar) cancela emotes em loop como dance.
   if (entity.emoteAction) {
-    if (name === "walk" || name === "run") {
-      entity.emoteAction.fadeOut(0.15);
+    const isLoopEmote = entity.emoteAction.loop === THREE.LoopRepeat;
+    if (name === "walk" || name === "run" || isLoopEmote) {
+      entity.emoteAction.fadeOut(0.18);
+      // garante parada efetiva quando o fade terminar
+      const finished = entity.emoteAction;
+      setTimeout(() => { try { finished.stop(); } catch {} }, 220);
       entity.emoteAction = null;
       entity.emoteUntil = 0;
+      entity.currentAction = null;
     } else {
-      return; // emote one-shot em andamento bloqueia idle
+      return; // emote one-shot (jump/wave) bloqueia até terminar
     }
   }
+
   if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
