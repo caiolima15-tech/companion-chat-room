@@ -1787,7 +1787,7 @@ function triggerLocalEmote(slot) {
   }).catch(() => {});
 }
 
-emoteJumpButton?.addEventListener("click", () => triggerLocalEmote("jump"));
+// jump removido: animação desativada
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
