@@ -155,7 +155,11 @@ const poseDebug = loadPoseDebug();
 function applyPoseDebugTo(character) {
   if (!character) return;
   const d = Math.PI / 180;
-  character.rotation.set(poseDebug.rotX * d, poseDebug.rotY * d, poseDebug.rotZ * d);
+  character.rotation.set(
+    CHARACTER_DEFAULT_ROT_X + poseDebug.rotX * d,
+    poseDebug.rotY * d,
+    poseDebug.rotZ * d,
+  );
   character.position.y = poseDebug.offY;
 }
 function applyPoseDebugToMe() {
