@@ -1255,7 +1255,7 @@ async function saveNickname() {
   if (!myId) return;
   const newName = nameInput.value.trim() || "Visitante";
   localStorage.setItem("neon-tap-room-nickname", newName);
-  if (!LOGIN_DISABLED_FOR_TEST) await supabase.from("profiles").update({ nickname: newName }).eq("id", myId);
+  await supabase.from("profiles").update({ nickname: newName }).eq("id", myId);
   me.name = newName;
   await trackMe();
   addSystemLine(`Apelido atualizado para ${newName}.`);
