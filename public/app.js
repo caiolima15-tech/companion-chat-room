@@ -396,17 +396,6 @@ async function loadCharactersCatalog() {
     return;
   }
   charactersCatalog = data || [];
-  // Personagem de teste GLB local (com animação embutida + empresta walk de outros)
-  if (!charactersCatalog.some((c) => c.slug === "test-glb")) {
-    charactersCatalog.unshift({
-      slug: "test-glb",
-      name: "Teste GLB",
-      base_url: "/assets/characters/test_glb.glb",
-      thumbnail_url: null,
-      position: -1,
-      borrow_animations: true,
-    });
-  }
 }
 
 function openCharacterSelect() {
