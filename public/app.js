@@ -80,6 +80,7 @@ let lastMoveSent = 0;
 let isAdmin = false;
 let currentAssets = [];
 let presenceChannel = null;
+let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
 let lastSpeechClear = 0;
@@ -396,10 +397,10 @@ async function connectRealtime() {
     )
     .subscribe();
 
-  // Presence for players (join/leave roster) + broadcast (position updates)
+  // Presence for players (join/leave roster)
   if (presenceChannel) await supabase.removeChannel(presenceChannel);
   presenceChannel = supabase.channel("room-presence", {
-    config: { presence: { key: myId }, broadcast: { self: false } },
+    config: { presence: { key: myId } },
   });
 
   presenceChannel
@@ -421,6 +422,18 @@ async function connectRealtime() {
       });
       renderPlayers(merged);
     })
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await presenceChannel.track(presencePayload());
+      }
+    });
+
+  // Movimento em canal separado: mais rápido e não depende do refresh do presence
+  if (movementChannel) await supabase.removeChannel(movementChannel);
+  movementChannel = supabase.channel("room-movement", {
+    config: { broadcast: { self: false } },
+  });
+  movementChannel
     .on("broadcast", { event: "pos" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
       const idx = players.findIndex((p) => p.id === payload.id);
@@ -433,11 +446,7 @@ async function connectRealtime() {
         }
       }
     })
-    .subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await presenceChannel.track(presencePayload());
-      }
-    });
+    .subscribe();
 }
 
 function presencePayload() {
@@ -454,13 +463,15 @@ function presencePayload() {
   };
 }
 
-async function trackMe() {
+async function trackMe(updateRoster = true) {
   if (!presenceChannel) return;
-  // Atualiza roster (nome/cor/avatar) via presence
-  try { await presenceChannel.track(presencePayload()); } catch {}
-  // Posição/facing via broadcast (mais confiável que metadata-update de presence)
+  // Atualiza roster (nome/cor/avatar) via presence só quando necessário
+  if (updateRoster) {
+    try { await presenceChannel.track(presencePayload()); } catch {}
+  }
+  // Posição/facing via broadcast dedicado
   try {
-    await presenceChannel.send({
+    await movementChannel?.send({
       type: "broadcast",
       event: "pos",
       payload: { id: myId, x: me.x, y: me.y, facing: me.facing },
@@ -932,7 +943,7 @@ function move(dx, dy, facing) {
 
   if (now - lastMoveSent > 90) {
     lastMoveSent = now;
-    trackMe().catch(() => {});
+    trackMe(false).catch(() => {});
   }
 }
 function moveToWorld(point) {
@@ -946,7 +957,7 @@ function moveToWorld(point) {
   if (idx >= 0) players[idx] = { ...players[idx], ...me };
   const entity = playerEntities.get(myId);
   if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
-  trackMe().catch(() => {});
+  trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
   if (!keyState.size) return;
