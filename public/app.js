@@ -487,6 +487,19 @@ async function loadCharactersCatalog() {
   charactersCatalog = data || [];
 }
 
+async function loadUserAvatars() {
+  const { data, error } = await supabase
+    .from("user_avatars")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.warn("Não consegui carregar avatares de usuários", error);
+    userAvatars = [];
+    return;
+  }
+  userAvatars = data || [];
+}
+
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
   renderCharacterTiles();
