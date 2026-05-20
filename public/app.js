@@ -739,8 +739,13 @@ async function loadGlbAsScene(url) {
     loader.parse(buffer, "", resolve, reject);
   });
   const scene = gltf.scene || gltf.scenes?.[0];
+  if (!scene) throw new Error(`GLB sem cena em ${url}`);
   scene.animations = gltf.animations || [];
   return scene;
+}
+
+function normalizeBoneName(name = "") {
+  return name.replace(/^mixamorig:?/i, "").toLowerCase();
 }
 
 // Coleta nomes de bones de um objeto skinned
@@ -791,17 +796,15 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   sourceRoot.traverse((o) => { if (!sourceSkinned && o.isSkinnedMesh) sourceSkinned = o; });
   if (!targetSkinned || !sourceSkinned) return null;
 
-  const targetBoneSet = collectBoneNames(targetRoot);
+  const sourceByNormalized = new Map();
+  for (const b of sourceSkinned.skeleton.bones) sourceByNormalized.set(normalizeBoneName(b.name), b.name);
   const names = {};
   let hipName = null;
-  for (const b of sourceSkinned.skeleton.bones) {
-    let candidate = b.name;
-    if (!targetBoneSet.has(candidate) && candidate.startsWith("mixamorig")) {
-      candidate = candidate.replace(/^mixamorig:?/, "");
-    }
-    if (targetBoneSet.has(candidate)) {
-      names[b.name] = candidate;
-      if (/hips?$/i.test(candidate)) hipName = candidate;
+  for (const b of targetSkinned.skeleton.bones) {
+    const sourceName = sourceByNormalized.get(normalizeBoneName(b.name));
+    if (sourceName) {
+      names[b.name] = sourceName;
+      if (/hips?$/i.test(b.name)) hipName = sourceName;
     }
   }
   if (!Object.keys(names).length) return null;
@@ -809,8 +812,9 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   try {
     return retargetClipBake(targetSkinned, sourceSkinned, clip, {
       names,
-      hip: hipName || "Hips",
+      hip: hipName || "mixamorigHips",
       useFirstFramePosition: true,
+      preserveHipPosition: true,
       fps: 30,
     });
   } catch (e) {
@@ -828,30 +832,16 @@ function loadCharacterAssets(character) {
     const base = isGlb
       ? await loadGlbAsScene(character.base_url)
       : await loadFbxFromUrl(character.base_url);
-    // Detecta GLB exportado como Z-up (personagem "deitado") e endireita
     let box = new THREE.Box3().setFromObject(base);
     let size = box.getSize(new THREE.Vector3());
-    if (size.z > size.y * 1.3) {
-      // Envolve em pivot e rotaciona -90° em X para virar Y-up
-      const pivot = new THREE.Group();
-      pivot.rotation.x = -Math.PI / 2;
-      pivot.add(base);
-      // Substitui referência: continuamos chamando "base" pelo container que será clonado
-      base.userData.__zUpFixed = true;
-      base.parent ? base.parent.remove(base) : null;
-      pivot.name = base.name || "CharRoot";
-      // copia animações para o pivot pra preservar fluxo
-      pivot.animations = base.animations || [];
-      base = pivot;
-      box = new THREE.Box3().setFromObject(base);
-      size = box.getSize(new THREE.Vector3());
-    }
     // Normaliza escala
     const height = size.y || 1;
     const targetHeight = 1.8;
     const scale = targetHeight / height;
     base.scale.setScalar(scale);
-    base.position.set(0, 0, 0);
+    base.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(base);
+    base.position.y -= box.min.y;
     base.traverse((child) => {
       if (child.isMesh || child.isSkinnedMesh) {
         child.castShadow = true;
@@ -882,6 +872,13 @@ function loadCharacterAssets(character) {
           console.log(`[char ${character.slug}] clip embutido -> "${slot}"`);
         }
       }
+    }
+
+    // GLBs como o avatar Caio já vêm em pé na bind pose; aplicar FBX Mixamo
+    // externo neles é o que estava deitando/enterrando o mesh. Mantém idle neutro.
+    if (isGlb && !Object.keys(clips).length) {
+      clips.idle = new THREE.AnimationClip("idle", 1, []);
+      return { base, clips, scale };
     }
 
     // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
@@ -1760,11 +1757,11 @@ function renderPlayers(nextPlayers) {
       applyCharacter(entity, desiredSlug);
     }
     entity.target.copy(worldFromPercent(player.x, player.y));
-    if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
+    if (!desiredSlug && player.avatar_url && entity.avatarUrl !== player.avatar_url) {
       applyAvatar(entity, player.avatar_url);
     }
-    // Tint default character
-    if (!player.avatar_url) {
+    // Tint default character only while using the built-in fallback mannequin.
+    if (!desiredSlug && entity.character) {
       entity.character.traverse((child) => {
         if (child.material?.color && child.name?.includes("Torso")) {
           child.material.color.set(player.color);
