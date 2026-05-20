@@ -821,8 +821,8 @@ function renderAssets(assets = []) {
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
-      object.position.set(asset.x, 0, asset.z);
-      object.rotation.y = asset.rotationY;
+      object.position.set(asset.x, asset.y, asset.z);
+      object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
       continue;
@@ -833,8 +833,8 @@ function renderAssets(assets = []) {
         const object = gltf.scene;
         object.name = asset.name;
         normalizeImportedObject(object, asset.scale);
-        object.position.set(asset.x, 0, asset.z);
-        object.rotation.y = asset.rotationY;
+        object.position.set(asset.x, asset.y, asset.z);
+        object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         object.traverse((child) => {
           if (child.isMesh) {
             child.castShadow = true;
@@ -847,8 +847,8 @@ function renderAssets(assets = []) {
       undefined,
       () => {
         const fallback = makeFallbackAsset(asset.name, asset.scale);
-        fallback.position.set(asset.x, 0, asset.z);
-        fallback.rotation.y = asset.rotationY;
+        fallback.position.set(asset.x, asset.y, asset.z);
+        fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         scene.add(fallback);
         assetObjects.set(asset.id, fallback);
       },
