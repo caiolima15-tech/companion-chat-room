@@ -48,6 +48,23 @@ const cameraButton = document.querySelector("#cameraButton");
 const assetList = document.querySelector("#assetList");
 const roleBadge = document.querySelector("#roleBadge");
 const logoutButton = document.querySelector("#logoutButton");
+const changeCharacterButton = document.querySelector("#changeCharacterButton");
+const manageCharactersButton = document.querySelector("#manageCharactersButton");
+const emoteJumpButton = document.querySelector("#emoteJump");
+const emoteDanceButton = document.querySelector("#emoteDance");
+const emoteWaveButton = document.querySelector("#emoteWave");
+
+// Character select overlay
+const characterSelectOverlay = document.querySelector("#characterSelectOverlay");
+const characterGrid = document.querySelector("#characterGrid");
+const characterNicknameInput = document.querySelector("#characterNickname");
+const enterRoomButton = document.querySelector("#enterRoomButton");
+const characterSelectError = document.querySelector("#characterSelectError");
+
+// Character admin overlay
+const characterAdminOverlay = document.querySelector("#characterAdminOverlay");
+const characterAdminList = document.querySelector("#characterAdminList");
+const characterAdminClose = document.querySelector("#characterAdminClose");
 
 // Auth overlay
 const authOverlay = document.querySelector("#authOverlay");
