@@ -1213,7 +1213,7 @@ function handleSceneClick(event) {
     return;
   }
   moveToWorld(point);
-});
+}
 
 glbInput?.addEventListener("change", () => {
   if (!isAdmin) return;
