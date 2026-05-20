@@ -830,6 +830,26 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   }
 }
 
+// Ajusta a faixa de posição do Hips ao tamanho do esqueleto alvo.
+// Mixamo FBX traz Hips em centímetros (~100 unidades) e o GLB normalizado
+// tem ~1.8m -> sem isso, o pulo vira teleporte ou some completamente.
+function scaleHipPositionTrack(clip, targetRoot, sourceRoot) {
+  if (!clip?.tracks?.length) return;
+  let targetH = 0, sourceH = 0;
+  const tBox = new THREE.Box3().setFromObject(targetRoot);
+  targetH = tBox.max.y - tBox.min.y;
+  const sBox = new THREE.Box3().setFromObject(sourceRoot);
+  sourceH = sBox.max.y - sBox.min.y;
+  if (!targetH || !sourceH) return;
+  const ratio = targetH / sourceH;
+  if (Math.abs(ratio - 1) < 0.05) return;
+  for (const track of clip.tracks) {
+    if (!/hips?\]?\.position$/i.test(track.name) && !/\.bones\[.*hips?.*\]\.position$/i.test(track.name)) continue;
+    const v = track.values;
+    for (let i = 0; i < v.length; i++) v[i] *= ratio;
+  }
+}
+
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
   if (characterCache.has(character.slug)) return characterCache.get(character.slug);
