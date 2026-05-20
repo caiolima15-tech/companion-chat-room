@@ -1016,10 +1016,15 @@ function buildMap() {
       env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
       env.traverse((node) => {
         if (node.isMesh) {
+          const meshBox = new THREE.Box3().setFromObject(node);
+          // Hide ceilings / anything floating high above the floor so we can see the players
+          if (meshBox.min.y > 2.6) {
+            node.visible = false;
+            return;
+          }
           node.castShadow = false;
           node.receiveShadow = true;
           // Treat anything above ankle height as a wall collider; floor is excluded
-          const meshBox = new THREE.Box3().setFromObject(node);
           if (meshBox.max.y > 0.3) colliderMeshes.push(node);
         }
       });
