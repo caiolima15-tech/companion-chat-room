@@ -891,21 +891,43 @@ function updateAssetList(assets) {
     return;
   }
   assetList.innerHTML = assets
-    .map(
-      (asset) => `
-    <div class="asset-pill">
+    .map((asset) => {
+      const isEditing = editingAssetId === asset.id;
+      const editorHtml = isEditing ? renderAssetEditor(asset) : "";
+      return `
+    <div class="asset-pill ${isEditing ? "is-editing" : ""}">
       <div class="asset-name">${escapeHtml(asset.name)}</div>
       <div class="asset-actions">
         <button type="button" data-asset-action="move" data-asset-id="${escapeHtml(asset.id)}" class="${movingAssetId === asset.id ? "is-active" : ""}">Mover</button>
-        <button type="button" data-asset-action="rotate" data-asset-id="${escapeHtml(asset.id)}">Girar</button>
-        <button type="button" data-asset-action="smaller" data-asset-id="${escapeHtml(asset.id)}">-</button>
-        <button type="button" data-asset-action="bigger" data-asset-id="${escapeHtml(asset.id)}">+</button>
+        <button type="button" data-asset-action="edit" data-asset-id="${escapeHtml(asset.id)}" class="${isEditing ? "is-active" : ""}">Editar</button>
         <button type="button" data-asset-action="delete" data-asset-id="${escapeHtml(asset.id)}">Excluir</button>
       </div>
+      ${editorHtml}
     </div>
-  `,
-    )
+  `;
+    })
     .join("");
+}
+
+function renderAssetEditor(asset) {
+  const id = escapeHtml(asset.id);
+  const row = (label, field, value, min, max, step) => `
+    <div class="asset-slider">
+      <span class="asset-slider-label">${label}</span>
+      <input type="range" data-asset-field="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
+      <span class="asset-slider-value">${Number(value).toFixed(2)}</span>
+    </div>`;
+  const deg = (r) => (r * 180) / Math.PI;
+  return `
+    <div class="asset-editor">
+      ${row("X", "x", asset.x, -12, 12, 0.05)}
+      ${row("Y (altura)", "y", asset.y, -2, 6, 0.05)}
+      ${row("Z", "z", asset.z, -10, 10, 0.05)}
+      ${row("Rot X (tomb.)", "rotationX", deg(asset.rotationX), -180, 180, 1)}
+      ${row("Rot Y (gira)", "rotationY", deg(asset.rotationY), -180, 180, 1)}
+      ${row("Rot Z (tomb.)", "rotationZ", deg(asset.rotationZ), -180, 180, 1)}
+      ${row("Escala", "scale", asset.scale, 0.1, 6, 0.05)}
+    </div>`;
 }
 
 // ============ Chat UI ============
