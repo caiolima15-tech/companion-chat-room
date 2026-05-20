@@ -572,7 +572,21 @@ function updateEnterButtonState() {
   enterRoomButton.disabled = !selectedCharacterSlug || !hasFiles;
 }
 
-characterGrid?.addEventListener("click", (event) => {
+characterGrid?.addEventListener("click", async (event) => {
+  const delBtn = event.target.closest('[data-action="delete-avatar"]');
+  if (delBtn) {
+    event.stopPropagation();
+    const avatarId = delBtn.dataset.avatarId;
+    if (!avatarId) return;
+    if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
+    const { error } = await supabase.from("user_avatars").delete().eq("id", avatarId);
+    if (error) { alert("Não foi possível excluir: " + error.message); return; }
+    if (selectedCharacterSlug === `user:${avatarId}`) selectedCharacterSlug = null;
+    userAvatars = userAvatars.filter((a) => a.id !== avatarId);
+    renderCharacterTiles();
+    updateEnterButtonState();
+    return;
+  }
   const createBtn = event.target.closest('[data-action="create-avatar"]');
   if (createBtn) { openAvatarCreator(); return; }
   const tile = event.target.closest("[data-character-slug]");
