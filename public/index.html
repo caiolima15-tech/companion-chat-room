@@ -2,7 +2,31 @@
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" id="viewportMeta" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <script>
+      // Após 5s, trava o zoom para evitar que o usuário desconfigure o layout
+      window.addEventListener('load', () => {
+        setTimeout(() => {
+          const vp = document.getElementById('viewportMeta');
+          if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover');
+          // Bloqueia pinch-zoom e ctrl+wheel zoom
+          document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+          document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+          document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+          document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+          document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && ['+','-','=','0'].includes(e.key)) e.preventDefault();
+          });
+          // Bloqueia double-tap zoom
+          let lastTouch = 0;
+          document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouch < 300) e.preventDefault();
+            lastTouch = now;
+          }, { passive: false });
+        }, 5000);
+      });
+    </script>
     <title>Bar 3D Multiplayer</title>
     <script type="importmap">
       {
