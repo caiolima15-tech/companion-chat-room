@@ -156,6 +156,38 @@
       </div>
     </div>
 
+    <!-- Avatar Creator (Avaturn) overlay -->
+    <div id="avatarCreatorOverlay" class="char-overlay" hidden>
+      <div class="char-card" style="max-width:560px;">
+        <div class="char-admin-head">
+          <h2>Criar meu avatar</h2>
+          <button id="avatarCreatorClose" type="button" class="auth-link">Fechar</button>
+        </div>
+        <p class="char-hint">Vamos usar o Avaturn pra escanear seu rosto e gerar um avatar 3D. É grátis.</p>
+        <ol style="padding-left:18px;line-height:1.5;font-size:14px;color:#cfd3dc;">
+          <li>Clique em <strong>Abrir Avaturn</strong> abaixo (abre numa nova aba).</li>
+          <li>Faça o scan/criação do avatar normalmente.</li>
+          <li>Na tela final de download, escolha <strong>Avatar (T-pose)</strong> e marque <strong>Sem expressão facial</strong>.</li>
+          <li>Baixe o arquivo <code>.glb</code> e arraste ele aqui embaixo (ou clique pra escolher).</li>
+        </ol>
+        <a id="avatarCreatorOpen" href="https://hub.avaturn.me/create/scan" target="_blank" rel="noopener noreferrer"
+           style="display:block;text-align:center;background:linear-gradient(135deg,#7c5cff,#29d3bd);color:#fff;padding:12px;border-radius:10px;text-decoration:none;font-weight:600;margin:12px 0;">
+          Abrir Avaturn ↗
+        </a>
+        <label class="char-nick">
+          <span>Nome do avatar</span>
+          <input id="avatarCreatorName" type="text" maxlength="28" placeholder="Ex.: Meu Avatar">
+        </label>
+        <label id="avatarDropzone" for="avatarCreatorFile"
+               style="display:block;border:2px dashed #4a4f5e;border-radius:10px;padding:24px;text-align:center;cursor:pointer;color:#9aa0ad;margin-top:10px;transition:all .15s;">
+          <strong style="color:#cfd3dc;">Arraste o .glb aqui</strong><br>
+          <span style="font-size:12px;">ou clique para escolher</span>
+          <input id="avatarCreatorFile" type="file" accept=".glb,model/gltf-binary" hidden>
+        </label>
+        <div id="avatarCreatorStatus" class="char-hint" style="margin-top:8px;min-height:18px;"></div>
+      </div>
+    </div>
+
     <!-- Admin: gerenciar personagens -->
     <div id="characterAdminOverlay" class="char-overlay" hidden>
       <div class="char-card char-admin">
