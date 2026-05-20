@@ -475,6 +475,7 @@ input:focus {
 }
 .chat-form button {
   background: #ec4899;
+  color: #ffffff;
 }
 
 .chat-log {
@@ -692,6 +693,7 @@ input:focus {
     pointer-events: none;
     grid-template-rows: 0 minmax(0, 1fr) auto;
     padding: 0;
+    overflow: visible;
   }
   .chat-panel > * { pointer-events: auto; }
   .chat-panel .identity { display: none; }
@@ -701,21 +703,30 @@ input:focus {
     pointer-events: auto;
   }
 
-  /* Collapse handle inside chat */
+  /* Collapse arrow ABOVE the chat top */
   .chat-panel::before {
-    content: "";
+    content: "▾";
     position: absolute;
-    top: 8px; left: 50%;
+    top: -34px; left: 50%;
     transform: translateX(-50%);
-    width: 42px; height: 4px;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.35);
-    pointer-events: none;
-    z-index: 2;
+    width: 36px; height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.55);
+    color: rgba(255,255,255,0.9);
+    font-size: 16px;
+    line-height: 1;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    pointer-events: auto;
+    cursor: pointer;
+    z-index: 3;
   }
 
   .chat-log {
-    padding: 22px 14px 8px;
+    padding: 14px 14px 8px;
     background: transparent;
   }
   .chat-item {
@@ -746,12 +757,12 @@ input:focus {
     color: rgba(255,255,255,0.6);
     margin: 4px 0 6px;
   }
-  /* Stack: input on top, send button BELOW */
+  /* Stack: input on top, send button BELOW — fixed feel with breathing room */
   .chat-form {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    gap: 10px;
+    padding: 12px 14px calc(14px + env(safe-area-inset-bottom));
     background: rgba(0, 0, 0, 0.35);
     border-top: 1px solid rgba(255,255,255,0.08);
   }
@@ -765,11 +776,12 @@ input:focus {
     border-radius: 10px;
   }
   .chat-form button {
-    width: 100%;
-    height: 42px;
-    border-radius: 10px;
+    width: calc(100% - 8px);
+    margin: 0 4px 4px;
+    height: 44px;
+    border-radius: 12px;
     background: #ec4899;
-    color: #101217;
+    color: #ffffff;
     font-weight: 900;
     font-size: 0.88rem;
     text-transform: uppercase;
