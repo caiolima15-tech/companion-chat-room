@@ -770,11 +770,10 @@ function retargetClipToBones(clip, targetBoneNames) {
       candidate = candidate.replace(/^mixamorig:?/, "");
     }
     if (!targetBoneNames.has(candidate)) {
-      // tenta com prefixo se for o alvo que usa mixamorig
       const withPrefix = "mixamorig" + boneName;
       if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
     }
-    if (!targetBoneNames.has(candidate)) continue; // descarta track sem match
+    if (!targetBoneNames.has(candidate)) continue;
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
@@ -782,6 +781,42 @@ function retargetClipToBones(clip, targetBoneNames) {
   if (!tracks.length) return null;
   out.tracks = tracks;
   return out;
+}
+
+// Bake-retarget: resolve diferenças de bind pose / escala entre o rig do GLB e o FBX Mixamo.
+// Sem isso, o personagem fica "deitado" porque os tracks rotacionais são aplicados sobre uma bind pose diferente.
+function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
+  let targetSkinned = null, sourceSkinned = null;
+  targetRoot.traverse((o) => { if (!targetSkinned && o.isSkinnedMesh) targetSkinned = o; });
+  sourceRoot.traverse((o) => { if (!sourceSkinned && o.isSkinnedMesh) sourceSkinned = o; });
+  if (!targetSkinned || !sourceSkinned) return null;
+
+  const targetBoneSet = collectBoneNames(targetRoot);
+  const names = {};
+  let hipName = null;
+  for (const b of sourceSkinned.skeleton.bones) {
+    let candidate = b.name;
+    if (!targetBoneSet.has(candidate) && candidate.startsWith("mixamorig")) {
+      candidate = candidate.replace(/^mixamorig:?/, "");
+    }
+    if (targetBoneSet.has(candidate)) {
+      names[b.name] = candidate;
+      if (/hips?$/i.test(candidate)) hipName = candidate;
+    }
+  }
+  if (!Object.keys(names).length) return null;
+
+  try {
+    return retargetClipBake(targetSkinned, sourceSkinned, clip, {
+      names,
+      hip: hipName || "Hips",
+      useFirstFramePosition: true,
+      fps: 30,
+    });
+  } catch (e) {
+    console.warn("[retarget] bake falhou, usando rename-only", e);
+    return null;
+  }
 }
 
 function loadCharacterAssets(character) {
