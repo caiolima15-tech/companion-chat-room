@@ -135,8 +135,10 @@ let lastSpeechClear = 0;
 let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}]
 let selectedCharacterSlug = null; // tile escolhido na tela de seleção
 const characterCache = new Map(); // slug -> Promise<{base, clips}>
-const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "jump", "dance", "wave"];
-const EMOTE_SLOTS = new Set(["jump", "dance", "wave"]);
+const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
+const EMOTE_SLOTS = new Set(["dance", "wave"]);
+// Rotação padrão aplicada a todo personagem GLB (Mixamo vem deitado no eixo X).
+const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 
@@ -153,7 +155,11 @@ const poseDebug = loadPoseDebug();
 function applyPoseDebugTo(character) {
   if (!character) return;
   const d = Math.PI / 180;
-  character.rotation.set(poseDebug.rotX * d, poseDebug.rotY * d, poseDebug.rotZ * d);
+  character.rotation.set(
+    CHARACTER_DEFAULT_ROT_X + poseDebug.rotX * d,
+    poseDebug.rotY * d,
+    poseDebug.rotZ * d,
+  );
   character.position.y = poseDebug.offY;
 }
 function applyPoseDebugToMe() {
@@ -884,7 +890,7 @@ function loadCharacterAssets(character) {
     });
     const targetBones = collectBoneNames(base);
     const clips = {};
-    const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
+    const animSlots = ["idle", "walk", "run", "dance", "wave"];
 
     // 1) Animações embutidas no próprio GLB (prioridade máxima)
     if (base.animations?.length) {
@@ -962,17 +968,23 @@ async function applyCharacter(entity, slug) {
     if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
     entity.group.add(cloned);
-    if (entity.player?.id && entity.player.id === myId) applyPoseDebugTo(cloned);
+    // Aplica rotação padrão (-90 X) a todo personagem; debug sobrepõe pro "me".
+    if (entity.player?.id && entity.player.id === myId) {
+      applyPoseDebugTo(cloned);
+    } else {
+      cloned.rotation.x = CHARACTER_DEFAULT_ROT_X;
+    }
     entity.mixer = new THREE.AnimationMixer(cloned);
     entity.actions = {};
     for (const [name, clip] of Object.entries(clips)) {
       const action = entity.mixer.clipAction(clip);
       if (name === "dance") {
-        // Dança roda em loop até o jogador andar (cancela em setPlayerAction).
         action.setLoop(THREE.LoopRepeat, Infinity);
-      } else if (EMOTE_SLOTS.has(name) || name === "jump") {
+      } else if (EMOTE_SLOTS.has(name)) {
         action.setLoop(THREE.LoopOnce, 1);
-        action.clampWhenFinished = false;
+        // clampWhenFinished=true mantém o último frame durante o fadeOut,
+        // evitando o snap pro bind pose ("enterrado") entre wave→idle.
+        action.clampWhenFinished = true;
       }
       entity.actions[name] = action;
     }
@@ -1132,7 +1144,7 @@ async function connectRealtime() {
     .on("broadcast", { event: "emote" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
       const entity = playerEntities.get(payload.id);
-      if (entity) playEmote(entity, payload.slot);
+      if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
     .subscribe();
 }
@@ -1775,7 +1787,7 @@ function triggerLocalEmote(slot) {
   }).catch(() => {});
 }
 
-emoteJumpButton?.addEventListener("click", () => triggerLocalEmote("jump"));
+// jump removido: animação desativada
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
@@ -2246,7 +2258,7 @@ document.addEventListener("keydown", (event) => {
     keyState.add(key);
     return;
   }
-  if (key === " " || key === "spacebar") { event.preventDefault(); triggerLocalEmote("jump"); return; }
+  if (key === " " || key === "spacebar") { event.preventDefault(); return; }
   if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
   if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
 });
