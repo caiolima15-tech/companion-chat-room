@@ -1185,7 +1185,13 @@ function loadEnvironment(mapId) {
       envGroup.add(env);
     },
     undefined,
-    (err) => console.error("Falha carregando cenário:", err),
+    (err) => {
+      console.error("Falha carregando cenário:", err);
+      if (map.id !== "bar") {
+        localStorage.removeItem("neon-tap-room-map");
+        loadEnvironment("bar");
+      }
+    },
   );
 }
 
@@ -1501,7 +1507,7 @@ function updateNameplate(player) {
   if (!entity) return;
   entity.plate.innerHTML = `
     ${player.speech ? `<div class="speech">${escapeHtml(player.speech)}</div>` : ""}
-    <div class="plate-name">${escapeHtml(player.name)}${player.id === myId ? " (você)" : ""}${player.isAdmin ? " • admin" : ""}</div>
+    <div class="plate-name">${escapeHtml(player.name)}</div>
   `;
 }
 
