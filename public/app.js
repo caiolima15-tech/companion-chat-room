@@ -748,10 +748,17 @@ function renderMapTiles() {
   mapGrid.innerHTML = MAPS.map((m) => {
     const isSelected = selectedMapId === m.id;
     const moodLabel = m.mood === "day" ? "☀️ Dia" : "🌙 Noite";
+    const count = lobbyCounts[m.id] || 0;
+    const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
+    const isCurrent = currentRoomChannelsMapId === m.id;
     return `
-      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}">
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;">
+        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;">
+          <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
+          ${peopleLabel}
+        </div>
         <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
-        <div class="char-tile-name">${m.name}</div>
+        <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
       </div>`;
   }).join("");
@@ -774,10 +781,11 @@ mapSelectBack?.addEventListener("click", () => {
 });
 confirmMapButton?.addEventListener("click", async () => {
   if (!selectedMapId) return;
+  const alreadyInRoom = !!playerEntities.get(myId);
   const switching = selectedMapId !== currentMapId;
+
   if (switching) {
     loadEnvironment(selectedMapId);
-    // Reposiciona meu avatar perto da origem do novo cenário
     const myEntity = playerEntities.get(myId);
     if (myEntity) {
       myEntity.group.position.set(0, 0, 0);
@@ -785,8 +793,12 @@ confirmMapButton?.addEventListener("click", async () => {
     }
   }
   closeMapSelect();
-  if (!playerEntities.get(myId)) {
+  if (!alreadyInRoom) {
+    // Primeira entrada: cria os canais já no map escolhido
     await enterRoom();
+  } else if (switching) {
+    // Já estava na sala — troca canais e chat sem reentrar
+    await switchRoom(selectedMapId);
   }
 });
 
