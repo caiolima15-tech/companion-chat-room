@@ -616,6 +616,92 @@ changeMapButton?.addEventListener("click", () => {
   openMapSelect();
 });
 
+// ===== Avatar Creator (Avaturn workaround) =====
+const avatarCreatorOverlay = document.querySelector("#avatarCreatorOverlay");
+const avatarCreatorClose = document.querySelector("#avatarCreatorClose");
+const avatarCreatorFile = document.querySelector("#avatarCreatorFile");
+const avatarCreatorName = document.querySelector("#avatarCreatorName");
+const avatarCreatorStatus = document.querySelector("#avatarCreatorStatus");
+const avatarDropzone = document.querySelector("#avatarDropzone");
+
+function openAvatarCreator() {
+  if (!avatarCreatorOverlay) return;
+  avatarCreatorStatus.textContent = "";
+  avatarCreatorStatus.style.color = "";
+  avatarCreatorName.value = "";
+  avatarCreatorFile.value = "";
+  avatarCreatorOverlay.hidden = false;
+}
+function closeAvatarCreator() {
+  if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
+}
+avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
+
+async function handleAvatarUpload(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".glb")) {
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = "Arquivo precisa ser .glb (T-pose, sem expressões).";
+    return;
+  }
+  if (!me?.id) return;
+  const name = (avatarCreatorName.value || "").trim() || `Avatar de ${me.name || "Visitante"}`;
+  avatarCreatorStatus.style.color = "";
+  avatarCreatorStatus.textContent = "Enviando avatar…";
+  try {
+    const ext = "glb";
+    const path = `user-avatars/${me.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("characters").upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: "model/gltf-binary",
+    });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
+    const baseUrl = pub.publicUrl;
+    const { data: inserted, error: dbErr } = await supabase
+      .from("user_avatars")
+      .insert({ user_id: me.id, name, base_url: baseUrl })
+      .select()
+      .single();
+    if (dbErr) throw dbErr;
+    userAvatars = [inserted, ...userAvatars];
+    avatarCreatorStatus.style.color = "#29d3bd";
+    avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
+    selectedCharacterSlug = `user:${inserted.id}`;
+    renderCharacterTiles();
+    updateEnterButtonState();
+    setTimeout(closeAvatarCreator, 900);
+  } catch (err) {
+    console.error("Falha ao subir avatar", err);
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = `Erro: ${err.message || err}`;
+  }
+}
+
+avatarCreatorFile?.addEventListener("change", (e) => {
+  handleAvatarUpload(e.target.files?.[0]);
+});
+["dragenter", "dragover"].forEach((evt) => {
+  avatarDropzone?.addEventListener(evt, (e) => {
+    e.preventDefault();
+    avatarDropzone.style.borderColor = "#29d3bd";
+    avatarDropzone.style.background = "rgba(41,211,189,0.05)";
+  });
+});
+["dragleave", "drop"].forEach((evt) => {
+  avatarDropzone?.addEventListener(evt, (e) => {
+    e.preventDefault();
+    avatarDropzone.style.borderColor = "";
+    avatarDropzone.style.background = "";
+  });
+});
+avatarDropzone?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  handleAvatarUpload(e.dataTransfer?.files?.[0]);
+});
+
+
 // ===== Map (location) select =====
 const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
 const mapGrid = document.querySelector("#mapGrid");
