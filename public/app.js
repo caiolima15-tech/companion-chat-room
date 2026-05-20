@@ -959,45 +959,91 @@ function makeBox(name, size, position, color, options = {}) {
 }
 
 // ============ Map (default scenery) ============
+const colliderMeshes = [];
+const _collRay = new THREE.Raycaster();
+const _collDir = new THREE.Vector3();
+const _collOrigin = new THREE.Vector3();
+const COLLISION_RADIUS = 0.45;
+
 function buildMap() {
-  scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.35));
-  const key = new THREE.DirectionalLight("#ffffff", 1.35);
+  scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
+  const key = new THREE.DirectionalLight("#ffffff", 1.1);
   key.position.set(6, 10, 3);
   key.castShadow = true;
   key.shadow.mapSize.set(2048, 2048);
   key.shadow.camera.near = 1;
-  key.shadow.camera.far = 26;
-  key.shadow.camera.left = -12;
-  key.shadow.camera.right = 12;
-  key.shadow.camera.top = 12;
-  key.shadow.camera.bottom = -12;
+  key.shadow.camera.far = 40;
+  key.shadow.camera.left = -16;
+  key.shadow.camera.right = 16;
+  key.shadow.camera.top = 16;
+  key.shadow.camera.bottom = -16;
   scene.add(key);
 
-  const redAccent = new THREE.PointLight("#f26868", 3.4, 10);
+  const redAccent = new THREE.PointLight("#f26868", 2.6, 12);
   redAccent.position.set(-6.7, 3.2, -6.2);
   scene.add(redAccent);
 
-  const tealAccent = new THREE.PointLight("#29d3bd", 2.4, 13);
+  const tealAccent = new THREE.PointLight("#29d3bd", 2.0, 14);
   tealAccent.position.set(5.7, 3.4, 3.6);
   scene.add(tealAccent);
 
+  // Invisible floor used for click-to-move raycast & shadow receiver
   const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH, 18, 14),
-    new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.86, metalness: 0.02 }),
+    new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH),
+    new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.9, transparent: true, opacity: 0 }),
   );
   floor.name = "WalkableFloor";
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
   stage.add(floor);
 
-  const grid = new THREE.GridHelper(MAP_WIDTH, 18, "#48515e", "#2d3540");
-  grid.scale.z = MAP_DEPTH / MAP_WIDTH;
-  grid.position.y = 0.012;
-  stage.add(grid);
+  // We're now indoors — disable outdoor fog
+  scene.fog = null;
+  scene.background = new THREE.Color("#08090c");
 
-  makeBox("BackWall", [MAP_WIDTH, 3.5, 0.35], [0, 1.75, -MAP_DEPTH / 2], "#232b36", { castShadow: false });
-  makeBox("LeftWall", [0.35, 3.5, MAP_DEPTH], [-MAP_WIDTH / 2, 1.75, 0], "#1c2530", { castShadow: false });
-  makeBox("RightRail", [0.28, 1.0, MAP_DEPTH], [MAP_WIDTH / 2, 0.5, 0], "#161f29");
+  // Load the bar environment GLB
+  loader.load(
+    "/assets/scene.glb",
+    (gltf) => {
+      const env = gltf.scene;
+      const box = new THREE.Box3().setFromObject(env);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
+      const currentSize = Math.max(size.x, size.z);
+      const scale = currentSize > 0 ? targetSize / currentSize : 1;
+      env.scale.setScalar(scale);
+      env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+      env.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = false;
+          node.receiveShadow = true;
+          // Treat anything above ankle height as a wall collider; floor is excluded
+          const meshBox = new THREE.Box3().setFromObject(node);
+          if (meshBox.max.y > 0.3) colliderMeshes.push(node);
+        }
+      });
+      stage.add(env);
+    },
+    undefined,
+    (err) => console.error("Falha carregando cenário:", err),
+  );
+}
+
+// Returns true if moving from `from` to `to` would collide with a wall.
+function collidesAt(from, to) {
+  if (!colliderMeshes.length) return false;
+  _collDir.copy(to).sub(from);
+  _collDir.y = 0;
+  const dist = _collDir.length();
+  if (dist < 0.0001) return false;
+  _collDir.normalize();
+  _collOrigin.copy(from);
+  _collOrigin.y = 0.9; // chest-height ray
+  _collRay.set(_collOrigin, _collDir);
+  _collRay.far = dist + COLLISION_RADIUS;
+  const hits = _collRay.intersectObjects(colliderMeshes, false);
+  return hits.length > 0 && hits[0].distance < dist + COLLISION_RADIUS;
 }
 
 // ============ Character ============
@@ -1484,12 +1530,19 @@ function updatePlayerAnimation(delta) {
       const before = entity.group.position.clone();
       const step = Math.min(distance, speed * delta);
       const dir = entity.target.clone().sub(entity.group.position).normalize();
-      entity.group.position.addScaledVector(dir, step);
-      const moved = entity.group.position.clone().sub(before);
-      if (moved.lengthSq() > 0.00001) {
-        entity.group.rotation.y = Math.atan2(moved.x, moved.z);
+      const candidate = before.clone().addScaledVector(dir, step);
+      if (collidesAt(before, candidate)) {
+        // Blocked by wall — cancel target so we stop here
+        entity.target.copy(before);
+        setPlayerAction(entity, "idle");
+      } else {
+        entity.group.position.copy(candidate);
+        const moved = entity.group.position.clone().sub(before);
+        if (moved.lengthSq() > 0.00001) {
+          entity.group.rotation.y = Math.atan2(moved.x, moved.z);
+        }
+        setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
       }
-      setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
     } else {
       entity.group.position.copy(entity.target);
       entity.running = false;
