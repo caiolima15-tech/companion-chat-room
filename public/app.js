@@ -2149,3 +2149,9 @@ async function saveNickname() {
   await trackMe();
   addSystemLine(`Apelido atualizado para ${newName}.`);
 }
+
+// ===== Bootstrap (runs after all module-scope consts are initialized) =====
+buildMap();
+resize();
+renderPermissions();
+requestAnimationFrame(animate);
