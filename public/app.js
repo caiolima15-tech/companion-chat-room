@@ -1236,17 +1236,25 @@ function move(dx, dy, facing) {
     trackMe(false).catch(() => {});
   }
 }
+let lastMoveClickAt = 0;
 function moveToWorld(point) {
   if (!me || !myId) return;
+  const now = performance.now();
+  const isDoubleClick = now - lastMoveClickAt < 350;
+  lastMoveClickAt = now;
   const next = percentFromWorld(point.x, point.z);
   const dx = next.x - me.x;
   const dy = next.y - me.y;
   const facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
-  me = { ...me, x: next.x, y: next.y, facing };
+  const running = isDoubleClick;
+  me = { ...me, x: next.x, y: next.y, facing, running };
   const idx = players.findIndex((p) => p.id === myId);
   if (idx >= 0) players[idx] = { ...players[idx], ...me };
   const entity = playerEntities.get(myId);
-  if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
+  if (entity) {
+    entity.target.copy(worldFromPercent(me.x, me.y));
+    entity.running = running;
+  }
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
