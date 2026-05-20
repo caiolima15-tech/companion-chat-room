@@ -1102,8 +1102,11 @@ async function placeSelectedAsset(point) {
     name: selectedAsset.name,
     url: selectedAsset.url,
     x: Math.max(-8.5, Math.min(8.5, point.x)),
+    y: 0,
     z: Math.max(-6.5, Math.min(6.5, point.z)),
+    rotation_x: 0,
     rotation_y: 0,
+    rotation_z: 0,
     scale: 1,
     created_by: myId,
   });
@@ -1114,8 +1117,11 @@ async function updateAsset(assetId, patch) {
   if (!isAdmin) return;
   const dbPatch = {};
   if (patch.x !== undefined) dbPatch.x = patch.x;
+  if (patch.y !== undefined) dbPatch.y = patch.y;
   if (patch.z !== undefined) dbPatch.z = patch.z;
+  if (patch.rotationX !== undefined) dbPatch.rotation_x = patch.rotationX;
   if (patch.rotationY !== undefined) dbPatch.rotation_y = patch.rotationY;
+  if (patch.rotationZ !== undefined) dbPatch.rotation_z = patch.rotationZ;
   if (patch.scale !== undefined) dbPatch.scale = patch.scale;
   const { error } = await supabase.from("map_assets").update(dbPatch).eq("id", assetId);
   if (error) addSystemLine("Falha ao atualizar GLB: " + error.message);
