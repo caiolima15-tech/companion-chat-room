@@ -983,6 +983,13 @@ async function applyCharacter(entity, slug) {
     entity.emoteUntil = 0;
     entity.mixer.addEventListener("finished", (e) => {
       if (entity.emoteAction === e.action) {
+        // Inicia idle ANTES de soltar o emote para evitar 1 frame em bind pose ("enterrado").
+        const idle = entity.actions?.idle;
+        if (idle) {
+          idle.reset().fadeIn(0.2).play();
+          entity.currentAction = "idle";
+        }
+        e.action.fadeOut(0.2);
         entity.emoteAction = null;
         entity.emoteUntil = 0;
       }
@@ -1709,19 +1716,19 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  // Movimento (walk/run/idle por chegar) cancela emotes em loop como dance.
+  // Movimento (walk/run) cancela emotes em loop como dance. Idle NÃO cancela.
   if (entity.emoteAction) {
     const isLoopEmote = entity.emoteAction.loop === THREE.LoopRepeat;
-    if (name === "walk" || name === "run" || isLoopEmote) {
+    if (isLoopEmote && (name === "walk" || name === "run")) {
       entity.emoteAction.fadeOut(0.18);
-      // garante parada efetiva quando o fade terminar
       const finished = entity.emoteAction;
       setTimeout(() => { try { finished.stop(); } catch {} }, 220);
       entity.emoteAction = null;
       entity.emoteUntil = 0;
       entity.currentAction = null;
     } else {
-      return; // emote one-shot (jump/wave) bloqueia até terminar
+      // emote loop em idle: mantém. emote one-shot: bloqueia até terminar.
+      return;
     }
   }
 
@@ -1733,6 +1740,7 @@ function setPlayerAction(entity, name) {
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
+
 
 
 function playEmote(entity, slot) {
