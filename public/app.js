@@ -3,7 +3,7 @@ import { OrbitControls } from "/vendor/OrbitControls.js";
 import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
 import { FBXLoader } from "/vendor/FBXLoader.js";
-import { clone as cloneSkeleton, retargetClip as retargetClipBake } from "/vendor/utils/SkeletonUtils.js";
+import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
 
 // Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
 const SHARED_ANIM_LIBRARY = {
@@ -760,11 +760,9 @@ function collectBoneNames(root) {
   return set;
 }
 
-// Renomeia tracks de um clip para casar com os bones do alvo
-// (ex.: Mixamo FBX usa "mixamorigHips" e o GLB usa "Hips")
-// opts.stripRootRotation: remove a rotação absoluta do Hips para evitar que
-// o avatar GLB "deite" quando recebe clips Mixamo cuja bind pose difere.
-function retargetClipToBones(clip, targetBoneNames, opts = {}) {
+// Renomeia tracks de um clip para casar com os bones do alvo.
+// Mantém os tracks originais da animação: o eixo do avatar fica como veio no GLB.
+function retargetClipToBones(clip, targetBoneNames) {
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -781,11 +779,6 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
       if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
     }
     if (!targetBoneNames.has(candidate)) continue;
-    // Strip rotação/posição absoluta do Hips: mantém só animação relativa dos
-    // membros, evitando que o personagem tombe ou afunde no chão.
-    if (opts.stripRootRotation && /hips?$/i.test(candidate)) {
-      if (prop === ".quaternion" || prop === ".position") continue;
-    }
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
@@ -793,61 +786,6 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   if (!tracks.length) return null;
   out.tracks = tracks;
   return out;
-}
-
-// Bake-retarget: resolve diferenças de bind pose / escala entre o rig do GLB e o FBX Mixamo.
-// Sem isso, o personagem fica "deitado" porque os tracks rotacionais são aplicados sobre uma bind pose diferente.
-function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
-  let targetSkinned = null, sourceSkinned = null;
-  targetRoot.traverse((o) => { if (!targetSkinned && o.isSkinnedMesh) targetSkinned = o; });
-  sourceRoot.traverse((o) => { if (!sourceSkinned && o.isSkinnedMesh) sourceSkinned = o; });
-  if (!targetSkinned || !sourceSkinned) return null;
-
-  const sourceByNormalized = new Map();
-  for (const b of sourceSkinned.skeleton.bones) sourceByNormalized.set(normalizeBoneName(b.name), b.name);
-  const names = {};
-  let hipName = null;
-  for (const b of targetSkinned.skeleton.bones) {
-    const sourceName = sourceByNormalized.get(normalizeBoneName(b.name));
-    if (sourceName) {
-      names[b.name] = sourceName;
-      if (/hips?$/i.test(b.name)) hipName = sourceName;
-    }
-  }
-  if (!Object.keys(names).length) return null;
-
-  try {
-    return retargetClipBake(targetSkinned, sourceSkinned, clip, {
-      names,
-      hip: hipName || "mixamorigHips",
-      useFirstFramePosition: true,
-      preserveHipPosition: true,
-      fps: 30,
-    });
-  } catch (e) {
-    console.warn("[retarget] bake falhou, usando rename-only", e);
-    return null;
-  }
-}
-
-// Ajusta a faixa de posição do Hips ao tamanho do esqueleto alvo.
-// Mixamo FBX traz Hips em centímetros (~100 unidades) e o GLB normalizado
-// tem ~1.8m -> sem isso, o pulo vira teleporte ou some completamente.
-function scaleHipPositionTrack(clip, targetRoot, sourceRoot) {
-  if (!clip?.tracks?.length) return;
-  let targetH = 0, sourceH = 0;
-  const tBox = new THREE.Box3().setFromObject(targetRoot);
-  targetH = tBox.max.y - tBox.min.y;
-  const sBox = new THREE.Box3().setFromObject(sourceRoot);
-  sourceH = sBox.max.y - sBox.min.y;
-  if (!targetH || !sourceH) return;
-  const ratio = targetH / sourceH;
-  if (Math.abs(ratio - 1) < 0.05) return;
-  for (const track of clip.tracks) {
-    if (!/hips?\]?\.position$/i.test(track.name) && !/\.bones\[.*hips?.*\]\.position$/i.test(track.name)) continue;
-    const v = track.values;
-    for (let i = 0; i < v.length; i++) v[i] *= ratio;
-  }
 }
 
 function loadCharacterAssets(character) {
