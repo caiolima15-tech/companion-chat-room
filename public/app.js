@@ -132,7 +132,27 @@ let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
 let lastSpeechClear = 0;
-let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}]
+let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}] — admin catalog
+let userAvatars = []; // user-created avatars (Avaturn), shape: { id, user_id, name, base_url, thumbnail_url }
+function userAvatarToCharacter(av) {
+  // Normaliza um user_avatar para o mesmo formato dos personagens do admin.
+  return {
+    slug: `user:${av.id}`,
+    name: av.name || "Meu Avatar",
+    base_url: av.base_url,
+    thumbnail_url: av.thumbnail_url || null,
+    isUserAvatar: true,
+    user_id: av.user_id,
+  };
+}
+function findCharacterBySlug(slug) {
+  if (!slug) return null;
+  return (
+    charactersCatalog.find((c) => c.slug === slug) ||
+    userAvatars.map(userAvatarToCharacter).find((c) => c.slug === slug) ||
+    null
+  );
+}
 let selectedCharacterSlug = null; // tile escolhido na tela de seleção
 const characterCache = new Map(); // slug -> Promise<{base, clips}>
 const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
