@@ -137,12 +137,25 @@ authForm.addEventListener("submit", async (e) => {
   authSubmit.disabled = true;
   try {
     if (authMode === "signup") {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: authEmail.value,
         password: authPassword.value,
-        options: { data: { nickname: authNickname.value || "Visitante" } },
+        options: {
+          data: { nickname: authNickname.value || "Visitante" },
+          emailRedirectTo: window.location.origin,
+        },
       });
       if (error) throw error;
+      if (!data.session) {
+        // Sessão não criada → tenta login direto (caso já exista) ou pede confirmação
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email: authEmail.value,
+          password: authPassword.value,
+        });
+        if (signInErr) {
+          showAuthError("Conta criada. Verifique seu email para confirmar antes de entrar.");
+        }
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({
         email: authEmail.value,
@@ -151,6 +164,7 @@ authForm.addEventListener("submit", async (e) => {
       if (error) throw error;
     }
   } catch (err) {
+    console.error("[auth]", err);
     showAuthError(err.message || "Falha de autenticação");
   } finally {
     authSubmit.disabled = false;
