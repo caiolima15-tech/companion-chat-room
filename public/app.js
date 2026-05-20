@@ -139,6 +139,69 @@ const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "jump", "dance", "wave"]
 const EMOTE_SLOTS = new Set(["jump", "dance", "wave"]);
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
+
+// ============ Pose debug (ajuste manual de inclinação do personagem) ============
+const POSE_DEBUG_KEY = "neon-tap-room-pose-debug";
+function loadPoseDebug() {
+  try {
+    const raw = localStorage.getItem(POSE_DEBUG_KEY);
+    if (raw) return { rotX: 0, rotY: 0, rotZ: 0, offY: 0, ...JSON.parse(raw) };
+  } catch {}
+  return { rotX: 0, rotY: 0, rotZ: 0, offY: 0 };
+}
+const poseDebug = loadPoseDebug();
+function applyPoseDebugTo(character) {
+  if (!character) return;
+  const d = Math.PI / 180;
+  character.rotation.set(poseDebug.rotX * d, poseDebug.rotY * d, poseDebug.rotZ * d);
+  character.position.y = poseDebug.offY;
+}
+function applyPoseDebugToMe() {
+  const myEntity = myId ? playerEntities.get(myId) : null;
+  if (myEntity?.character) applyPoseDebugTo(myEntity.character);
+}
+function setupPoseDebugUI() {
+  const ids = ["poseRotX", "poseRotY", "poseRotZ", "poseOffY"];
+  const keys = ["rotX", "rotY", "rotZ", "offY"];
+  const valIds = ["poseRotXVal", "poseRotYVal", "poseRotZVal", "poseOffYVal"];
+  ids.forEach((id, i) => {
+    const el = document.getElementById(id);
+    const val = document.getElementById(valIds[i]);
+    if (!el) return;
+    el.value = String(poseDebug[keys[i]]);
+    const render = () => {
+      val.textContent = keys[i] === "offY" ? Number(el.value).toFixed(2) : `${el.value}°`;
+    };
+    render();
+    el.addEventListener("input", () => {
+      poseDebug[keys[i]] = parseFloat(el.value);
+      render();
+      try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
+      applyPoseDebugToMe();
+    });
+  });
+  document.getElementById("poseReset")?.addEventListener("click", () => {
+    poseDebug.rotX = 0; poseDebug.rotY = 0; poseDebug.rotZ = 0; poseDebug.offY = 0;
+    try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
+    setupPoseDebugUI();
+    applyPoseDebugToMe();
+  });
+  const toggle = document.getElementById("poseDebugToggle");
+  const body = document.getElementById("poseDebugBody");
+  if (toggle && body) {
+    toggle.addEventListener("click", () => {
+      const hidden = body.style.display === "none";
+      body.style.display = hidden ? "" : "none";
+      toggle.textContent = hidden ? "−" : "+";
+    });
+  }
+}
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupPoseDebugUI);
+} else {
+  setupPoseDebugUI();
+}
+
 const assetObjects = new Map();
 const keyState = new Set();
 
@@ -899,6 +962,7 @@ async function applyCharacter(entity, slug) {
     if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
     entity.group.add(cloned);
+    if (entity.player?.id && entity.player.id === myId) applyPoseDebugTo(cloned);
     entity.mixer = new THREE.AnimationMixer(cloned);
     entity.actions = {};
     for (const [name, clip] of Object.entries(clips)) {

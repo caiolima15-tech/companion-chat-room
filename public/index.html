@@ -54,6 +54,20 @@
           </div>
           <button id="adminShortcut" class="admin-shortcut admin-only" type="button" title="Gerenciar personagens (admin)" aria-label="Painel admin">🛡️</button>
 
+          <div id="poseDebug" style="position:absolute;top:60px;right:12px;background:rgba(10,10,20,.85);color:#eee;padding:10px;border-radius:8px;font:12px/1.3 system-ui;z-index:50;width:200px;backdrop-filter:blur(6px);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <strong>Pose Debug</strong>
+              <button id="poseDebugToggle" type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 6px;cursor:pointer;">−</button>
+            </div>
+            <div id="poseDebugBody">
+              <label style="display:block;margin:4px 0;">RotX <span id="poseRotXVal">0°</span><input id="poseRotX" type="range" min="-180" max="180" step="1" value="0" style="width:100%"></label>
+              <label style="display:block;margin:4px 0;">RotY <span id="poseRotYVal">0°</span><input id="poseRotY" type="range" min="-180" max="180" step="1" value="0" style="width:100%"></label>
+              <label style="display:block;margin:4px 0;">RotZ <span id="poseRotZVal">0°</span><input id="poseRotZ" type="range" min="-180" max="180" step="1" value="0" style="width:100%"></label>
+              <label style="display:block;margin:4px 0;">OffY <span id="poseOffYVal">0.00</span><input id="poseOffY" type="range" min="-2" max="2" step="0.01" value="0" style="width:100%"></label>
+              <button id="poseReset" type="button" style="margin-top:6px;width:100%;background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:4px;cursor:pointer;">Resetar</button>
+            </div>
+          </div>
+
         </div>
 
         <div class="controls" aria-label="Controles de movimento">
