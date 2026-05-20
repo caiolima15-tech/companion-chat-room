@@ -1650,8 +1650,52 @@ function clearEnvironment() {
   // Reset walkable but keep the invisible base floor
   walkableMeshes.length = 0;
   if (envBaseFloor) walkableMeshes.push(envBaseFloor);
+  activeDoors.length = 0;
   _fadedNow.clear();
   _fadedPrev.clear();
+}
+
+// Registra portas auto-abre: troca a mesh para um pivô no eixo da dobradiça
+function registerDoorsForMap(env, mapId) {
+  const defs = MAP_DOORS[mapId];
+  if (!defs || !defs.length) return;
+  for (const def of defs) {
+    let mesh = null;
+    env.traverse((n) => {
+      if (!mesh && n.isMesh && n.name === def.meshName) mesh = n;
+    });
+    if (!mesh) { console.warn(`[doors] mesh não encontrada: ${def.meshName}`); continue; }
+    mesh.updateWorldMatrix(true, false);
+    const wbox = new THREE.Box3().setFromObject(mesh);
+    const center = wbox.getCenter(new THREE.Vector3());
+    // Calcula o ponto da dobradiça (aresta vertical em min/max do eixo)
+    const hingeWorld = center.clone();
+    const axisIdx = def.axis === "x" ? 0 : def.axis === "z" ? 2 : 0;
+    const arr = hingeWorld.toArray();
+    arr[axisIdx] = def.hingeSide === "min" ? wbox.min[def.axis] : wbox.max[def.axis];
+    hingeWorld.fromArray(arr);
+    // Cria pivô e reposiciona a porta dentro dele preservando world
+    const pivot = new THREE.Group();
+    pivot.name = `DoorPivot_${def.meshName}`;
+    envGroup.add(pivot);
+    pivot.position.copy(envGroup.worldToLocal(hingeWorld.clone()));
+    pivot.attach(mesh);
+    // Remove a porta dos colliders pra deixar passar (e fica como occluder/visual só)
+    const ci = colliderMeshes.indexOf(mesh);
+    if (ci >= 0) colliderMeshes.splice(ci, 1);
+    activeDoors.push({
+      pivot,
+      mesh,
+      center: center.clone(),
+      openAngle: def.openAngle,
+      currentAngle: 0,
+      label: def.label,
+      triggerDist: 2.2,
+      releaseDist: 3.0,
+      isOpen: false,
+    });
+    console.log(`[doors] ${def.label} registrada (${def.meshName})`);
+  }
 }
 
 function loadEnvironment(mapId) {
