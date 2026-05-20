@@ -652,9 +652,13 @@ async function connectRealtime() {
         if (player) {
           player.speech = m.text;
           updateNameplate(player);
-          setTimeout(() => {
-            player.speech = "";
-            updateNameplate(player);
+          clearTimeout(player._speechTimer);
+          player._speechTimer = setTimeout(() => {
+            const cur = players.find((p) => p.id === m.user_id);
+            if (cur) {
+              cur.speech = "";
+              updateNameplate(cur);
+            }
           }, 4500);
         }
       },
@@ -679,8 +683,8 @@ async function connectRealtime() {
       const prev = new Map(players.map((p) => [p.id, p]));
       const merged = list.map((p) => {
         const old = prev.get(p.id);
-        if (old && p.id !== myId) {
-          return { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech };
+        if (old) {
+          return { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false };
         }
         return p;
       });
