@@ -897,17 +897,27 @@ function loadCharacterAssets(character) {
           if (!clip || clip.duration <= 0) return;
           // Bake retarget (resolve diferenças de bind pose entre Mixamo FBX e
           // o rig do GLB) -> preserva o "swing" do Hips, evitando que a
-          // animação fique robótica. Se o bake falhar, cai no rename-only
-          // descartando a rotação absoluta do Hips para não tombar o avatar.
+          // animação fique robótica. Se o bake falhar, cai no rename-only.
           let retarg = bakeRetargetMixamoClip(base, src, clip);
-          if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
+          let mode = "baked";
+          if (!retarg) {
+            // Para jump precisamos preservar o deslocamento vertical do Hips,
+            // então NÃO strip a posição. Para os demais clips, manter o strip
+            // evita que o avatar tombe.
+            const strip = isGlb && slot !== "jump";
+            retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: strip }) || clip.clone();
+            mode = strip ? "rename-stripped" : "rename";
+          }
+          // Normaliza a escala da posição do Hips para o tamanho do alvo
+          // (Mixamo exporta em centímetros, o GLB normalizado tem ~1.8m).
+          scaleHipPositionTrack(retarg, base, src);
           retarg.name = slot;
           clips[slot] = retarg;
-          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}${retarg === clip ? "" : " (baked)"}`);
-
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"} (${mode})`);
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
+
       }),
     );
 
