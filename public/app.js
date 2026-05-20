@@ -1535,6 +1535,9 @@ function createPlayerEntity(player) {
   scene.add(group);
 
   const plate = document.createElement("div");
+  plate.className = "nameplate";
+  nameplatesLayer.appendChild(plate);
+
 
 
   let character = null;
