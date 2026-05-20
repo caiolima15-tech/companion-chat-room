@@ -286,7 +286,7 @@ async function bootstrapSession(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const nickname = profile?.nickname || user.user_metadata?.nickname || "Visitante";
+  const nickname = profile?.nickname || user.user_metadata?.nickname || localStorage.getItem("neon-tap-room-nickname") || "Visitante";
   const color = profile?.color || randomColor();
   const avatarUrl = profile?.avatar_url || null;
   nameInput.value = nickname;
