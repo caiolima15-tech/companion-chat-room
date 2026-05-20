@@ -309,13 +309,14 @@ async function bootstrapSession(user) {
   // Load profile
   const { data: profile } = await supabase
     .from("profiles")
-    .select("nickname, color, avatar_url")
+    .select("nickname, color, avatar_url, character_slug")
     .eq("id", user.id)
     .maybeSingle();
 
   const nickname = profile?.nickname || user.user_metadata?.nickname || localStorage.getItem("neon-tap-room-nickname") || "Visitante";
   const color = profile?.color || randomColor();
   const avatarUrl = profile?.avatar_url || null;
+  const characterSlug = profile?.character_slug || localStorage.getItem("neon-tap-room-character") || null;
   nameInput.value = nickname;
 
   // Admin?
@@ -336,14 +337,26 @@ async function bootstrapSession(user) {
     name: nickname,
     color,
     avatar_url: avatarUrl,
+    character_slug: characterSlug,
     x: 50,
     y: 50,
     facing: "down",
     speech: "",
+    anim: "idle",
     isAdmin,
   };
 
   renderPermissions();
+  await loadCharactersCatalog();
+  // Mostra a tela de seleção se ainda não escolheu personagem
+  if (!me.character_slug) {
+    openCharacterSelect();
+    return;
+  }
+  await enterRoom();
+}
+
+async function enterRoom() {
   await Promise.all([loadInitialAssets(), loadInitialChat()]);
   await connectRealtime();
   addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
