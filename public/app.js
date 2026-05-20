@@ -828,9 +828,25 @@ function loadCharacterAssets(character) {
     const base = isGlb
       ? await loadGlbAsScene(character.base_url)
       : await loadFbxFromUrl(character.base_url);
+    // Detecta GLB exportado como Z-up (personagem "deitado") e endireita
+    let box = new THREE.Box3().setFromObject(base);
+    let size = box.getSize(new THREE.Vector3());
+    if (size.z > size.y * 1.3) {
+      // Envolve em pivot e rotaciona -90° em X para virar Y-up
+      const pivot = new THREE.Group();
+      pivot.rotation.x = -Math.PI / 2;
+      pivot.add(base);
+      // Substitui referência: continuamos chamando "base" pelo container que será clonado
+      base.userData.__zUpFixed = true;
+      base.parent ? base.parent.remove(base) : null;
+      pivot.name = base.name || "CharRoot";
+      // copia animações para o pivot pra preservar fluxo
+      pivot.animations = base.animations || [];
+      base = pivot;
+      box = new THREE.Box3().setFromObject(base);
+      size = box.getSize(new THREE.Vector3());
+    }
     // Normaliza escala
-    const box = new THREE.Box3().setFromObject(base);
-    const size = box.getSize(new THREE.Vector3());
     const height = size.y || 1;
     const targetHeight = 1.8;
     const scale = targetHeight / height;
@@ -914,8 +930,10 @@ async function applyCharacter(entity, slug) {
     const cloned = cloneSkeleton(base);
     cloned.scale.copy(base.scale);
     cloned.position.set(0, 0, 0);
-    // Remove personagem antigo
+    // Remove personagem antigo + efeitos de loading
     if (entity.character) entity.group.remove(entity.character);
+    if (entity.loadingFx) { entity.group.remove(entity.loadingFx); entity.loadingFx = null; }
+    if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
     entity.group.add(cloned);
     entity.mixer = new THREE.AnimationMixer(cloned);
@@ -1518,28 +1536,42 @@ function createPlayerEntity(player) {
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  // Mannequin neutro cinza enquanto o GLB do personagem real carrega
-  // (estilo "loading mannequin" — sem texturas/cores).
-  const loading = !!player.character_slug;
-  const placeholderColor = loading ? "#6b7280" : (player.color || "#29d3bd");
-  const character = createCharacter(placeholderColor, { loading });
-  group.add(character);
-
-  const mixer = new THREE.AnimationMixer(character);
-  const idle = mixer.clipAction(character.userData.clips.idle);
-  const walk = mixer.clipAction(character.userData.clips.walk);
-  idle.play();
-
   const plate = document.createElement("div");
   plate.className = "nameplate";
   nameplatesLayer.appendChild(plate);
+
+
+
+  let character = null;
+  let mixer = null;
+  let actions = {};
+  let loadingFx = null;
+  let loadingSpinner = null;
+
+  if (player.character_slug) {
+    // Em vez de mannequin cinza: efeito de fumaça 3D + spinner HTML enquanto carrega.
+    loadingFx = createLoadingSmoke();
+    group.add(loadingFx);
+    loadingSpinner = document.createElement("div");
+    loadingSpinner.className = "avatar-spinner";
+    loadingSpinner.innerHTML = `<div class="avatar-spinner-ring"></div>`;
+    nameplatesLayer.appendChild(loadingSpinner);
+  } else {
+    character = createCharacter(player.color || "#29d3bd");
+    group.add(character);
+    mixer = new THREE.AnimationMixer(character);
+    const idle = mixer.clipAction(character.userData.clips.idle);
+    const walk = mixer.clipAction(character.userData.clips.walk);
+    idle.play();
+    actions = { idle, walk };
+  }
 
   const entity = {
     group,
     character,
     mixer,
-    actions: { idle, walk },
-    currentAction: "idle",
+    actions,
+    currentAction: character ? "idle" : null,
     target: group.position.clone(),
     plate,
     player,
@@ -1547,10 +1579,68 @@ function createPlayerEntity(player) {
     characterSlug: null,
     emoteAction: null,
     emoteUntil: 0,
+    loadingFx,
+    loadingSpinner,
   };
   if (player.character_slug) applyCharacter(entity, player.character_slug);
   else if (player.avatar_url) applyAvatar(entity, player.avatar_url);
   return entity;
+}
+
+function createLoadingSmoke() {
+  const group = new THREE.Group();
+  const tex = getSmokeTexture();
+  const count = 6;
+  for (let i = 0; i < count; i++) {
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      color: 0xc8ccd2,
+    });
+    const s = new THREE.Sprite(mat);
+    s.scale.setScalar(1.2);
+    s.position.set(0, 0.4, 0);
+    s.userData.phase = (i / count) * Math.PI * 2;
+    s.userData.seed = Math.random();
+    group.add(s);
+  }
+  group.userData.isLoadingSmoke = true;
+  return group;
+}
+
+let _smokeTextureCache = null;
+function getSmokeTexture() {
+  if (_smokeTextureCache) return _smokeTextureCache;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 60);
+  g.addColorStop(0, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.35, "rgba(220,225,235,0.55)");
+  g.addColorStop(1, "rgba(180,185,195,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  _smokeTextureCache = t;
+  return t;
+}
+
+function updateLoadingSmoke(entity, time) {
+  const g = entity.loadingFx;
+  if (!g) return;
+  for (const s of g.children) {
+    const p = s.userData.phase + time * 1.4;
+    const r = 0.35 + 0.1 * Math.sin(p * 0.7 + s.userData.seed * 6);
+    s.position.x = Math.cos(p) * r;
+    s.position.z = Math.sin(p) * r;
+    s.position.y = 0.4 + 0.55 + 0.35 * Math.sin(p * 0.9);
+    const sc = 0.9 + 0.25 * Math.sin(p * 1.2 + s.userData.seed * 3);
+    s.scale.setScalar(sc);
+    s.material.opacity = 0.4 + 0.25 * (0.5 + 0.5 * Math.sin(p));
+  }
 }
 
 function applyAvatar(entity, url) {
@@ -1652,6 +1742,7 @@ function renderPlayers(nextPlayers) {
     if (!byId.has(id)) {
       scene.remove(entity.group);
       entity.plate.remove();
+      if (entity.loadingSpinner) entity.loadingSpinner.remove();
       playerEntities.delete(id);
     }
   }
@@ -1917,6 +2008,7 @@ function updatePlayerAnimation(delta) {
       setPlayerAction(entity, "idle");
     }
     if (entity.mixer) entity.mixer.update(delta);
+    if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
 
@@ -1932,6 +2024,10 @@ function updateNameplates() {
     const visible = projected.z > -1 && projected.z < 1;
     entity.plate.style.opacity = visible ? "1" : "0";
     entity.plate.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+    if (entity.loadingSpinner) {
+      entity.loadingSpinner.style.opacity = visible ? "1" : "0";
+      entity.loadingSpinner.style.transform = `translate(${x}px, ${y + 40}px) translate(-50%, -50%)`;
+    }
   }
 }
 
