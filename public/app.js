@@ -82,6 +82,7 @@ const MAP_WIDTH = 18;
 const MAP_DEPTH = 14;
 const clock = new THREE.Clock();
 const loader = new GLTFLoader();
+const fbxLoader = new FBXLoader();
 const exporter = new GLTFExporter();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
