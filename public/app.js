@@ -3,7 +3,33 @@ import { OrbitControls } from "/vendor/OrbitControls.js";
 import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
 import { FBXLoader } from "/vendor/FBXLoader.js";
-import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
+import { clone as cloneSkeleton, retargetClip as retargetClipBake } from "/vendor/utils/SkeletonUtils.js";
+
+// Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
+const SHARED_ANIM_LIBRARY = {
+  idle: "/assets/animations/idle.glb",
+  walk: "/assets/animations/walk.glb",
+  run: "/assets/animations/run.glb",
+  jump: "/assets/animations/jump.glb",
+  dance: "/assets/animations/dance.glb",
+  wave: "/assets/animations/wave.glb",
+};
+const sharedAnimSourceCache = new Map(); // url -> Promise<Object3D scene with .animations>
+function loadSharedAnimSource(url) {
+  if (!sharedAnimSourceCache.has(url)) {
+    sharedAnimSourceCache.set(
+      url,
+      (async () => {
+        const isGlb = /\.glb(\?|$)/i.test(url);
+        return isGlb ? await loadGlbAsScene(url) : await loadFbxFromUrl(url);
+      })().catch((e) => {
+        sharedAnimSourceCache.delete(url);
+        throw e;
+      }),
+    );
+  }
+  return sharedAnimSourceCache.get(url);
+}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ============ Supabase ============
@@ -370,17 +396,6 @@ async function loadCharactersCatalog() {
     return;
   }
   charactersCatalog = data || [];
-  // Personagem de teste GLB local (com animação embutida + empresta walk de outros)
-  if (!charactersCatalog.some((c) => c.slug === "test-glb")) {
-    charactersCatalog.unshift({
-      slug: "test-glb",
-      name: "Teste GLB",
-      base_url: "/assets/characters/test_glb.glb",
-      thumbnail_url: null,
-      position: -1,
-      borrow_animations: true,
-    });
-  }
 }
 
 function openCharacterSelect() {
@@ -801,33 +816,14 @@ function loadCharacterAssets(character) {
     const targetBones = collectBoneNames(base);
     const clips = {};
     const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
-    await Promise.all(
-      animSlots.map(async (slot) => {
-        const url = character[`${slot}_url`];
-        if (!url) return;
-        try {
-          const isClipGlb = /\.glb(\?|$)/i.test(url);
-          const src = isClipGlb ? await loadGlbAsScene(url) : await loadFbxFromUrl(url);
-          const clip = src.animations?.[0];
-          if (clip && clip.duration > 0) {
-            const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
-            retarg.name = slot;
-            clips[slot] = retarg;
-            console.log(`[char ${character.slug}] clip "${slot}" loaded`);
-          }
-        } catch (e) {
-          console.warn(`Falha ao carregar animação ${slot} de ${character.slug}`, e);
-        }
-      }),
-    );
-    // Animações embutidas no próprio modelo (GLB com rig animado)
+
+    // 1) Animações embutidas no próprio GLB (prioridade máxima)
     if (base.animations?.length) {
       for (const a of base.animations) {
         if (!a || a.duration <= 0.05) continue;
         const lname = (a.name || "").toLowerCase();
         let slot = null;
         for (const s of animSlots) if (lname.includes(s)) { slot = s; break; }
-        if (!slot && !clips.idle) slot = "idle";
         if (slot && !clips[slot]) {
           const c = a.clone();
           c.name = slot;
@@ -836,31 +832,28 @@ function loadCharacterAssets(character) {
         }
       }
     }
-    // Empresta animações de outros personagens (walk/run/jump/dance/wave/idle)
-    if (character.borrow_animations) {
-      const donors = charactersCatalog.filter((c) => c.slug !== character.slug && c.base_url);
-      for (const slot of animSlots) {
-        if (clips[slot]) continue;
-        for (const donor of donors) {
-          const donorUrl = donor[`${slot}_url`] || (slot === "idle" ? donor.base_url : null);
-          if (!donorUrl) continue;
-          try {
-            const isClipGlb = /\.glb(\?|$)/i.test(donorUrl);
-            const src = isClipGlb ? await loadGlbAsScene(donorUrl) : await loadFbxFromUrl(donorUrl);
-            const clip = src.animations?.[0];
-            if (!clip || clip.duration <= 0) continue;
-            const retarg = retargetClipToBones(clip, targetBones);
-            if (!retarg) continue;
-            retarg.name = slot;
-            clips[slot] = retarg;
-            console.log(`[char ${character.slug}] "${slot}" emprestado de ${donor.slug}`);
-            break;
-          } catch (e) {
-            console.warn(`[borrow] falhou ${slot} de ${donor.slug}`, e);
-          }
+
+    // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
+    await Promise.all(
+      animSlots.map(async (slot) => {
+        if (clips[slot]) return;
+        const override = character[`${slot}_url`];
+        const url = override || SHARED_ANIM_LIBRARY[slot];
+        if (!url) return;
+        try {
+          const src = await loadSharedAnimSource(url);
+          const clip = src.animations?.[0];
+          if (!clip || clip.duration <= 0) return;
+          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          retarg.name = slot;
+          clips[slot] = retarg;
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
+        } catch (e) {
+          console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
-      }
-    }
+      }),
+    );
+
     return { base, clips, scale };
   })();
   characterCache.set(character.slug, promise);
