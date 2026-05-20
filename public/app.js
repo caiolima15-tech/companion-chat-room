@@ -370,6 +370,17 @@ async function loadCharactersCatalog() {
     return;
   }
   charactersCatalog = data || [];
+  // Personagem de teste GLB local (com animação embutida + empresta walk de outros)
+  if (!charactersCatalog.some((c) => c.slug === "test-glb")) {
+    charactersCatalog.unshift({
+      slug: "test-glb",
+      name: "Teste GLB",
+      base_url: "/assets/characters/test_glb.glb",
+      thumbnail_url: null,
+      position: -1,
+      borrow_animations: true,
+    });
+  }
 }
 
 function openCharacterSelect() {
@@ -707,25 +718,79 @@ async function loadFbxFromUrl(url) {
   const buffer = await fetchFbxBuffer(url);
   return fbxLoader.parse(buffer, "");
 }
+async function loadGlbAsScene(url) {
+  const buffer = await fetchFbxBuffer(url);
+  const gltf = await new Promise((resolve, reject) => {
+    loader.parse(buffer, "", resolve, reject);
+  });
+  const scene = gltf.scene || gltf.scenes?.[0];
+  scene.animations = gltf.animations || [];
+  return scene;
+}
+
+// Coleta nomes de bones de um objeto skinned
+function collectBoneNames(root) {
+  const set = new Set();
+  root.traverse((o) => {
+    if (o.isBone) set.add(o.name);
+    if (o.isSkinnedMesh && o.skeleton) {
+      for (const b of o.skeleton.bones) set.add(b.name);
+    }
+  });
+  return set;
+}
+
+// Renomeia tracks de um clip para casar com os bones do alvo
+// (ex.: Mixamo FBX usa "mixamorigHips" e o GLB usa "Hips")
+function retargetClipToBones(clip, targetBoneNames) {
+  const out = clip.clone();
+  const tracks = [];
+  for (const t of out.tracks) {
+    const dot = t.name.indexOf(".");
+    if (dot < 0) { tracks.push(t); continue; }
+    const boneName = t.name.slice(0, dot);
+    const prop = t.name.slice(dot);
+    let candidate = boneName;
+    if (!targetBoneNames.has(candidate) && candidate.startsWith("mixamorig")) {
+      candidate = candidate.replace(/^mixamorig:?/, "");
+    }
+    if (!targetBoneNames.has(candidate)) {
+      // tenta com prefixo se for o alvo que usa mixamorig
+      const withPrefix = "mixamorig" + boneName;
+      if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
+    }
+    if (!targetBoneNames.has(candidate)) continue; // descarta track sem match
+    const nt = t.clone();
+    nt.name = candidate + prop;
+    tracks.push(nt);
+  }
+  if (!tracks.length) return null;
+  out.tracks = tracks;
+  return out;
+}
 
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
   if (characterCache.has(character.slug)) return characterCache.get(character.slug);
   const promise = (async () => {
     if (!character.base_url) throw new Error("Personagem sem base");
-    const baseFbx = await loadFbxFromUrl(character.base_url);
-    // Normaliza escala (Mixamo costuma vir em centímetros)
-    const box = new THREE.Box3().setFromObject(baseFbx);
+    const isGlb = /\.glb(\?|$)/i.test(character.base_url);
+    const base = isGlb
+      ? await loadGlbAsScene(character.base_url)
+      : await loadFbxFromUrl(character.base_url);
+    // Normaliza escala
+    const box = new THREE.Box3().setFromObject(base);
     const size = box.getSize(new THREE.Vector3());
     const height = size.y || 1;
     const targetHeight = 1.8;
     const scale = targetHeight / height;
-    baseFbx.scale.setScalar(scale);
-    baseFbx.position.set(0, 0, 0);
-    baseFbx.traverse((child) => {
+    base.scale.setScalar(scale);
+    base.position.set(0, 0, 0);
+    base.traverse((child) => {
       if (child.isMesh || child.isSkinnedMesh) {
         child.castShadow = true;
         child.receiveShadow = true;
+        child.frustumCulled = false;
         if (child.material) {
           (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => {
             m.side = THREE.FrontSide;
@@ -733,40 +798,70 @@ function loadCharacterAssets(character) {
         }
       }
     });
+    const targetBones = collectBoneNames(base);
     const clips = {};
-    // Carrega animações separadas
     const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
     await Promise.all(
       animSlots.map(async (slot) => {
         const url = character[`${slot}_url`];
         if (!url) return;
         try {
-          const fbx = await loadFbxFromUrl(url);
-          const clip = fbx.animations?.[0];
+          const isClipGlb = /\.glb(\?|$)/i.test(url);
+          const src = isClipGlb ? await loadGlbAsScene(url) : await loadFbxFromUrl(url);
+          const clip = src.animations?.[0];
           if (clip && clip.duration > 0) {
-            const renamed = clip.clone();
-            renamed.name = slot;
-            clips[slot] = renamed;
-            console.log(`[char ${character.slug}] clip "${slot}" loaded (dur=${clip.duration.toFixed(2)}s, tracks=${clip.tracks.length})`);
-          } else {
-            console.warn(`[char ${character.slug}] clip "${slot}" sem animação utilizável`);
+            const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+            retarg.name = slot;
+            clips[slot] = retarg;
+            console.log(`[char ${character.slug}] clip "${slot}" loaded`);
           }
         } catch (e) {
           console.warn(`Falha ao carregar animação ${slot} de ${character.slug}`, e);
         }
       }),
     );
-    // Fallback: se não há idle válido, tenta animação embutida no base FBX
-    if (!clips.idle && baseFbx.animations?.length) {
-      const c = baseFbx.animations.find((a) => a.duration > 0.1);
-      if (c) {
-        const renamed = c.clone();
-        renamed.name = "idle";
-        clips.idle = renamed;
-        console.log(`[char ${character.slug}] idle fallback do base (dur=${c.duration.toFixed(2)}s)`);
+    // Animações embutidas no próprio modelo (GLB com rig animado)
+    if (base.animations?.length) {
+      for (const a of base.animations) {
+        if (!a || a.duration <= 0.05) continue;
+        const lname = (a.name || "").toLowerCase();
+        let slot = null;
+        for (const s of animSlots) if (lname.includes(s)) { slot = s; break; }
+        if (!slot && !clips.idle) slot = "idle";
+        if (slot && !clips[slot]) {
+          const c = a.clone();
+          c.name = slot;
+          clips[slot] = c;
+          console.log(`[char ${character.slug}] clip embutido -> "${slot}"`);
+        }
       }
     }
-    return { base: baseFbx, clips, scale };
+    // Empresta animações de outros personagens (walk/run/jump/dance/wave/idle)
+    if (character.borrow_animations) {
+      const donors = charactersCatalog.filter((c) => c.slug !== character.slug && c.base_url);
+      for (const slot of animSlots) {
+        if (clips[slot]) continue;
+        for (const donor of donors) {
+          const donorUrl = donor[`${slot}_url`] || (slot === "idle" ? donor.base_url : null);
+          if (!donorUrl) continue;
+          try {
+            const isClipGlb = /\.glb(\?|$)/i.test(donorUrl);
+            const src = isClipGlb ? await loadGlbAsScene(donorUrl) : await loadFbxFromUrl(donorUrl);
+            const clip = src.animations?.[0];
+            if (!clip || clip.duration <= 0) continue;
+            const retarg = retargetClipToBones(clip, targetBones);
+            if (!retarg) continue;
+            retarg.name = slot;
+            clips[slot] = retarg;
+            console.log(`[char ${character.slug}] "${slot}" emprestado de ${donor.slug}`);
+            break;
+          } catch (e) {
+            console.warn(`[borrow] falhou ${slot} de ${donor.slug}`, e);
+          }
+        }
+      }
+    }
+    return { base, clips, scale };
   })();
   characterCache.set(character.slug, promise);
   promise.catch(() => characterCache.delete(character.slug));
