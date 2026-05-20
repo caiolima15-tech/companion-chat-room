@@ -853,17 +853,10 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          // Bake retarget usando o SkinnedMesh do FBX (com pele) para comparar
-          // bind poses corretamente. Sem pele caímos no rename-only.
-          let retarg = bakeRetargetMixamoClip(base, src, clip);
-          let mode = "baked";
-          if (!retarg) {
-            retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: false }) || clip.clone();
-            mode = "rename";
-          }
+          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
-          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"} (${mode})`);
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
