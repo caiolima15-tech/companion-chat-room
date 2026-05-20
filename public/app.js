@@ -49,6 +49,7 @@ const assetList = document.querySelector("#assetList");
 const roleBadge = document.querySelector("#roleBadge");
 const logoutButton = document.querySelector("#logoutButton");
 const changeCharacterButton = document.querySelector("#changeCharacterButton");
+const changeMapButton = document.querySelector("#changeMapButton");
 const manageCharactersButton = document.querySelector("#manageCharactersButton");
 const emoteJumpButton = document.querySelector("#emoteJump");
 const emoteDanceButton = document.querySelector("#emoteDance");
@@ -114,6 +115,19 @@ const EMOTE_SLOTS = new Set(["jump", "dance", "wave"]);
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 const assetObjects = new Map();
 const keyState = new Set();
+
+// ============ Maps catalog ============
+const MAPS = [
+  { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
+  { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
+  { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
+  { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
+  { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
+  { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
+];
+let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
+let selectedMapId = currentMapId;
+
 
 // ============ Scene ============
 const scene = new THREE.Scene();
@@ -450,13 +464,82 @@ enterRoomButton?.addEventListener("click", async () => {
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
   } else {
-    await enterRoom();
+    // Primeira vez entrando: pede pra escolher o local antes de spawnar
+    openMapSelect();
   }
 });
 
 changeCharacterButton?.addEventListener("click", () => {
   openCharacterSelect();
 });
+
+changeMapButton?.addEventListener("click", () => {
+  openMapSelect();
+});
+
+// ===== Map (location) select =====
+const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
+const mapGrid = document.querySelector("#mapGrid");
+const confirmMapButton = document.querySelector("#confirmMapButton");
+const mapSelectBack = document.querySelector("#mapSelectBack");
+
+function openMapSelect() {
+  if (!mapSelectOverlay) return;
+  selectedMapId = currentMapId;
+  renderMapTiles();
+  updateConfirmMapButton();
+  mapSelectOverlay.hidden = false;
+}
+function closeMapSelect() {
+  if (mapSelectOverlay) mapSelectOverlay.hidden = true;
+}
+function renderMapTiles() {
+  if (!mapGrid) return;
+  mapGrid.innerHTML = MAPS.map((m) => {
+    const isSelected = selectedMapId === m.id;
+    const moodLabel = m.mood === "day" ? "☀️ Dia" : "🌙 Noite";
+    return `
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}">
+        <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
+        <div class="char-tile-name">${m.name}</div>
+        <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
+      </div>`;
+  }).join("");
+}
+function updateConfirmMapButton() {
+  if (!confirmMapButton) return;
+  confirmMapButton.disabled = !selectedMapId;
+}
+mapGrid?.addEventListener("click", (e) => {
+  const tile = e.target.closest("[data-map-id]");
+  if (!tile) return;
+  selectedMapId = tile.dataset.mapId;
+  renderMapTiles();
+  updateConfirmMapButton();
+});
+mapSelectBack?.addEventListener("click", () => {
+  closeMapSelect();
+  // Se ainda não entrou na sala, volta pra escolher personagem
+  if (!playerEntities.get(myId)) openCharacterSelect();
+});
+confirmMapButton?.addEventListener("click", async () => {
+  if (!selectedMapId) return;
+  const switching = selectedMapId !== currentMapId;
+  if (switching) {
+    loadEnvironment(selectedMapId);
+    // Reposiciona meu avatar perto da origem do novo cenário
+    const myEntity = playerEntities.get(myId);
+    if (myEntity) {
+      myEntity.group.position.set(0, 0, 0);
+      if (me) { me.x = 50; me.y = 50; }
+    }
+  }
+  closeMapSelect();
+  if (!playerEntities.get(myId)) {
+    await enterRoom();
+  }
+});
+
 
 characterAdminClose?.addEventListener("click", () => {
   if (characterAdminOverlay) characterAdminOverlay.hidden = true;
@@ -962,6 +1045,8 @@ function makeBox(name, size, position, color, options = {}) {
 const colliderMeshes = [];   // walls / counters / chairs — block movement
 const walkableMeshes = [];   // floor / stairs / ramps — drive Y height
 const occluderMeshes = [];   // any visible env mesh — candidates for camera occlusion fade
+const _fadedNow = new Set();
+const _fadedPrev = new Set();
 const _collRay = new THREE.Raycaster();
 const _collDir = new THREE.Vector3();
 const _collOrigin = new THREE.Vector3();
@@ -971,46 +1056,100 @@ const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
 
+
+// Lighting groups we can swap when the map mood changes
+const lightingGroup = new THREE.Group();
+scene.add(lightingGroup);
+
+// Environment GLB group (cleared/replaced on map switch)
+const envGroup = new THREE.Group();
+let envBaseFloor = null;
+
+function applyLightingForMood(mood) {
+  // Clear previous lights
+  while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
+
+  if (mood === "day") {
+    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5));
+    const sun = new THREE.DirectionalLight("#fff7e0", 1.6);
+    sun.position.set(8, 14, 6);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+    sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+    sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+    lightingGroup.add(sun);
+  } else {
+    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
+    const key = new THREE.DirectionalLight("#ffffff", 1.0);
+    key.position.set(6, 10, 3);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+    key.shadow.camera.left = -16; key.shadow.camera.right = 16;
+    key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+    lightingGroup.add(key);
+
+    const red = new THREE.PointLight("#f26868", 2.4, 12);
+    red.position.set(-6.7, 3.2, -6.2);
+    lightingGroup.add(red);
+
+    const teal = new THREE.PointLight("#29d3bd", 1.8, 14);
+    teal.position.set(5.7, 3.4, 3.6);
+    lightingGroup.add(teal);
+  }
+}
+
 function buildMap() {
-  scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
-  const key = new THREE.DirectionalLight("#ffffff", 1.1);
-  key.position.set(6, 10, 3);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 40;
-  key.shadow.camera.left = -16;
-  key.shadow.camera.right = 16;
-  key.shadow.camera.top = 16;
-  key.shadow.camera.bottom = -16;
-  scene.add(key);
-
-  const redAccent = new THREE.PointLight("#f26868", 2.6, 12);
-  redAccent.position.set(-6.7, 3.2, -6.2);
-  scene.add(redAccent);
-
-  const tealAccent = new THREE.PointLight("#29d3bd", 2.0, 14);
-  tealAccent.position.set(5.7, 3.4, 3.6);
-  scene.add(tealAccent);
-
   // Invisible base floor — used for click-to-move raycast & shadow receiver
-  const floor = new THREE.Mesh(
+  envBaseFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH),
     new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.9, transparent: true, opacity: 0 }),
   );
-  floor.name = "WalkableFloor";
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  stage.add(floor);
-  walkableMeshes.push(floor);
+  envBaseFloor.name = "WalkableFloor";
+  envBaseFloor.rotation.x = -Math.PI / 2;
+  envBaseFloor.receiveShadow = true;
+  stage.add(envBaseFloor);
 
-  // We're now indoors — disable outdoor fog
   scene.fog = null;
-  scene.background = new THREE.Color("#08090c");
+  stage.add(envGroup);
 
-  // Load the bar environment GLB
+  // Load initial environment
+  loadEnvironment(currentMapId);
+}
+
+function clearEnvironment() {
+  while (envGroup.children.length) {
+    const child = envGroup.children[0];
+    envGroup.remove(child);
+    child.traverse?.((n) => {
+      if (n.geometry) n.geometry.dispose?.();
+      if (n.material) {
+        const mats = Array.isArray(n.material) ? n.material : [n.material];
+        mats.forEach((m) => m.dispose?.());
+      }
+    });
+  }
+  colliderMeshes.length = 0;
+  occluderMeshes.length = 0;
+  // Reset walkable but keep the invisible base floor
+  walkableMeshes.length = 0;
+  if (envBaseFloor) walkableMeshes.push(envBaseFloor);
+  _fadedNow.clear();
+  _fadedPrev.clear();
+}
+
+function loadEnvironment(mapId) {
+  const map = MAPS.find((m) => m.id === mapId) || MAPS[0];
+  currentMapId = map.id;
+  localStorage.setItem("neon-tap-room-map", map.id);
+
+  scene.background = new THREE.Color(map.bg);
+  applyLightingForMood(map.mood);
+  clearEnvironment();
+
   loader.load(
-    "/assets/scene.glb",
+    map.url,
     (gltf) => {
       const env = gltf.scene;
       const box = new THREE.Box3().setFromObject(env);
@@ -1022,32 +1161,36 @@ function buildMap() {
       env.scale.setScalar(scale);
       env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
       env.updateMatrixWorld(true);
+
+      // Determine "ceiling cutoff" — meshes whose bottom sits above this Y are hidden.
+      // For open/outdoor maps with no roof, this won't hide anything important.
+      const ceilingCutoff = 2.8;
+
       env.traverse((node) => {
         if (!node.isMesh) return;
         const meshBox = new THREE.Box3().setFromObject(node);
         const height = meshBox.max.y - meshBox.min.y;
-        // Hide ceilings / anything floating high above the floor
-        if (meshBox.min.y > 2.6) { node.visible = false; return; }
+        if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
         node.castShadow = false;
         node.receiveShadow = true;
         occluderMeshes.push(node);
 
         const name = (node.name || "") + " " + (node.parent?.name || "");
         const isStair = STAIR_NAME_RE.test(name);
-        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05; // flat floor-ish piece
+        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05;
         if (isStair || isLowSlope) {
           walkableMeshes.push(node);
         } else if (meshBox.max.y > 0.35) {
-          // Walls, counters, chairs, etc. — block movement
           colliderMeshes.push(node);
         }
       });
-      stage.add(env);
+      envGroup.add(env);
     },
     undefined,
     (err) => console.error("Falha carregando cenário:", err),
   );
 }
+
 
 // Returns the highest walkable surface Y under `pos` that is at or below the player's head.
 function groundHeightAt(pos, currentY) {
@@ -1086,9 +1229,8 @@ function collidesAt(from, to) {
 const _occRay = new THREE.Raycaster();
 const _occDir = new THREE.Vector3();
 const _occFrom = new THREE.Vector3();
-const _fadedNow = new Set();
-const _fadedPrev = new Set();
 const FADE_OPACITY = 0.12;
+
 
 function setMeshFaded(mesh, faded) {
   if (!mesh.material) return;
