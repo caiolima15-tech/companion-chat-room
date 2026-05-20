@@ -702,13 +702,19 @@ async function connectRealtime() {
       if (!payload || payload.id === myId) return;
       const idx = players.findIndex((p) => p.id === payload.id);
       if (idx >= 0) {
-        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing };
+        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing, running: !!payload.running };
         const entity = playerEntities.get(payload.id);
         if (entity) {
           entity.player = players[idx];
           entity.target.copy(worldFromPercent(payload.x, payload.y));
+          entity.running = !!payload.running;
         }
       }
+    })
+    .on("broadcast", { event: "emote" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const entity = playerEntities.get(payload.id);
+      if (entity) playEmote(entity, payload.slot);
     })
     .subscribe();
 }
@@ -738,7 +744,7 @@ async function trackMe(updateRoster = true) {
     await movementChannel?.send({
       type: "broadcast",
       event: "pos",
-      payload: { id: myId, x: me.x, y: me.y, facing: me.facing },
+      payload: { id: myId, x: me.x, y: me.y, facing: me.facing, running: !!me.running },
     });
   } catch {}
 }
@@ -1014,7 +1020,8 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  if (!entity.actions[name]) return;
+  if (entity.emoteAction) return; // emote em andamento bloqueia idle/walk/run
+  if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
   const next = entity.actions[name];
@@ -1022,6 +1029,37 @@ function setPlayerAction(entity, name) {
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
+
+function playEmote(entity, slot) {
+  if (!entity?.actions?.[slot]) return;
+  // para tudo e roda o emote uma vez
+  if (entity.currentAction && entity.actions[entity.currentAction]) {
+    entity.actions[entity.currentAction].fadeOut(0.12);
+  }
+  const action = entity.actions[slot];
+  action.reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = false;
+  action.fadeIn(0.12).play();
+  entity.emoteAction = action;
+  entity.currentAction = null;
+}
+
+function triggerLocalEmote(slot) {
+  if (!me || !myId) return;
+  const entity = playerEntities.get(myId);
+  if (!entity) return;
+  playEmote(entity, slot);
+  movementChannel?.send({
+    type: "broadcast",
+    event: "emote",
+    payload: { id: myId, slot },
+  }).catch(() => {});
+}
+
+emoteJumpButton?.addEventListener("click", () => triggerLocalEmote("jump"));
+emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
+emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
 function updateNameplate(player) {
   const entity = playerEntities.get(player.id);
@@ -1236,17 +1274,25 @@ function move(dx, dy, facing) {
     trackMe(false).catch(() => {});
   }
 }
+let lastMoveClickAt = 0;
 function moveToWorld(point) {
   if (!me || !myId) return;
+  const now = performance.now();
+  const isDoubleClick = now - lastMoveClickAt < 350;
+  lastMoveClickAt = now;
   const next = percentFromWorld(point.x, point.z);
   const dx = next.x - me.x;
   const dy = next.y - me.y;
   const facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
-  me = { ...me, x: next.x, y: next.y, facing };
+  const running = isDoubleClick;
+  me = { ...me, x: next.x, y: next.y, facing, running };
   const idx = players.findIndex((p) => p.id === myId);
   if (idx >= 0) players[idx] = { ...players[idx], ...me };
   const entity = playerEntities.get(myId);
-  if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
+  if (entity) {
+    entity.target.copy(worldFromPercent(me.x, me.y));
+    entity.running = running;
+  }
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
@@ -1264,10 +1310,13 @@ function applyHeldMovement() {
 }
 
 function updatePlayerAnimation(delta) {
-  const speed = 1.4; // unidades por segundo (caminhada)
+  const walkSpeed = 1.4;
+  const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
     const distance = entity.group.position.distanceTo(entity.target);
     if (distance > 0.025) {
+      const running = !!entity.running;
+      const speed = running ? runSpeed : walkSpeed;
       const before = entity.group.position.clone();
       const step = Math.min(distance, speed * delta);
       const dir = entity.target.clone().sub(entity.group.position).normalize();
@@ -1276,9 +1325,11 @@ function updatePlayerAnimation(delta) {
       if (moved.lengthSq() > 0.00001) {
         entity.group.rotation.y = Math.atan2(moved.x, moved.z);
       }
-      setPlayerAction(entity, "walk");
+      setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
     } else {
       entity.group.position.copy(entity.target);
+      entity.running = false;
+      if (entity.player?.id === myId && me) me.running = false;
       setPlayerAction(entity, "idle");
     }
     if (entity.mixer) entity.mixer.update(delta);
@@ -1446,13 +1497,17 @@ function animate() {
 window.addEventListener("resize", resize);
 
 document.addEventListener("keydown", (event) => {
-  if (event.target.matches("input")) return;
+  if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
     event.preventDefault();
     keyState.add(key);
+    return;
   }
+  if (key === " " || key === "spacebar") { event.preventDefault(); triggerLocalEmote("jump"); return; }
+  if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
+  if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
 });
 document.addEventListener("keyup", (event) => {
   if (!event.key) return;
