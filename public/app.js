@@ -1106,6 +1106,9 @@ function renderPlayers(nextPlayers) {
       playerEntities.set(player.id, entity);
     }
     entity.player = player;
+    if (player.character_slug && entity.characterSlug !== player.character_slug) {
+      applyCharacter(entity, player.character_slug);
+    }
     entity.target.copy(worldFromPercent(player.x, player.y));
     if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
       applyAvatar(entity, player.avatar_url);
