@@ -1534,21 +1534,8 @@ function createPlayerEntity(player) {
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  // Mannequin neutro cinza enquanto o GLB do personagem real carrega
-  // (estilo "loading mannequin" — sem texturas/cores).
-  const loading = !!player.character_slug;
-  const placeholderColor = loading ? "#6b7280" : (player.color || "#29d3bd");
-  const character = createCharacter(placeholderColor, { loading });
-  group.add(character);
-
-  const mixer = new THREE.AnimationMixer(character);
-  const idle = mixer.clipAction(character.userData.clips.idle);
-  const walk = mixer.clipAction(character.userData.clips.walk);
-  idle.play();
-
   const plate = document.createElement("div");
-  plate.className = "nameplate";
-  nameplatesLayer.appendChild(plate);
+
 
   let character = null;
   let mixer = null;
