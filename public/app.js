@@ -652,9 +652,13 @@ async function connectRealtime() {
         if (player) {
           player.speech = m.text;
           updateNameplate(player);
-          setTimeout(() => {
-            player.speech = "";
-            updateNameplate(player);
+          clearTimeout(player._speechTimer);
+          player._speechTimer = setTimeout(() => {
+            const cur = players.find((p) => p.id === m.user_id);
+            if (cur) {
+              cur.speech = "";
+              updateNameplate(cur);
+            }
           }, 4500);
         }
       },
