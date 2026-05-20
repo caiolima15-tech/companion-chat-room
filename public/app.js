@@ -909,6 +909,10 @@ function loadCharacterAssets(character) {
       }),
     );
 
+    // Fallback mínimo: garante slot "idle" se nada carregou.
+    if (!clips.idle) clips.idle = new THREE.AnimationClip("idle", 1, []);
+
+
     return { base, clips, scale };
   })();
   characterCache.set(character.slug, promise);
