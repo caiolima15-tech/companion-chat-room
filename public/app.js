@@ -527,36 +527,46 @@ function closeCharacterSelect() {
 
 function renderCharacterTiles() {
   if (!characterGrid) return;
-  if (!charactersCatalog.length) {
-    characterGrid.innerHTML = `<div class="char-hint">Nenhum personagem disponível ainda.</div>`;
-    return;
-  }
-  characterGrid.innerHTML = charactersCatalog
+  const myAvatarTiles = userAvatars
+    .filter((av) => av.user_id === myId)
+    .map((av) => userAvatarToCharacter(av));
+  const all = [...charactersCatalog, ...myAvatarTiles];
+  const tilesHtml = all
     .map((c) => {
       const isSelected = selectedCharacterSlug === c.slug;
       const ready = !!c.base_url;
       const thumb = c.thumbnail_url
         ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="${escapeHtml(c.name)}">`
-        : "🧍";
+        : (c.isUserAvatar ? "🧑‍🎤" : "🧍");
+      const badge = c.isUserAvatar ? `<div class="char-tile-warn" style="background:#7c5cff;color:#fff;">Meu</div>` : "";
       return `
         <div class="char-tile ${isSelected ? "is-selected" : ""} ${ready ? "" : "is-disabled"}"
              data-character-slug="${escapeHtml(c.slug)}">
           <div class="char-tile-thumb">${thumb}</div>
           <div class="char-tile-name">${escapeHtml(c.name)}</div>
           ${ready ? "" : `<div class="char-tile-warn">Sem arquivos</div>`}
+          ${badge}
         </div>`;
     })
     .join("");
+  const createTile = `
+    <div class="char-tile" data-action="create-avatar" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #4a4f5e;cursor:pointer;">
+      <div class="char-tile-thumb" style="font-size:32px;">＋</div>
+      <div class="char-tile-name">Criar meu avatar</div>
+    </div>`;
+  characterGrid.innerHTML = (all.length ? tilesHtml : `<div class="char-hint">Nenhum personagem disponível ainda.</div>`) + createTile;
 }
 
 function updateEnterButtonState() {
   if (!enterRoomButton) return;
-  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  const character = findCharacterBySlug(selectedCharacterSlug);
   const hasFiles = !!character?.base_url;
   enterRoomButton.disabled = !selectedCharacterSlug || !hasFiles;
 }
 
 characterGrid?.addEventListener("click", (event) => {
+  const createBtn = event.target.closest('[data-action="create-avatar"]');
+  if (createBtn) { openAvatarCreator(); return; }
   const tile = event.target.closest("[data-character-slug]");
   if (!tile) return;
   selectedCharacterSlug = tile.dataset.characterSlug;
