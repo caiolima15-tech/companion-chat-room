@@ -930,8 +930,10 @@ async function applyCharacter(entity, slug) {
     const cloned = cloneSkeleton(base);
     cloned.scale.copy(base.scale);
     cloned.position.set(0, 0, 0);
-    // Remove personagem antigo
+    // Remove personagem antigo + efeitos de loading
     if (entity.character) entity.group.remove(entity.character);
+    if (entity.loadingFx) { entity.group.remove(entity.loadingFx); entity.loadingFx = null; }
+    if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
     entity.group.add(cloned);
     entity.mixer = new THREE.AnimationMixer(cloned);
