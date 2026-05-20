@@ -396,10 +396,10 @@ async function connectRealtime() {
     )
     .subscribe();
 
-  // Presence for players
+  // Presence for players (join/leave roster) + broadcast (position updates)
   if (presenceChannel) await supabase.removeChannel(presenceChannel);
   presenceChannel = supabase.channel("room-presence", {
-    config: { presence: { key: myId } },
+    config: { presence: { key: myId }, broadcast: { self: false } },
   });
 
   presenceChannel
@@ -410,7 +410,28 @@ async function connectRealtime() {
         const entry = state[id][0];
         if (entry) list.push({ ...entry, id });
       }
-      renderPlayers(list);
+      // Preserve current positions for already-known players (broadcast owns x/y/facing/speech)
+      const prev = new Map(players.map((p) => [p.id, p]));
+      const merged = list.map((p) => {
+        const old = prev.get(p.id);
+        if (old && p.id !== myId) {
+          return { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech };
+        }
+        return p;
+      });
+      renderPlayers(merged);
+    })
+    .on("broadcast", { event: "pos" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const idx = players.findIndex((p) => p.id === payload.id);
+      if (idx >= 0) {
+        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing };
+        const entity = playerEntities.get(payload.id);
+        if (entity) {
+          entity.player = players[idx];
+          entity.target.copy(worldFromPercent(payload.x, payload.y));
+        }
+      }
     })
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
@@ -434,7 +455,17 @@ function presencePayload() {
 }
 
 async function trackMe() {
-  if (presenceChannel) await presenceChannel.track(presencePayload());
+  if (!presenceChannel) return;
+  // Atualiza roster (nome/cor/avatar) via presence
+  try { await presenceChannel.track(presencePayload()); } catch {}
+  // Posição/facing via broadcast (mais confiável que metadata-update de presence)
+  try {
+    await presenceChannel.send({
+      type: "broadcast",
+      event: "pos",
+      payload: { id: myId, x: me.x, y: me.y, facing: me.facing },
+    });
+  } catch {}
 }
 
 // ============ HUD permissions ============
