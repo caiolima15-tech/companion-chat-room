@@ -962,6 +962,7 @@ async function applyCharacter(entity, slug) {
     if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
     entity.character = cloned;
     entity.group.add(cloned);
+    if (entity.player?.id && entity.player.id === myId) applyPoseDebugTo(cloned);
     entity.mixer = new THREE.AnimationMixer(cloned);
     entity.actions = {};
     for (const [name, clip] of Object.entries(clips)) {
