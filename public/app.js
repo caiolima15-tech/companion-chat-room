@@ -518,14 +518,8 @@ function loadCharacterAssets(character) {
         }
       }
     });
-    // Clip embutido no base (alguns Mixamo já vêm com idle no base) -> usado como idle padrão
     const clips = {};
-    if (baseFbx.animations?.length) {
-      const c = baseFbx.animations[0].clone();
-      c.name = "idle";
-      clips.idle = c;
-    }
-    // Carrega animações separadas (substituem se houver)
+    // Carrega animações separadas
     const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
     await Promise.all(
       animSlots.map(async (slot) => {
@@ -534,16 +528,29 @@ function loadCharacterAssets(character) {
         try {
           const fbx = await loadFbxFromUrl(url);
           const clip = fbx.animations?.[0];
-          if (clip) {
+          if (clip && clip.duration > 0) {
             const renamed = clip.clone();
             renamed.name = slot;
             clips[slot] = renamed;
+            console.log(`[char ${character.slug}] clip "${slot}" loaded (dur=${clip.duration.toFixed(2)}s, tracks=${clip.tracks.length})`);
+          } else {
+            console.warn(`[char ${character.slug}] clip "${slot}" sem animação utilizável`);
           }
         } catch (e) {
           console.warn(`Falha ao carregar animação ${slot} de ${character.slug}`, e);
         }
       }),
     );
+    // Fallback: se não há idle válido, tenta animação embutida no base FBX
+    if (!clips.idle && baseFbx.animations?.length) {
+      const c = baseFbx.animations.find((a) => a.duration > 0.1);
+      if (c) {
+        const renamed = c.clone();
+        renamed.name = "idle";
+        clips.idle = renamed;
+        console.log(`[char ${character.slug}] idle fallback do base (dur=${c.duration.toFixed(2)}s)`);
+      }
+    }
     return { base: baseFbx, clips, scale };
   })();
   characterCache.set(character.slug, promise);
