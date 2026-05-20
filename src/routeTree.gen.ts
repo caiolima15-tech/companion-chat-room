@@ -10,62 +10,33 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ApiPublicAvatarStudioSignRouteImport } from './routes/api/public/avatar-studio-sign'
-import { Route as ApiPublicAvatarStudioSplatRouteImport } from './routes/api/public/avatar-studio/$'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiPublicAvatarStudioSignRoute =
-  ApiPublicAvatarStudioSignRouteImport.update({
-    id: '/api/public/avatar-studio-sign',
-    path: '/api/public/avatar-studio-sign',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const ApiPublicAvatarStudioSplatRoute =
-  ApiPublicAvatarStudioSplatRouteImport.update({
-    id: '/api/public/avatar-studio/$',
-    path: '/api/public/avatar-studio/$',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/api/public/avatar-studio-sign': typeof ApiPublicAvatarStudioSignRoute
-  '/api/public/avatar-studio/$': typeof ApiPublicAvatarStudioSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/api/public/avatar-studio-sign': typeof ApiPublicAvatarStudioSignRoute
-  '/api/public/avatar-studio/$': typeof ApiPublicAvatarStudioSplatRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/api/public/avatar-studio-sign': typeof ApiPublicAvatarStudioSignRoute
-  '/api/public/avatar-studio/$': typeof ApiPublicAvatarStudioSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/api/public/avatar-studio-sign'
-    | '/api/public/avatar-studio/$'
+  fullPaths: '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/avatar-studio-sign' | '/api/public/avatar-studio/$'
-  id:
-    | '__root__'
-    | '/'
-    | '/api/public/avatar-studio-sign'
-    | '/api/public/avatar-studio/$'
+  to: '/'
+  id: '__root__' | '/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ApiPublicAvatarStudioSignRoute: typeof ApiPublicAvatarStudioSignRoute
-  ApiPublicAvatarStudioSplatRoute: typeof ApiPublicAvatarStudioSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -77,27 +48,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/public/avatar-studio-sign': {
-      id: '/api/public/avatar-studio-sign'
-      path: '/api/public/avatar-studio-sign'
-      fullPath: '/api/public/avatar-studio-sign'
-      preLoaderRoute: typeof ApiPublicAvatarStudioSignRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/public/avatar-studio/$': {
-      id: '/api/public/avatar-studio/$'
-      path: '/api/public/avatar-studio/$'
-      fullPath: '/api/public/avatar-studio/$'
-      preLoaderRoute: typeof ApiPublicAvatarStudioSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ApiPublicAvatarStudioSignRoute: ApiPublicAvatarStudioSignRoute,
-  ApiPublicAvatarStudioSplatRoute: ApiPublicAvatarStudioSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
