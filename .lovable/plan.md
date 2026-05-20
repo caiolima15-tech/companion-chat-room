@@ -1,92 +1,44 @@
-# Tela de entrada com personagens Mixamo animados
+# Reativar login + sempre escolher personagem + virar admin
 
-## Objetivo
+## Contexto
 
-Antes de cair na sala, o usuário vê uma **tela de seleção** com:
-1. Campo de apelido.
-2. Carrossel/grade com **5 personagens Mixamo** pra escolher.
-3. Botão "Entrar na sala".
+Hoje o app tem uma flag `LOGIN_DISABLED_FOR_TEST = true` que pula a tela de email/senha e entra todo mundo como **anônimo** no Supabase. Isso causa três coisas que você está vendo:
 
-Dentro da sala, o personagem escolhido roda animações de verdade — idle parado, walk/run quando anda, e emotes (jump/dance/wave) por botão ou tecla.
+- Toda visita cria um usuário "Visitante" novo, sem email — não dá pra logar com `caiovictorlima50@gmail.com`.
+- O código força `isAdmin = false` pra todo mundo nesse modo, então o atalho 🛡️ nunca aparece.
+- A tela de personagem só abre na primeira vez (depois lembra a escolha e entra direto).
 
-## Como você entrega os arquivos
+O trigger `handle_new_user` já existe e dá o papel `admin` ao **primeiro** usuário criado. Como a conta "Teste" pegou esse posto, sua conta nova entraria como `user` — vamos promovê-la manualmente.
 
-Pra cada um dos 5 personagens você sobe um conjunto de FBX do Mixamo:
+## Mudanças
 
-```text
-character-1/
-  base.fbx       (personagem com skin + esqueleto, geralmente o "T-Pose" sem animação)
-  idle.fbx
-  walk.fbx
-  run.fbx
-  jump.fbx
-  dance.fbx
-  wave.fbx
-character-2/
-  ...
-```
+### 1. Reativar a tela de login (email/senha)
+- Desligar `LOGIN_DISABLED_FOR_TEST` no `public/app.js`.
+- Remover o caminho de `signInAnonymously` (não usar mais convidado anônimo).
+- Tela de login passa a aparecer no primeiro carregamento, com opção de "Criar conta" / "Já tenho conta".
 
-Eu monto isso num bucket de storage chamado `characters/`, cada personagem numa pasta. Você sobe os arquivos por uma tela de admin nova ("Gerenciar personagens"), só admin enxerga.
+### 2. Sempre mostrar a seleção de personagem antes de entrar
+- Independente de já ter escolhido antes, sempre abrir `openCharacterSelect()` logo após login.
+- O personagem anterior fica pré-selecionado pra ser só clicar "Entrar".
 
-Cada personagem na tela de seleção mostra um nome + uma miniatura (PNG que você sobe junto, ou eu gero render fake só com o nome se você não tiver).
+### 3. Promover sua conta a admin
+- Depois que você criar conta com `caiovictorlima50@gmail.com`, rodo uma migração que adiciona o papel `admin` pra esse user_id na tabela `user_roles`.
+- Com isso o botão 🛡️ aparece pra você e o painel "Gerenciar personagens" abre.
 
-## O que muda na sala
+### 4. Limpeza opcional
+- Posso remover os 25+ usuários "Visitante" criados pelos testes anônimos, pra deixar a base limpa. (Confirmar antes.)
 
-- Substituo o personagem geométrico atual (`createCharacter`) pelo modelo escolhido carregado via Mixamo.
-- Cada jogador renderiza o personagem que o outro escolheu (a escolha vai no `profiles.character_slug`).
-- Animação: idle por padrão; quando posição muda, troca pra walk; mantendo movimento rápido (clique longe → distância grande), entra run; emotes ficam tocando até voltar pra idle.
-- Emotes disparam por **botão na HUD** (Pular / Dançar / Acenar) **e por teclado** (Espaço, 1, 2). O estado do emote é sincronizado pelos outros via o canal de movimento que já existe.
+## Como vai funcionar pra você
 
-## Tela de seleção (visual)
-
-```text
-┌─────────────────────────────────────────┐
-│           NEON TAP ROOM                 │
-│           escolha seu vibe              │
-│                                         │
-│  ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐               │
-│  │P1│ │P2│ │P3│ │P4│ │P5│   ← clica    │
-│  └──┘ └──┘ └──┘ └──┘ └──┘               │
-│  Boxer Dancer Soldier ...               │
-│                                         │
-│  Apelido: [________________]            │
-│                                         │
-│         [  Entrar na sala  ]            │
-└─────────────────────────────────────────┘
-```
-
-Vira o overlay inicial: depois do login (email/senha), em vez de já cair na sala, mostra essa tela. A escolha fica salva no perfil — da próxima vez já abre direto na sala, mas com um botão "Trocar personagem" no canto da HUD.
+1. Recarrega a página → vê a tela "Entrar / Criar conta".
+2. Cria conta com `caiovictorlima50@gmail.com` + senha (mínimo 6 chars).
+3. Eu rodo a migração que te promove a admin.
+4. Próximo refresh: você loga, escolhe personagem, entra na sala e o 🛡️ aparece no canto superior direito.
 
 ## Detalhes técnicos
 
-**Storage / Banco**
-- Bucket público `characters/` para os FBX + miniaturas.
-- Tabela nova `characters` (slug, nome, base_url, idle_url, walk_url, run_url, jump_url, dance_url, wave_url, thumbnail_url). Só admin escreve, todos leem.
-- Coluna nova em `profiles.character_slug`.
-
-**Loader**
-- Adiciono `FBXLoader` do `three/examples/jsm/loaders/FBXLoader.js` em `public/vendor/`.
-- Para cada jogador: carrego o `base.fbx`, extraio o esqueleto, depois carrego os FBX de animação e copio os `AnimationClip` pro mixer do base. Cache por personagem pra não rebaixar pra cada jogador.
-
-**Animação**
-- `THREE.AnimationMixer` por jogador.
-- Estado: `idle | walk | run | jump | dance | wave`.
-- Transição com `crossFadeTo(0.2s)`. Emotes voltam pra idle quando o clip termina.
-- Sincronização: hoje o canal `room-movement` manda `{x,z,facing}`. Adiciono `anim` no payload pros outros tocarem o emote certo.
-
-**Tela de seleção**
-- Novo overlay HTML/CSS no `index.html`, similar ao `authOverlay`.
-- Mostrado quando: usuário logado mas sem `character_slug` no profile, ou clicou em "Trocar personagem".
-- Apelido daqui salva direto no `profiles.nickname` (substitui o input que ainda fica no painel de chat — mantenho o do chat também caso queira trocar depois).
-
-**HUD de emotes**
-- 3 botões circulares no `world-hud`: 🦘 Pular / 💃 Dançar / 👋 Acenar.
-- Teclas: Espaço = jump, 1 = dance, 2 = wave.
-
-## Fora do escopo
-
-- Animações com IK / pés colados no chão (mantém o jeito Mixamo "padrão").
-- Mistura de animações simultâneas (ex: andar acenando) — emotes pausam o movimento.
-- Trocar de personagem no meio da sala sem voltar pra tela de seleção.
-
-Se aprovar, eu já crio a tabela, o bucket, a tela de admin pra você subir os FBX, e a tela de seleção.
+- `public/app.js` linha 16: `LOGIN_DISABLED_FOR_TEST = true → false`.
+- Bloco `if (LOGIN_DISABLED_FOR_TEST) { ... signInAnonymously ... }` (linhas 280-295) deletado.
+- `bootstrapSession` (linha 352): condição `if (!me.character_slug)` removida — sempre chamar `openCharacterSelect()` e deixar o botão "Entrar na sala" disparar `enterRoom()`.
+- Migration: `INSERT INTO user_roles (user_id, role) VALUES (<id>, 'admin') ON CONFLICT DO NOTHING;` rodada depois que você criar a conta.
+- Mantém os 6 botões de auth atuais (signup/signin/logout) — só o bypass anônimo sai.
