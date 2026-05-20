@@ -2385,7 +2385,7 @@ function updateNameplates() {
   const projected = new THREE.Vector3();
   for (const entity of playerEntities.values()) {
     projected.copy(entity.group.position);
-    projected.y += 2.2;
+    projected.y += 1.8;
     projected.project(camera);
     const x = (projected.x * 0.5 + 0.5) * rect.width;
     const y = (-projected.y * 0.5 + 0.5) * rect.height;
