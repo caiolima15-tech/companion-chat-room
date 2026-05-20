@@ -874,6 +874,13 @@ function loadCharacterAssets(character) {
       }
     }
 
+    // GLBs como o avatar Caio já vêm em pé na bind pose; aplicar FBX Mixamo
+    // externo neles é o que estava deitando/enterrando o mesh. Mantém idle neutro.
+    if (isGlb && !Object.keys(clips).length) {
+      clips.idle = new THREE.AnimationClip("idle", 1, []);
+      return { base, clips, scale };
+    }
+
     // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
     await Promise.all(
       animSlots.map(async (slot) => {
