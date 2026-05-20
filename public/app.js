@@ -457,7 +457,7 @@ async function bootstrapSession(user) {
   };
 
   renderPermissions();
-  await loadCharactersCatalog();
+  await Promise.all([loadCharactersCatalog(), loadUserAvatars()]);
   // Sempre mostra a tela de seleção de personagem antes de entrar
   openCharacterSelect();
 }
