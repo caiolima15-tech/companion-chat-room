@@ -702,13 +702,19 @@ async function connectRealtime() {
       if (!payload || payload.id === myId) return;
       const idx = players.findIndex((p) => p.id === payload.id);
       if (idx >= 0) {
-        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing };
+        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing, running: !!payload.running };
         const entity = playerEntities.get(payload.id);
         if (entity) {
           entity.player = players[idx];
           entity.target.copy(worldFromPercent(payload.x, payload.y));
+          entity.running = !!payload.running;
         }
       }
+    })
+    .on("broadcast", { event: "emote" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const entity = playerEntities.get(payload.id);
+      if (entity) playEmote(entity, payload.slot);
     })
     .subscribe();
 }
