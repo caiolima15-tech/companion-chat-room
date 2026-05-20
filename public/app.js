@@ -414,8 +414,13 @@ function buildMap() {
   key.shadow.camera.bottom = -12;
   scene.add(key);
 
-  scene.add(Object.assign(new THREE.PointLight("#f26868", 3.4, 10), { position: new THREE.Vector3(-6.7, 3.2, -6.2) }));
-  scene.add(Object.assign(new THREE.PointLight("#29d3bd", 2.4, 13), { position: new THREE.Vector3(5.7, 3.4, 3.6) }));
+  const redAccent = new THREE.PointLight("#f26868", 3.4, 10);
+  redAccent.position.set(-6.7, 3.2, -6.2);
+  scene.add(redAccent);
+
+  const tealAccent = new THREE.PointLight("#29d3bd", 2.4, 13);
+  tealAccent.position.set(5.7, 3.4, 3.6);
+  scene.add(tealAccent);
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH, 18, 14),
