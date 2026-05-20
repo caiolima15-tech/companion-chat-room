@@ -135,8 +135,10 @@ let lastSpeechClear = 0;
 let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}]
 let selectedCharacterSlug = null; // tile escolhido na tela de seleção
 const characterCache = new Map(); // slug -> Promise<{base, clips}>
-const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "jump", "dance", "wave"];
-const EMOTE_SLOTS = new Set(["jump", "dance", "wave"]);
+const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
+const EMOTE_SLOTS = new Set(["dance", "wave"]);
+// Rotação padrão aplicada a todo personagem GLB (Mixamo vem deitado no eixo X).
+const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 
