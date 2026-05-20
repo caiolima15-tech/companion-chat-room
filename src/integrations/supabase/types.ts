@@ -143,30 +143,6 @@ export type Database = {
         }
         Relationships: []
       }
-      map_thumbnails: {
-        Row: {
-          created_at: string
-          map_id: string
-          thumb_url: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          map_id: string
-          thumb_url: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          map_id?: string
-          thumb_url?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: []
-      }
       profiles: {
         Row: {
           avatar_url: string | null
