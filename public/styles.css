@@ -648,35 +648,34 @@ input:focus {
   .controls button[data-step="down"]  { grid-column: 2; grid-row: 2; }
   .controls button[data-step="right"] { grid-column: 3; grid-row: 2; }
 
-  /* Chat panel: fully translucent overlay ABOVE the bar with a collapse handle */
+  /* Chat panel: solid black 50% overlay, full width, ~45% screen height, rises with keyboard */
   .chat-panel {
     position: fixed;
     left: 0; right: 0;
-    bottom: 0;
+    bottom: calc(var(--kb-offset, 0px) + env(safe-area-inset-bottom));
     top: auto;
-    height: 52dvh;
-    border-radius: 18px 18px 0 0;
+    width: 100%;
+    height: 45dvh;
+    max-height: 45dvh;
+    border-radius: 14px 14px 0 0;
     border: 0;
-    background: linear-gradient(180deg,
-      rgba(10, 12, 16, 0) 0%,
-      rgba(10, 12, 16, 0.18) 30%,
-      rgba(10, 12, 16, 0.42) 100%);
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    box-shadow: none;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.4);
     transform: translateY(100%);
-    transition: transform .28s ease, height .28s ease;
+    transition: transform .28s ease, bottom .2s ease;
     z-index: 1200;
     pointer-events: none;
     grid-template-rows: 0 minmax(0, 1fr) auto;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+    padding: 0;
   }
   .chat-panel > * { pointer-events: auto; }
   .chat-panel .identity { display: none; }
 
   body.mobile-show-chat .chat-panel {
     transform: translateY(0);
-    height: 70dvh;
+    pointer-events: auto;
   }
 
   /* Collapse handle inside chat */
@@ -693,15 +692,13 @@ input:focus {
   }
 
   .chat-log {
-    padding: 22px 14px 6px;
+    padding: 22px 14px 8px;
     background: transparent;
-    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 100%);
-            mask-image: linear-gradient(180deg, transparent 0, #000 36px, #000 100%);
   }
   .chat-item {
     grid-template-columns: 26px 1fr;
     gap: 8px;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   .chat-dot {
     width: 26px; height: 26px;
@@ -710,49 +707,52 @@ input:focus {
   .chat-name {
     font-size: 0.7rem;
     font-weight: 700;
-    color: rgba(255,255,255,0.78);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    color: rgba(255,255,255,0.85);
   }
   .chat-text {
     margin-top: 2px;
-    padding: 5px 9px;
-    font-size: 0.74rem;
-    line-height: 1.25;
-    background: rgba(255,255,255,0.92);
-    color: #101217;
-    border-radius: 12px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    line-height: 1.3;
+    background: rgba(255,255,255,0.12);
+    color: #fff;
+    border-radius: 10px;
   }
   .system-line {
-    font-size: 0.68rem;
-    color: rgba(255,255,255,0.55);
-    text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    font-size: 0.7rem;
+    color: rgba(255,255,255,0.6);
     margin: 4px 0 6px;
   }
+  /* Stack: input on top, send button BELOW */
   .chat-form {
-    padding: 8px 12px 8px;
-    background: transparent;
-    border-top: 0;
-    gap: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    background: rgba(0, 0, 0, 0.35);
+    border-top: 1px solid rgba(255,255,255,0.08);
   }
   .chat-form input {
-    background: rgba(20,22,28,0.45);
-    backdrop-filter: blur(14px);
-    border-color: rgba(255,255,255,0.14);
+    width: 100%;
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.18);
     color: #fff;
-    font-size: 0.85rem;
-    padding: 9px 12px;
-    border-radius: 999px;
+    font-size: 0.9rem;
+    padding: 11px 14px;
+    border-radius: 10px;
   }
   .chat-form button {
-    background: transparent;
-    color: rgba(255,255,255,0.7);
-    font-size: 0.78rem;
-    padding: 0 10px;
+    width: 100%;
+    height: 42px;
+    border-radius: 10px;
+    background: var(--gold);
+    color: #101217;
+    font-weight: 900;
+    font-size: 0.88rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
-    font-weight: 800;
   }
+
 
   /* === Round glass mobile buttons — no bar background === */
   .mobile-bar {
