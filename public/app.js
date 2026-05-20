@@ -348,12 +348,8 @@ async function bootstrapSession(user) {
 
   renderPermissions();
   await loadCharactersCatalog();
-  // Mostra a tela de seleção se ainda não escolheu personagem
-  if (!me.character_slug) {
-    openCharacterSelect();
-    return;
-  }
-  await enterRoom();
+  // Sempre mostra a tela de seleção de personagem antes de entrar
+  openCharacterSelect();
 }
 
 async function enterRoom() {
