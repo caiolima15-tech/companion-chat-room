@@ -2347,8 +2347,8 @@ function moveToWorld(point) {
   }
   trackMe(false).catch(() => {});
 }
+const joystickVec = { x: 0, y: 0 };
 function applyHeldMovement() {
-  if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
   let dy = 0;
@@ -2356,6 +2356,10 @@ function applyHeldMovement() {
   if (keyState.has("arrowdown") || keyState.has("s")) dy += amount;
   if (keyState.has("arrowleft") || keyState.has("a")) dx -= amount;
   if (keyState.has("arrowright") || keyState.has("d")) dx += amount;
+  if (joystickVec.x || joystickVec.y) {
+    dx += joystickVec.x * amount;
+    dy += joystickVec.y * amount;
+  }
   if (dx || dy) {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
