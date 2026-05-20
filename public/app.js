@@ -1753,8 +1753,8 @@ function renderPlayers(nextPlayers) {
     if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
       applyAvatar(entity, player.avatar_url);
     }
-    // Tint default character
-    if (!player.avatar_url) {
+    // Tint default character only while using the built-in fallback mannequin.
+    if (!desiredSlug && entity.character) {
       entity.character.traverse((child) => {
         if (child.material?.color && child.name?.includes("Torso")) {
           child.material.color.set(player.color);
