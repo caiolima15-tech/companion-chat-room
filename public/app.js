@@ -1118,8 +1118,11 @@ function renderPlayers(nextPlayers) {
       playerEntities.set(player.id, entity);
     }
     entity.player = player;
-    if (player.character_slug && entity.characterSlug !== player.character_slug) {
-      applyCharacter(entity, player.character_slug);
+    // Para o próprio jogador, a fonte da verdade é `me.character_slug`,
+    // não o presence (que pode chegar atrasado e reverter a troca).
+    const desiredSlug = player.id === myId ? (me.character_slug || player.character_slug) : player.character_slug;
+    if (desiredSlug && entity.characterSlug !== desiredSlug && entity.pendingCharacterSlug !== desiredSlug) {
+      applyCharacter(entity, desiredSlug);
     }
     entity.target.copy(worldFromPercent(player.x, player.y));
     if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
