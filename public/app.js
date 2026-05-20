@@ -350,8 +350,11 @@ function rowToAsset(row) {
     name: row.name,
     url: row.url,
     x: row.x,
+    y: row.y ?? 0,
     z: row.z,
+    rotationX: row.rotation_x ?? 0,
     rotationY: row.rotation_y,
+    rotationZ: row.rotation_z ?? 0,
     scale: row.scale,
   };
 }
