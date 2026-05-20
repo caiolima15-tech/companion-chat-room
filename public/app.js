@@ -2,7 +2,17 @@ import * as THREE from "three";
 import { OrbitControls } from "/vendor/OrbitControls.js";
 import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+// ============ Supabase ============
+const SUPABASE_URL = "https://ajphaszjpizepjmnjxtm.supabase.co";
+const SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqcGhhc3pqcGl6ZXBqbW5qeHRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkyMjYzOTksImV4cCI6MjA5NDgwMjM5OX0.uA5QN5snoDSOq0alFQMl89o_L4pksRIOWlZT0wm2nk0";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+});
+
+// ============ DOM ============
 const canvas = document.querySelector("#worldCanvas");
 const worldShell = document.querySelector("#worldShell");
 const nameplatesLayer = document.querySelector("#nameplates");
@@ -13,11 +23,25 @@ const chatInput = document.querySelector("#chatInput");
 const nameInput = document.querySelector("#nameInput");
 const joinButton = document.querySelector("#joinButton");
 const glbInput = document.querySelector("#glbInput");
+const avatarInput = document.querySelector("#avatarInput");
 const placeButton = document.querySelector("#placeButton");
 const exportButton = document.querySelector("#exportButton");
 const cameraButton = document.querySelector("#cameraButton");
 const assetList = document.querySelector("#assetList");
 const roleBadge = document.querySelector("#roleBadge");
+const logoutButton = document.querySelector("#logoutButton");
+
+// Auth overlay
+const authOverlay = document.querySelector("#authOverlay");
+const authForm = document.querySelector("#authForm");
+const authEmail = document.querySelector("#authEmail");
+const authPassword = document.querySelector("#authPassword");
+const authNickname = document.querySelector("#authNickname");
+const authTitle = document.querySelector("#authTitle");
+const authHint = document.querySelector("#authHint");
+const authSubmit = document.querySelector("#authSubmit");
+const authSwitch = document.querySelector("#authSwitch");
+const authError = document.querySelector("#authError");
 
 const MAP_WIDTH = 18;
 const MAP_DEPTH = 14;
@@ -29,10 +53,9 @@ const pointer = new THREE.Vector2();
 const floorHit = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hitPoint = new THREE.Vector3();
 
-let source;
 let myId = "";
-let me = null;
-let players = [];
+let me = null; // { id, name, color, x, y, facing, speech, isAdmin, avatar_url }
+let players = []; // all current players including me
 let selectedAsset = null;
 let placementMode = false;
 let movingAssetId = "";
@@ -40,13 +63,16 @@ let followCamera = true;
 let lastMoveSent = 0;
 let isAdmin = false;
 let currentAssets = [];
+let presenceChannel = null;
+let mapChannel = null;
+let chatChannel = null;
+let lastSpeechClear = 0;
 
-const playerEntities = new Map();
+const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 const assetObjects = new Map();
 const keyState = new Set();
-const savedName = localStorage.getItem("barName") || "";
-nameInput.value = savedName;
 
+// ============ Scene ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
 scene.fog = new THREE.Fog("#0e1117", 16, 36);
@@ -73,48 +99,282 @@ scene.add(stage);
 buildMap();
 resize();
 renderPermissions();
-connect();
 requestAnimationFrame(animate);
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;"
-  })[char]);
+// ============ Auth bootstrap ============
+let authMode = "signin"; // or "signup"
+function showAuth(mode = "signin") {
+  authMode = mode;
+  authOverlay.hidden = false;
+  authError.hidden = true;
+  if (mode === "signin") {
+    authTitle.textContent = "Entrar";
+    authHint.textContent = "Use email e senha pra entrar na sala.";
+    authSubmit.textContent = "Entrar";
+    authSwitch.textContent = "Criar conta";
+    authNickname.hidden = true;
+    authNickname.required = false;
+  } else {
+    authTitle.textContent = "Criar conta";
+    authHint.textContent = "Sua conta vira seu personagem. Primeiro usuário = admin.";
+    authSubmit.textContent = "Cadastrar";
+    authSwitch.textContent = "Já tenho conta";
+    authNickname.hidden = false;
+    authNickname.required = true;
+  }
+}
+function hideAuth() {
+  authOverlay.hidden = true;
+}
+function showAuthError(msg) {
+  authError.textContent = msg;
+  authError.hidden = false;
+}
+authSwitch.addEventListener("click", () => showAuth(authMode === "signin" ? "signup" : "signin"));
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authError.hidden = true;
+  authSubmit.disabled = true;
+  try {
+    if (authMode === "signup") {
+      const { error } = await supabase.auth.signUp({
+        email: authEmail.value,
+        password: authPassword.value,
+        options: { data: { nickname: authNickname.value || "Visitante" } },
+      });
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail.value,
+        password: authPassword.value,
+      });
+      if (error) throw error;
+    }
+  } catch (err) {
+    showAuthError(err.message || "Falha de autenticação");
+  } finally {
+    authSubmit.disabled = false;
+  }
+});
+
+logoutButton.addEventListener("click", async () => {
+  await supabase.auth.signOut();
+  location.reload();
+});
+
+// Auth state listener
+supabase.auth.onAuthStateChange((_event, session) => {
+  if (session?.user) {
+    hideAuth();
+    bootstrapSession(session.user);
+  } else {
+    showAuth("signin");
+  }
+});
+
+// Initial session check
+(async () => {
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.user) {
+    hideAuth();
+    bootstrapSession(data.session.user);
+  } else {
+    showAuth("signin");
+  }
+})();
+
+async function bootstrapSession(user) {
+  if (myId === user.id) return; // already bootstrapped
+  myId = user.id;
+
+  // Load profile
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("nickname, color, avatar_url")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const nickname = profile?.nickname || "Visitante";
+  const color = profile?.color || randomColor();
+  const avatarUrl = profile?.avatar_url || null;
+  nameInput.value = nickname;
+
+  // Admin?
+  const { data: roleRow } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("role", "admin")
+    .maybeSingle();
+  isAdmin = !!roleRow;
+
+  me = {
+    id: user.id,
+    name: nickname,
+    color,
+    avatar_url: avatarUrl,
+    x: 50,
+    y: 50,
+    facing: "down",
+    speech: "",
+    isAdmin,
+  };
+
+  renderPermissions();
+  await Promise.all([loadInitialAssets(), loadInitialChat()]);
+  await connectRealtime();
+  addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
 }
 
+function randomColor() {
+  const palette = ["#29d3bd", "#f4bd4f", "#a78bfa", "#f26868", "#74c0fc", "#ffa94d"];
+  return palette[Math.floor(Math.random() * palette.length)];
+}
+
+// ============ Realtime ============
+async function loadInitialAssets() {
+  const { data } = await supabase.from("map_assets").select("*").order("created_at");
+  renderAssets((data || []).map(rowToAsset));
+}
+async function loadInitialChat() {
+  chatLog.innerHTML = "";
+  const { data } = await supabase
+    .from("chat_messages")
+    .select("*")
+    .order("created_at", { ascending: true })
+    .limit(80);
+  (data || []).forEach((m) => addMessage({ name: m.nickname, color: m.color, text: m.text }));
+}
+
+function rowToAsset(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    url: row.url,
+    x: row.x,
+    z: row.z,
+    rotationY: row.rotation_y,
+    scale: row.scale,
+  };
+}
+
+async function connectRealtime() {
+  // Map assets via postgres changes
+  if (mapChannel) await supabase.removeChannel(mapChannel);
+  mapChannel = supabase
+    .channel("room-map")
+    .on("postgres_changes", { event: "*", schema: "public", table: "map_assets" }, () => {
+      loadInitialAssets();
+    })
+    .subscribe();
+
+  // Chat via postgres changes
+  if (chatChannel) await supabase.removeChannel(chatChannel);
+  chatChannel = supabase
+    .channel("room-chat")
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "chat_messages" },
+      (payload) => {
+        const m = payload.new;
+        addMessage({ name: m.nickname, color: m.color, text: m.text });
+        // Set speech bubble briefly
+        const entity = playerEntities.get(m.user_id);
+        const player = players.find((p) => p.id === m.user_id);
+        if (player) {
+          player.speech = m.text;
+          updateNameplate(player);
+          setTimeout(() => {
+            player.speech = "";
+            updateNameplate(player);
+          }, 4500);
+        }
+      },
+    )
+    .subscribe();
+
+  // Presence for players
+  if (presenceChannel) await supabase.removeChannel(presenceChannel);
+  presenceChannel = supabase.channel("room-presence", {
+    config: { presence: { key: myId } },
+  });
+
+  presenceChannel
+    .on("presence", { event: "sync" }, () => {
+      const state = presenceChannel.presenceState();
+      const list = [];
+      for (const id of Object.keys(state)) {
+        const entry = state[id][0];
+        if (entry) list.push({ ...entry, id });
+      }
+      renderPlayers(list);
+    })
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await presenceChannel.track(presencePayload());
+      }
+    });
+}
+
+function presencePayload() {
+  return {
+    id: myId,
+    name: me.name,
+    color: me.color,
+    avatar_url: me.avatar_url,
+    x: me.x,
+    y: me.y,
+    facing: me.facing,
+    speech: me.speech || "",
+    isAdmin,
+  };
+}
+
+async function trackMe() {
+  if (presenceChannel) await presenceChannel.track(presencePayload());
+}
+
+// ============ HUD permissions ============
 function renderPermissions() {
   document.body.classList.toggle("is-admin", isAdmin);
   roleBadge.textContent = isAdmin ? "admin" : "visitante";
-  glbInput.disabled = !isAdmin;
-  exportButton.disabled = !isAdmin;
-  placeButton.disabled = !isAdmin || !selectedAsset;
+  if (glbInput) glbInput.disabled = !isAdmin;
+  if (exportButton) exportButton.disabled = !isAdmin;
+  if (placeButton) placeButton.disabled = !isAdmin || !selectedAsset;
   if (!isAdmin) {
     placementMode = false;
     movingAssetId = "";
     selectedAsset = null;
-    placeButton.classList.remove("is-active");
+    placeButton?.classList.remove("is-active");
   }
 }
 
-function worldFromPercent(x, y) {
-  return new THREE.Vector3((x / 100 - 0.5) * MAP_WIDTH, 0, (y / 100 - 0.5) * MAP_DEPTH);
+// ============ Helpers ============
+function escapeHtml(value) {
+  return String(value).replace(
+    /[&<>"']/g,
+    (char) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+  );
 }
 
+function worldFromPercent(x, y) {
+  return new THREE.Vector3(
+    (x / 100 - 0.5) * MAP_WIDTH,
+    0,
+    (y / 100 - 0.5) * MAP_DEPTH,
+  );
+}
 function percentFromWorld(x, z) {
   return {
     x: Math.max(5, Math.min(95, (x / MAP_WIDTH + 0.5) * 100)),
-    y: Math.max(8, Math.min(92, (z / MAP_DEPTH + 0.5) * 100))
+    y: Math.max(8, Math.min(92, (z / MAP_DEPTH + 0.5) * 100)),
   };
 }
 
 function material(color, roughness = 0.72, metalness = 0.05) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
 }
-
 function makeBox(name, size, position, color, options = {}) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material(color, options.roughness, options.metalness));
   mesh.name = name;
@@ -125,9 +385,9 @@ function makeBox(name, size, position, color, options = {}) {
   return mesh;
 }
 
+// ============ Map (default scenery) ============
 function buildMap() {
   scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.35));
-
   const key = new THREE.DirectionalLight("#ffffff", 1.35);
   key.position.set(6, 10, 3);
   key.castShadow = true;
@@ -140,17 +400,12 @@ function buildMap() {
   key.shadow.camera.bottom = -12;
   scene.add(key);
 
-  const neonLight = new THREE.PointLight("#f26868", 3.4, 10);
-  neonLight.position.set(-6.7, 3.2, -6.2);
-  scene.add(neonLight);
-
-  const barLight = new THREE.PointLight("#29d3bd", 2.4, 13);
-  barLight.position.set(5.7, 3.4, 3.6);
-  scene.add(barLight);
+  scene.add(Object.assign(new THREE.PointLight("#f26868", 3.4, 10), { position: new THREE.Vector3(-6.7, 3.2, -6.2) }));
+  scene.add(Object.assign(new THREE.PointLight("#29d3bd", 2.4, 13), { position: new THREE.Vector3(5.7, 3.4, 3.6) }));
 
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH, 18, 14),
-    new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.86, metalness: 0.02 })
+    new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.86, metalness: 0.02 }),
   );
   floor.name = "WalkableFloor";
   floor.rotation.x = -Math.PI / 2;
@@ -165,117 +420,12 @@ function buildMap() {
   makeBox("BackWall", [MAP_WIDTH, 3.5, 0.35], [0, 1.75, -MAP_DEPTH / 2], "#232b36", { castShadow: false });
   makeBox("LeftWall", [0.35, 3.5, MAP_DEPTH], [-MAP_WIDTH / 2, 1.75, 0], "#1c2530", { castShadow: false });
   makeBox("RightRail", [0.28, 1.0, MAP_DEPTH], [MAP_WIDTH / 2, 0.5, 0], "#161f29");
-
-  makeBox("BarCounter", [10.8, 0.72, 1.25], [-0.8, 0.58, -4.45], "#8a572b", { roughness: 0.5 });
-  makeBox("BarTop", [11.2, 0.16, 1.55], [-0.8, 1.02, -4.45], "#c98b47", { roughness: 0.36, metalness: 0.08 });
-  makeBox("BackShelf", [8.8, 0.18, 0.28], [1.0, 2.25, -6.83], "#b07a42");
-  makeBox("BackShelf2", [8.8, 0.18, 0.28], [1.0, 2.85, -6.83], "#b07a42");
-
-  for (let i = 0; i < 11; i += 1) {
-    const bottle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.08, 0.11, 0.45 + (i % 3) * 0.08, 12),
-      material(["#f4bd4f", "#29d3bd", "#f26868", "#a78bfa"][i % 4], 0.42, 0.04)
-    );
-    bottle.position.set(-2.8 + i * 0.62, 2.55 + (i % 2) * 0.58, -6.66);
-    bottle.castShadow = true;
-    stage.add(bottle);
-  }
-
-  createNeonSign();
-  createTable(-4.8, 0.2);
-  createTable(4.6, 0.55);
-  createTable(0.5, 4.35);
-  createPlant(-7.3, 4.8);
-  createPlant(7.2, 4.7);
-  createRug();
 }
 
-function createNeonSign() {
-  const canvas2d = document.createElement("canvas");
-  canvas2d.width = 512;
-  canvas2d.height = 192;
-  const ctx = canvas2d.getContext("2d");
-  ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
-  ctx.font = "900 92px Arial";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.shadowColor = "#f26868";
-  ctx.shadowBlur = 28;
-  ctx.fillStyle = "#fff5f1";
-  ctx.fillText("OPEN", 256, 96);
-
-  const texture = new THREE.CanvasTexture(canvas2d);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  const sign = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.8, 1.05),
-    new THREE.MeshBasicMaterial({ map: texture, transparent: true })
-  );
-  sign.name = "NeonOpenSign";
-  sign.position.set(-6.7, 2.55, -6.79);
-  stage.add(sign);
-}
-
-function createTable(x, z) {
-  const top = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.14, 36), material("#202637", 0.55, 0.12));
-  top.position.set(x, 0.72, z);
-  top.castShadow = true;
-  top.receiveShadow = true;
-  stage.add(top);
-
-  const trim = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.035, 8, 42), material("#a78bfa", 0.36, 0.2));
-  trim.position.set(x, 0.81, z);
-  trim.rotation.x = Math.PI / 2;
-  trim.castShadow = true;
-  stage.add(trim);
-
-  const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.72, 16), material("#596273", 0.5, 0.25));
-  leg.position.set(x, 0.36, z);
-  leg.castShadow = true;
-  stage.add(leg);
-
-  for (const angle of [0, Math.PI * 0.5, Math.PI, Math.PI * 1.5]) {
-    const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.22, 24), material("#29d3bd", 0.48, 0.08));
-    stool.position.set(x + Math.cos(angle) * 1.55, 0.32, z + Math.sin(angle) * 1.55);
-    stool.castShadow = true;
-    stool.receiveShadow = true;
-    stage.add(stool);
-  }
-}
-
-function createPlant(x, z) {
-  const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.46, 0.55, 18), material("#9a4b24", 0.72));
-  pot.position.set(x, 0.28, z);
-  pot.castShadow = true;
-  stage.add(pot);
-
-  for (let i = 0; i < 7; i += 1) {
-    const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), material("#21b36f", 0.76));
-    leaf.scale.set(0.55, 0.18, 1.1);
-    leaf.position.set(x + Math.cos(i) * 0.24, 0.78 + (i % 3) * 0.1, z + Math.sin(i) * 0.24);
-    leaf.rotation.y = i * 0.9;
-    leaf.castShadow = true;
-    stage.add(leaf);
-  }
-}
-
-function createRug() {
-  const rug = new THREE.Mesh(
-    new THREE.CircleGeometry(2.25, 64),
-    new THREE.MeshStandardMaterial({ color: "#7f3b46", roughness: 0.9 })
-  );
-  rug.name = "CenterRug";
-  rug.scale.z = 0.62;
-  rug.rotation.x = -Math.PI / 2;
-  rug.rotation.z = -0.18;
-  rug.position.set(0.3, 0.018, 1.8);
-  rug.receiveShadow = true;
-  stage.add(rug);
-}
-
+// ============ Character ============
 function createCharacter(color = "#29d3bd") {
   const root = new THREE.Group();
   root.name = "BarPlayer";
-
   const skin = material("#ffd4a3", 0.66);
   const shirt = material(color, 0.62);
   const dark = material("#171923", 0.72);
@@ -285,7 +435,6 @@ function createCharacter(color = "#29d3bd") {
   torso.name = "Torso";
   torso.position.y = 1.08;
   root.add(torso);
-
   const torsoMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.55, 10, 20), shirt);
   torsoMesh.name = "TorsoMesh";
   torsoMesh.castShadow = true;
@@ -299,7 +448,6 @@ function createCharacter(color = "#29d3bd") {
   root.add(head);
 
   const hair = new THREE.Mesh(new THREE.SphereGeometry(0.285, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), dark);
-  hair.name = "Hair";
   hair.position.set(0, 1.81, -0.02);
   hair.rotation.x = -0.2;
   hair.castShadow = true;
@@ -308,7 +456,6 @@ function createCharacter(color = "#29d3bd") {
   const eyeGeo = new THREE.SphereGeometry(0.028, 8, 8);
   for (const x of [-0.09, 0.09]) {
     const eye = new THREE.Mesh(eyeGeo, dark);
-    eye.name = x < 0 ? "LeftEye" : "RightEye";
     eye.position.set(x, 1.69, 0.245);
     root.add(eye);
   }
@@ -320,7 +467,6 @@ function createCharacter(color = "#29d3bd") {
 
   for (const x of [-0.16, 0.16]) {
     const foot = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.12, 0.38), shoes);
-    foot.name = x < 0 ? "LeftFoot" : "RightFoot";
     foot.position.set(x, 0.1, 0.08);
     foot.castShadow = true;
     root.add(foot);
@@ -336,17 +482,13 @@ function createLimb(root, name, position, radius, length, mat, type) {
   limb.name = name;
   limb.position.set(...position);
   root.add(limb);
-
   const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(radius, length, 8, 16), mat);
-  mesh.name = `${name}Mesh`;
   mesh.position.y = -length * 0.5;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   limb.add(mesh);
-
   if (type === "arm") {
     const hand = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.86, 14, 10), material("#ffd4a3", 0.66));
-    hand.name = `${name}Hand`;
     hand.position.y = -length - radius * 0.9;
     hand.castShadow = true;
     limb.add(hand);
@@ -366,67 +508,122 @@ function quatValues(axis, degrees) {
 function createCharacterClips() {
   const xAxis = new THREE.Vector3(1, 0, 0);
   const zAxis = new THREE.Vector3(0, 0, 1);
-
   const idleTimes = [0, 0.8, 1.6];
   const idle = new THREE.AnimationClip("Idle", 1.6, [
     new THREE.VectorKeyframeTrack("Torso.position", idleTimes, [0, 1.08, 0, 0, 1.14, 0, 0, 1.08, 0]),
     new THREE.QuaternionKeyframeTrack("LeftArm.quaternion", idleTimes, quatValues(zAxis, [8, 12, 8])),
-    new THREE.QuaternionKeyframeTrack("RightArm.quaternion", idleTimes, quatValues(zAxis, [-8, -12, -8]))
+    new THREE.QuaternionKeyframeTrack("RightArm.quaternion", idleTimes, quatValues(zAxis, [-8, -12, -8])),
   ]);
-
   const walkTimes = [0, 0.22, 0.44, 0.66, 0.88];
   const walk = new THREE.AnimationClip("Walk", 0.88, [
     new THREE.VectorKeyframeTrack("Torso.position", walkTimes, [0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0]),
     new THREE.QuaternionKeyframeTrack("LeftArm.quaternion", walkTimes, quatValues(xAxis, [-26, 22, -26, 22, -26])),
     new THREE.QuaternionKeyframeTrack("RightArm.quaternion", walkTimes, quatValues(xAxis, [26, -22, 26, -22, 26])),
     new THREE.QuaternionKeyframeTrack("LeftLeg.quaternion", walkTimes, quatValues(xAxis, [28, -25, 28, -25, 28])),
-    new THREE.QuaternionKeyframeTrack("RightLeg.quaternion", walkTimes, quatValues(xAxis, [-25, 28, -25, 28, -25]))
+    new THREE.QuaternionKeyframeTrack("RightLeg.quaternion", walkTimes, quatValues(xAxis, [-25, 28, -25, 28, -25])),
   ]);
-
   return { idle, walk };
 }
 
+// ============ Player entities ============
 function createPlayerEntity(player) {
-  const group = createCharacter(player.color);
+  const group = new THREE.Group();
+  group.name = `Player_${player.id}`;
   group.position.copy(worldFromPercent(player.x, player.y));
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  const mixer = new THREE.AnimationMixer(group);
-  const idle = mixer.clipAction(group.userData.clips.idle);
-  const walk = mixer.clipAction(group.userData.clips.walk);
+  // Default capsule character; replaced by GLB if avatar_url provided
+  const character = createCharacter(player.color);
+  group.add(character);
+
+  const mixer = new THREE.AnimationMixer(character);
+  const idle = mixer.clipAction(character.userData.clips.idle);
+  const walk = mixer.clipAction(character.userData.clips.walk);
   idle.play();
 
   const plate = document.createElement("div");
   plate.className = "nameplate";
   nameplatesLayer.appendChild(plate);
 
-  return {
+  const entity = {
     group,
+    character,
     mixer,
     actions: { idle, walk },
     currentAction: "idle",
     target: group.position.clone(),
     plate,
-    player
+    player,
+    avatarUrl: null,
   };
+  if (player.avatar_url) applyAvatar(entity, player.avatar_url);
+  return entity;
+}
+
+function applyAvatar(entity, url) {
+  if (entity.avatarUrl === url) return;
+  entity.avatarUrl = url;
+  loader.load(
+    url,
+    (gltf) => {
+      const next = gltf.scene;
+      // Normalize size
+      const box = new THREE.Box3().setFromObject(next);
+      const size = box.getSize(new THREE.Vector3());
+      const max = Math.max(size.x, size.y, size.z) || 1;
+      next.scale.setScalar(1.8 / max);
+      const box2 = new THREE.Box3().setFromObject(next);
+      next.position.y -= box2.min.y;
+      next.traverse((c) => {
+        if (c.isMesh) {
+          c.castShadow = true;
+          c.receiveShadow = true;
+        }
+      });
+      entity.group.remove(entity.character);
+      entity.character = next;
+      entity.group.add(next);
+      entity.mixer = new THREE.AnimationMixer(next);
+      entity.actions = { idle: null, walk: null };
+      entity.currentAction = "idle";
+    },
+    undefined,
+    () => {
+      // fallback keeps default character
+    },
+  );
 }
 
 function setPlayerAction(entity, name) {
+  if (!entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
   const next = entity.actions[name];
-  previous.fadeOut(0.16);
+  if (previous) previous.fadeOut(0.16);
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
 
+function updateNameplate(player) {
+  const entity = playerEntities.get(player.id);
+  if (!entity) return;
+  entity.plate.innerHTML = `
+    ${player.speech ? `<div class="speech">${escapeHtml(player.speech)}</div>` : ""}
+    <div class="plate-name">${escapeHtml(player.name)}${player.id === myId ? " (você)" : ""}${player.isAdmin ? " • admin" : ""}</div>
+  `;
+}
+
 function renderPlayers(nextPlayers) {
   players = nextPlayers;
-  me = players.find((player) => player.id === myId) || me;
+  const mine = players.find((p) => p.id === myId);
+  if (mine) {
+    me = { ...me, ...mine };
+    isAdmin = !!mine.isAdmin;
+  }
   onlineCount.textContent = `${players.length} online`;
 
-  const byId = new Map(players.map((player) => [player.id, player]));
+  const byId = new Map(players.map((p) => [p.id, p]));
   for (const [id, entity] of playerEntities) {
     if (!byId.has(id)) {
       scene.remove(entity.group);
@@ -434,7 +631,6 @@ function renderPlayers(nextPlayers) {
       playerEntities.delete(id);
     }
   }
-
   for (const player of players) {
     let entity = playerEntities.get(player.id);
     if (!entity) {
@@ -443,37 +639,40 @@ function renderPlayers(nextPlayers) {
     }
     entity.player = player;
     entity.target.copy(worldFromPercent(player.x, player.y));
-    entity.group.traverse((child) => {
-      if (child.material?.color && child.name.includes("Torso")) {
-        child.material.color.set(player.color);
-      }
-    });
-    entity.plate.innerHTML = `
-      ${player.speech ? `<div class="speech">${escapeHtml(player.speech)}</div>` : ""}
-      <div class="plate-name">${escapeHtml(player.name)}${player.id === myId ? " (você)" : ""}${player.isAdmin ? " • admin" : ""}</div>
-    `;
+    if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
+      applyAvatar(entity, player.avatar_url);
+    }
+    // Tint default character
+    if (!player.avatar_url) {
+      entity.character.traverse((child) => {
+        if (child.material?.color && child.name?.includes("Torso")) {
+          child.material.color.set(player.color);
+        }
+      });
+    }
+    updateNameplate(player);
   }
 }
 
+// ============ Map assets ============
 function renderAssets(assets = []) {
   currentAssets = assets;
-  const byId = new Map(assets.map((asset) => [asset.id, asset]));
+  const byId = new Map(assets.map((a) => [a.id, a]));
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
       scene.remove(object);
       assetObjects.delete(id);
     }
   }
-
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
       object.position.set(asset.x, 0, asset.z);
       object.rotation.y = asset.rotationY;
-      if (object.userData.baseScale) object.scale.setScalar(object.userData.baseScale * asset.scale);
+      if (object.userData.baseScale)
+        object.scale.setScalar(object.userData.baseScale * asset.scale);
       continue;
     }
-
     loader.load(
       asset.url,
       (gltf) => {
@@ -498,10 +697,9 @@ function renderAssets(assets = []) {
         fallback.rotation.y = asset.rotationY;
         scene.add(fallback);
         assetObjects.set(asset.id, fallback);
-      }
+      },
     );
   }
-
   updateAssetList(assets);
 }
 
@@ -523,7 +721,7 @@ function makeFallbackAsset(name, scale = 1) {
   group.name = name;
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(1.2, 1.2, 1.2),
-    new THREE.MeshStandardMaterial({ color: "#a78bfa", roughness: 0.6, metalness: 0.1 })
+    new THREE.MeshStandardMaterial({ color: "#a78bfa", roughness: 0.6, metalness: 0.1 }),
   );
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -538,7 +736,9 @@ function updateAssetList(assets) {
     assetList.textContent = selectedAsset ? `Pronto: ${selectedAsset.name}` : "Nenhum GLB colocado";
     return;
   }
-  assetList.innerHTML = assets.map((asset) => `
+  assetList.innerHTML = assets
+    .map(
+      (asset) => `
     <div class="asset-pill">
       <div class="asset-name">${escapeHtml(asset.name)}</div>
       <div class="asset-actions">
@@ -549,59 +749,12 @@ function updateAssetList(assets) {
         <button type="button" data-asset-action="delete" data-asset-id="${escapeHtml(asset.id)}">Excluir</button>
       </div>
     </div>
-  `).join("");
+  `,
+    )
+    .join("");
 }
 
-async function post(path, payload) {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!response.ok) throw new Error("Ação não permitida");
-  return response;
-}
-
-function connect() {
-  if (location.protocol === "file:") return;
-  const name = nameInput.value.trim() || `Visitante ${Math.floor(100 + Math.random() * 900)}`;
-  localStorage.setItem("barName", name);
-  source?.close();
-  source = new EventSource(`/events?name=${encodeURIComponent(name)}`);
-
-  source.addEventListener("welcome", (event) => {
-    const data = JSON.parse(event.data);
-    myId = data.id;
-    isAdmin = Boolean(data.isAdmin);
-    renderPermissions();
-    chatLog.innerHTML = "";
-    data.snapshot.messages.forEach(addMessage);
-    renderPlayers(data.snapshot.players);
-    renderAssets(data.snapshot.assets || []);
-    addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Você entrou como visitante.");
-  });
-
-  source.addEventListener("players", (event) => {
-    renderPlayers(JSON.parse(event.data));
-  });
-
-  source.addEventListener("assets", (event) => {
-    renderAssets(JSON.parse(event.data));
-  });
-
-  source.addEventListener("message", (event) => {
-    addMessage(JSON.parse(event.data));
-  });
-
-  source.addEventListener("system", (event) => {
-    addSystemLine(JSON.parse(event.data).text);
-  });
-
-  source.onerror = () => {
-    onlineCount.textContent = "Reconectando";
-  };
-}
-
+// ============ Chat UI ============
 function addSystemLine(text) {
   const item = document.createElement("div");
   item.className = "system-line";
@@ -609,7 +762,6 @@ function addSystemLine(text) {
   chatLog.appendChild(item);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
-
 function addMessage(message) {
   const item = document.createElement("div");
   item.className = "chat-item";
@@ -624,6 +776,7 @@ function addMessage(message) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+// ============ Movement ============
 function move(dx, dy, facing) {
   if (!me || !myId) return;
   const now = performance.now();
@@ -631,27 +784,31 @@ function move(dx, dy, facing) {
     ...me,
     x: Math.max(5, Math.min(95, me.x + dx)),
     y: Math.max(8, Math.min(92, me.y + dy)),
-    facing
+    facing,
   };
-  renderPlayers(players.map((player) => player.id === myId ? me : player));
+  const idx = players.findIndex((p) => p.id === myId);
+  if (idx >= 0) players[idx] = { ...players[idx], ...me };
+  const entity = playerEntities.get(myId);
+  if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
 
-  if (now - lastMoveSent > 70) {
+  if (now - lastMoveSent > 90) {
     lastMoveSent = now;
-    post("/move", { id: myId, x: me.x, y: me.y, facing }).catch(() => {});
+    trackMe().catch(() => {});
   }
 }
-
 function moveToWorld(point) {
   if (!me || !myId) return;
   const next = percentFromWorld(point.x, point.z);
   const dx = next.x - me.x;
   const dy = next.y - me.y;
-  const facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up");
+  const facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up";
   me = { ...me, x: next.x, y: next.y, facing };
-  renderPlayers(players.map((player) => player.id === myId ? me : player));
-  post("/move", { id: myId, x: me.x, y: me.y, facing }).catch(() => {});
+  const idx = players.findIndex((p) => p.id === myId);
+  if (idx >= 0) players[idx] = { ...players[idx], ...me };
+  const entity = playerEntities.get(myId);
+  if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
+  trackMe().catch(() => {});
 }
-
 function applyHeldMovement() {
   if (!keyState.size) return;
   const amount = 0.72;
@@ -662,7 +819,7 @@ function applyHeldMovement() {
   if (keyState.has("arrowleft") || keyState.has("a")) dx -= amount;
   if (keyState.has("arrowright") || keyState.has("d")) dx += amount;
   if (dx || dy) {
-    move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
 }
 
@@ -673,16 +830,16 @@ function updatePlayerAnimation(delta) {
       const before = entity.group.position.clone();
       entity.group.position.lerp(entity.target, Math.min(1, delta * 8.5));
       const after = entity.group.position;
-      const direction = after.clone().sub(before);
-      if (direction.lengthSq() > 0.00001) {
-        entity.group.rotation.y = Math.atan2(direction.x, direction.z);
+      const dir = after.clone().sub(before);
+      if (dir.lengthSq() > 0.00001) {
+        entity.group.rotation.y = Math.atan2(dir.x, dir.z);
       }
       setPlayerAction(entity, "walk");
     } else {
       entity.group.position.copy(entity.target);
       setPlayerAction(entity, "idle");
     }
-    entity.mixer.update(delta);
+    if (entity.mixer) entity.mixer.update(delta);
   }
 }
 
@@ -718,44 +875,78 @@ function pointerToWorld(event) {
   return raycaster.ray.intersectPlane(floorHit, hitPoint) ? hitPoint.clone() : null;
 }
 
-async function uploadGlb(file) {
+// ============ Uploads ============
+async function uploadMapGlb(file) {
   if (!isAdmin) throw new Error("Apenas admin");
-  const bytes = await file.arrayBuffer();
-  const response = await fetch(`/assets/upload?name=${encodeURIComponent(file.name)}&id=${encodeURIComponent(myId)}`, {
-    method: "POST",
-    headers: { "Content-Type": "model/gltf-binary" },
-    body: bytes
+  const path = `${myId}/${Date.now()}-${sanitize(file.name)}`;
+  const { error } = await supabase.storage.from("map-assets").upload(path, file, {
+    contentType: "model/gltf-binary",
+    upsert: false,
   });
-  if (!response.ok) throw new Error("Falha ao importar GLB");
-  selectedAsset = await response.json();
-  placeButton.disabled = !isAdmin;
+  if (error) throw error;
+  const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
+  selectedAsset = { name: file.name, url: data.publicUrl };
   placementMode = true;
   movingAssetId = "";
+  placeButton.disabled = false;
   placeButton.classList.add("is-active");
-  updateAssetList([]);
+  updateAssetList(currentAssets);
+  addSystemLine(`${file.name} pronto pra colocar no mapa. Clique no chão.`);
+}
+
+async function uploadAvatar(file) {
+  if (!myId) return;
+  const path = `${myId}/avatar-${Date.now()}.glb`;
+  const { error } = await supabase.storage.from("avatars").upload(path, file, {
+    contentType: "model/gltf-binary",
+    upsert: true,
+  });
+  if (error) {
+    addSystemLine("Não consegui subir o avatar: " + error.message);
+    return;
+  }
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", myId);
+  me.avatar_url = data.publicUrl;
+  const myEntity = playerEntities.get(myId);
+  if (myEntity) applyAvatar(myEntity, data.publicUrl);
+  await trackMe();
+  addSystemLine("Avatar atualizado!");
+}
+
+function sanitize(name) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
 async function placeSelectedAsset(point) {
   if (!isAdmin || !selectedAsset) return;
-  await post("/assets/place", {
-    id: myId,
-    url: selectedAsset.url,
+  const { error } = await supabase.from("map_assets").insert({
     name: selectedAsset.name,
+    url: selectedAsset.url,
     x: Math.max(-8.5, Math.min(8.5, point.x)),
     z: Math.max(-6.5, Math.min(6.5, point.z)),
-    rotationY: 0,
-    scale: 1
+    rotation_y: 0,
+    scale: 1,
+    created_by: myId,
   });
+  if (error) addSystemLine("Falha ao colocar GLB: " + error.message);
 }
 
 async function updateAsset(assetId, patch) {
   if (!isAdmin) return;
-  await post("/assets/update", { id: myId, assetId, ...patch });
+  const dbPatch = {};
+  if (patch.x !== undefined) dbPatch.x = patch.x;
+  if (patch.z !== undefined) dbPatch.z = patch.z;
+  if (patch.rotationY !== undefined) dbPatch.rotation_y = patch.rotationY;
+  if (patch.scale !== undefined) dbPatch.scale = patch.scale;
+  const { error } = await supabase.from("map_assets").update(dbPatch).eq("id", assetId);
+  if (error) addSystemLine("Falha ao atualizar GLB: " + error.message);
 }
 
 async function deleteAsset(assetId) {
   if (!isAdmin) return;
-  await post("/assets/delete", { id: myId, assetId });
+  const { error } = await supabase.from("map_assets").delete().eq("id", assetId);
+  if (error) addSystemLine("Falha ao excluir GLB: " + error.message);
 }
 
 function exportCharacter() {
@@ -767,9 +958,10 @@ function exportCharacter() {
   exporter.parse(
     character,
     (result) => {
-      const blob = result instanceof ArrayBuffer
-        ? new Blob([result], { type: "model/gltf-binary" })
-        : new Blob([JSON.stringify(result, null, 2)], { type: "model/gltf+json" });
+      const blob =
+        result instanceof ArrayBuffer
+          ? new Blob([result], { type: "model/gltf-binary" })
+          : new Blob([JSON.stringify(result, null, 2)], { type: "model/gltf+json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -782,10 +974,11 @@ function exportCharacter() {
       console.error(error);
       addSystemLine("Não consegui exportar o personagem.");
     },
-    { binary: true, animations }
+    { binary: true, animations },
   );
 }
 
+// ============ Animation loop ============
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
@@ -793,13 +986,15 @@ function animate() {
   updatePlayerAnimation(delta);
   if (followCamera && myId) {
     const entity = playerEntities.get(myId);
-    if (entity) controls.target.lerp(new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z), delta * 2.2);
+    if (entity)
+      controls.target.lerp(new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z), delta * 2.2);
   }
   controls.update();
   renderer.render(scene, camera);
   updateNameplates();
 }
 
+// ============ Event wiring ============
 window.addEventListener("resize", resize);
 
 document.addEventListener("keydown", (event) => {
@@ -810,7 +1005,6 @@ document.addEventListener("keydown", (event) => {
     keyState.add(key);
   }
 });
-
 document.addEventListener("keyup", (event) => {
   keyState.delete(event.key.toLowerCase());
 });
@@ -821,7 +1015,7 @@ document.querySelectorAll("[data-step]").forEach((button) => {
       up: [0, -4, "up"],
       down: [0, 4, "down"],
       left: [-4, 0, "left"],
-      right: [4, 0, "right"]
+      right: [4, 0, "right"],
     };
     move(...steps[button.dataset.step]);
   });
@@ -833,7 +1027,7 @@ renderer.domElement.addEventListener("click", (event) => {
   if (isAdmin && movingAssetId) {
     updateAsset(movingAssetId, {
       x: Math.max(-8.5, Math.min(8.5, point.x)),
-      z: Math.max(-6.5, Math.min(6.5, point.z))
+      z: Math.max(-6.5, Math.min(6.5, point.z)),
     })
       .then(() => {
         movingAssetId = "";
@@ -843,23 +1037,30 @@ renderer.domElement.addEventListener("click", (event) => {
     return;
   }
   if (isAdmin && placementMode && selectedAsset) {
-    placeSelectedAsset(point).catch(() => addSystemLine("Não consegui colocar o GLB no mapa."));
+    placeSelectedAsset(point).catch(() => addSystemLine("Falha ao colocar."));
+    placementMode = false;
+    placeButton.classList.remove("is-active");
     return;
   }
   moveToWorld(point);
 });
 
-glbInput.addEventListener("change", () => {
+glbInput?.addEventListener("change", () => {
   if (!isAdmin) return;
   const file = glbInput.files?.[0];
   if (!file) return;
-  uploadGlb(file)
-    .then(() => addSystemLine(`${file.name} pronto para colocar no mapa.`))
-    .catch(() => addSystemLine("Escolha um arquivo .glb válido."));
+  uploadMapGlb(file).catch((e) => addSystemLine("Erro: " + (e?.message || "GLB inválido")));
   glbInput.value = "";
 });
 
-placeButton.addEventListener("click", () => {
+avatarInput?.addEventListener("change", () => {
+  const file = avatarInput.files?.[0];
+  if (!file) return;
+  uploadAvatar(file).catch((e) => addSystemLine("Erro avatar: " + (e?.message || "")));
+  avatarInput.value = "";
+});
+
+placeButton?.addEventListener("click", () => {
   if (!isAdmin || !selectedAsset) return;
   placementMode = !placementMode;
   if (placementMode) movingAssetId = "";
@@ -867,7 +1068,7 @@ placeButton.addEventListener("click", () => {
   updateAssetList(currentAssets);
 });
 
-exportButton.addEventListener("click", exportCharacter);
+exportButton?.addEventListener("click", exportCharacter);
 
 assetList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-asset-action]");
@@ -881,29 +1082,23 @@ assetList.addEventListener("click", (event) => {
     placementMode = false;
     placeButton.classList.remove("is-active");
     updateAssetList(currentAssets);
-    addSystemLine(movingAssetId ? `Clique no mapa para mover ${asset.name}.` : "Movimento de GLB cancelado.");
+    addSystemLine(movingAssetId ? `Clique no mapa para mover ${asset.name}.` : "Movimento cancelado.");
     return;
   }
-
   if (action === "rotate") {
-    updateAsset(asset.id, { rotationY: asset.rotationY + Math.PI / 4 }).catch(() => addSystemLine("Não consegui girar o GLB."));
+    updateAsset(asset.id, { rotationY: asset.rotationY + Math.PI / 4 });
     return;
   }
-
   if (action === "smaller") {
-    updateAsset(asset.id, { scale: Math.max(0.15, asset.scale - 0.15) }).catch(() => addSystemLine("Não consegui diminuir o GLB."));
+    updateAsset(asset.id, { scale: Math.max(0.15, asset.scale - 0.15) });
     return;
   }
-
   if (action === "bigger") {
-    updateAsset(asset.id, { scale: Math.min(4, asset.scale + 0.15) }).catch(() => addSystemLine("Não consegui aumentar o GLB."));
+    updateAsset(asset.id, { scale: Math.min(4, asset.scale + 0.15) });
     return;
   }
-
   if (action === "delete") {
-    deleteAsset(asset.id)
-      .then(() => addSystemLine(`${asset.name} foi excluído do mapa.`))
-      .catch(() => addSystemLine("Não consegui excluir o GLB."));
+    deleteAsset(asset.id).then(() => addSystemLine(`${asset.name} removido.`));
   }
 });
 
@@ -912,15 +1107,33 @@ cameraButton.addEventListener("click", () => {
   cameraButton.textContent = followCamera ? "Câmera" : "Livre";
 });
 
-chatForm.addEventListener("submit", (event) => {
+chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const text = chatInput.value.trim();
-  if (!text || !myId) return;
+  if (!text || !myId || !me) return;
   chatInput.value = "";
-  post("/chat", { id: myId, text }).catch(() => {});
+  const { error } = await supabase.from("chat_messages").insert({
+    user_id: myId,
+    nickname: me.name,
+    color: me.color,
+    text,
+  });
+  if (error) addSystemLine("Falha ao enviar: " + error.message);
 });
 
-joinButton.addEventListener("click", connect);
+joinButton.addEventListener("click", saveNickname);
 nameInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") connect();
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveNickname();
+  }
 });
+
+async function saveNickname() {
+  if (!myId) return;
+  const newName = nameInput.value.trim() || "Visitante";
+  await supabase.from("profiles").update({ nickname: newName }).eq("id", myId);
+  me.name = newName;
+  await trackMe();
+  addSystemLine(`Apelido atualizado para ${newName}.`);
+}
