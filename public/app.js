@@ -1750,7 +1750,7 @@ function renderPlayers(nextPlayers) {
       applyCharacter(entity, desiredSlug);
     }
     entity.target.copy(worldFromPercent(player.x, player.y));
-    if (player.avatar_url && entity.avatarUrl !== player.avatar_url) {
+    if (!desiredSlug && player.avatar_url && entity.avatarUrl !== player.avatar_url) {
       applyAvatar(entity, player.avatar_url);
     }
     // Tint default character only while using the built-in fallback mannequin.
