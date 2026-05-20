@@ -1182,6 +1182,7 @@ async function loadInitialChat() {
   const { data } = await supabase
     .from("chat_messages")
     .select("*")
+    .eq("map_id", currentMapId)
     .order("created_at", { ascending: true })
     .limit(80);
   (data || []).forEach((m) => addMessage({ name: m.nickname, color: m.color, text: m.text }));
