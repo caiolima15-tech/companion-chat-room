@@ -796,12 +796,53 @@ function updateConfirmMapButton() {
   confirmMapButton.disabled = !selectedMapId;
 }
 mapGrid?.addEventListener("click", (e) => {
+  const editBtn = e.target.closest('[data-action="edit-map-thumb"]');
+  if (editBtn) {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    pickAndUploadMapThumb(editBtn.dataset.mapId);
+    return;
+  }
   const tile = e.target.closest("[data-map-id]");
   if (!tile) return;
   selectedMapId = tile.dataset.mapId;
   renderMapTiles();
   updateConfirmMapButton();
 });
+
+async function pickAndUploadMapThumb(mapId) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Imagem muito grande (máx 5MB)."); return; }
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `thumbnails/${mapId}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("map-assets")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      const url = pub.publicUrl;
+      const { error: dbErr } = await supabase.from("map_thumbnails").upsert({
+        map_id: mapId,
+        thumb_url: url,
+        updated_by: myId,
+      });
+      if (dbErr) throw dbErr;
+      mapThumbs[mapId] = url;
+      renderMapTiles();
+      addSystemLine(`Foto da sala "${MAPS.find((m) => m.id === mapId)?.name || mapId}" atualizada.`);
+    } catch (err) {
+      console.error(err);
+      alert("Não foi possível atualizar a foto: " + (err.message || err));
+    }
+  };
+  input.click();
+}
 mapSelectBack?.addEventListener("click", () => {
   closeMapSelect();
   // Se ainda não entrou na sala, volta pra escolher personagem
