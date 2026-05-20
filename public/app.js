@@ -1210,7 +1210,7 @@ async function connectRealtime() {
     if (token) supabase.realtime.setAuth(token);
   } catch {}
 
-  // Map assets via postgres changes
+  // Map assets via postgres changes (global — não muda por sala)
   if (mapChannel) await supabase.removeChannel(mapChannel);
   mapChannel = supabase
     .channel("room-map")
@@ -1219,18 +1219,25 @@ async function connectRealtime() {
     })
     .subscribe();
 
-  // Chat via postgres changes
+  await setupLobbyChannel();
+  await setupRoomChannels(currentMapId);
+}
+
+// === Canais por-sala (chat / presence / movement) ===
+async function setupRoomChannels(mapId) {
+  currentRoomChannelsMapId = mapId;
+
+  // Chat via postgres changes — filtra só esta sala
   if (chatChannel) await supabase.removeChannel(chatChannel);
   chatChannel = supabase
-    .channel("room-chat")
+    .channel(`room-chat:${mapId}`)
     .on(
       "postgres_changes",
-      { event: "INSERT", schema: "public", table: "chat_messages" },
+      { event: "INSERT", schema: "public", table: "chat_messages", filter: `map_id=eq.${mapId}` },
       (payload) => {
         const m = payload.new;
         addMessage({ name: m.nickname, color: m.color, text: m.text });
         // Set speech bubble briefly
-        const entity = playerEntities.get(m.user_id);
         const player = players.find((p) => p.id === m.user_id);
         if (player) {
           player.speech = m.text;
@@ -1248,9 +1255,9 @@ async function connectRealtime() {
     )
     .subscribe();
 
-  // Presence for players (join/leave roster)
+  // Presence — quem está nesta sala
   if (presenceChannel) await supabase.removeChannel(presenceChannel);
-  presenceChannel = supabase.channel("room-presence", {
+  presenceChannel = supabase.channel(`room-presence:${mapId}`, {
     config: { presence: { key: myId } },
   });
 
@@ -1262,7 +1269,6 @@ async function connectRealtime() {
         const entry = state[id][0];
         if (entry) list.push({ ...entry, id });
       }
-      // Preserve current positions for already-known players (broadcast owns x/y/facing/speech)
       const prev = new Map(players.map((p) => [p.id, p]));
       const merged = list.map((p) => {
         const old = prev.get(p.id);
@@ -1279,9 +1285,9 @@ async function connectRealtime() {
       }
     });
 
-  // Movimento em canal separado: mais rápido e não depende do refresh do presence
+  // Movimento — só desta sala
   if (movementChannel) await supabase.removeChannel(movementChannel);
-  movementChannel = supabase.channel("room-movement", {
+  movementChannel = supabase.channel(`room-movement:${mapId}`, {
     config: { broadcast: { self: false } },
   });
   movementChannel
@@ -1304,6 +1310,125 @@ async function connectRealtime() {
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
     .subscribe();
+
+  // Catálogo, user_avatars e profiles permanecem globais — definidos abaixo (uma vez).
+  await setupGlobalSecondaryChannels();
+}
+
+async function setupGlobalSecondaryChannels() {
+  // Catálogo de personagens (admin add/edit/delete)
+  if (!catalogChannel) {
+    catalogChannel = supabase
+      .channel("room-characters")
+      .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
+        await loadCharactersCatalog();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+      })
+      .subscribe();
+  }
+
+  // Avatares de usuários (Avaturn)
+  if (!userAvatarsChannel) {
+    userAvatarsChannel = supabase
+      .channel("room-user-avatars")
+      .on("postgres_changes", { event: "*", schema: "public", table: "user_avatars" }, async () => {
+        await loadUserAvatars();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+      })
+      .subscribe();
+  }
+
+  // Perfis — quando outro jogador troca nome / cor / personagem
+  if (!profilesChannel) {
+    profilesChannel = supabase
+      .channel("room-profiles")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "profiles" }, (payload) => {
+        const row = payload.new;
+        if (!row || row.id === myId) return;
+        const idx = players.findIndex((p) => p.id === row.id);
+        if (idx < 0) return;
+        const prev = players[idx];
+        const next = {
+          ...prev,
+          name: row.nickname ?? prev.name,
+          color: row.color ?? prev.color,
+          avatar_url: row.avatar_url ?? prev.avatar_url,
+          character_slug: row.character_slug ?? prev.character_slug,
+        };
+        players[idx] = next;
+        const entity = playerEntities.get(row.id);
+        if (entity) {
+          entity.player = next;
+          if (next.character_slug && next.character_slug !== prev.character_slug) {
+            applyCharacter(entity, next.character_slug);
+          }
+          updateNameplate(next);
+        }
+      })
+      .subscribe();
+  }
+}
+
+// === Lobby: presence global que conta quantos estão em cada sala ===
+async function setupLobbyChannel() {
+  if (lobbyChannel) await supabase.removeChannel(lobbyChannel);
+  lobbyChannel = supabase.channel("lobby", {
+    config: { presence: { key: myId } },
+  });
+  lobbyChannel
+    .on("presence", { event: "sync" }, () => {
+      const state = lobbyChannel.presenceState();
+      const counts = {};
+      for (const id of Object.keys(state)) {
+        const entry = state[id][0];
+        const m = entry?.map_id;
+        if (!m) continue;
+        counts[m] = (counts[m] || 0) + 1;
+      }
+      lobbyCounts = counts;
+      if (mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
+    })
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await lobbyChannel.track({ map_id: currentMapId });
+      }
+    });
+}
+
+async function trackLobby() {
+  if (!lobbyChannel) return;
+  try { await lobbyChannel.track({ map_id: currentMapId }); } catch {}
+}
+
+// === Trocar de sala em runtime ===
+async function switchRoom(newMapId) {
+  if (newMapId === currentRoomChannelsMapId) return;
+  // Tira do canal antigo: derruba presence/movement/chat
+  if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
+  if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
+  if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
+
+  // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
+  for (const [id, entity] of Array.from(playerEntities)) {
+    if (id === myId) continue;
+    scene.remove(entity.group);
+    entity.plate?.remove();
+    if (entity.loadingSpinner) entity.loadingSpinner.remove();
+    playerEntities.delete(id);
+  }
+  players = players.filter((p) => p.id === myId);
+
+  // Limpa o histórico do chat e carrega o da sala nova
+  if (chatLog) chatLog.innerHTML = "";
+
+  currentMapId = newMapId;
+  localStorage.setItem("neon-tap-room-map", newMapId);
+
+  await loadInitialChat();
+  await setupRoomChannels(newMapId);
+  await trackLobby();
+  addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
+}
 
   // Catálogo de personagens (admin add/edit/delete) — recarrega para todos
   if (catalogChannel) await supabase.removeChannel(catalogChannel);
