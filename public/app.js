@@ -1287,21 +1287,47 @@ assetList.addEventListener("click", (event) => {
     addSystemLine(movingAssetId ? `Clique no mapa para mover ${asset.name}.` : "Movimento cancelado.");
     return;
   }
-  if (action === "rotate") {
-    updateAsset(asset.id, { rotationY: asset.rotationY + Math.PI / 4 });
-    return;
-  }
-  if (action === "smaller") {
-    updateAsset(asset.id, { scale: Math.max(0.15, asset.scale - 0.15) });
-    return;
-  }
-  if (action === "bigger") {
-    updateAsset(asset.id, { scale: Math.min(4, asset.scale + 0.15) });
+  if (action === "edit") {
+    editingAssetId = editingAssetId === asset.id ? "" : asset.id;
+    updateAssetList(currentAssets);
     return;
   }
   if (action === "delete") {
+    if (editingAssetId === asset.id) editingAssetId = "";
     deleteAsset(asset.id).then(() => addSystemLine(`${asset.name} removido.`));
   }
+});
+
+assetList.addEventListener("input", (event) => {
+  const input = event.target.closest("input[data-asset-field]");
+  if (!input || !isAdmin) return;
+  const asset = currentAssets.find((item) => item.id === input.dataset.assetId);
+  if (!asset) return;
+  const field = input.dataset.assetField;
+  let value = parseFloat(input.value);
+  if (Number.isNaN(value)) return;
+  const patch = {};
+  if (field === "rotationX" || field === "rotationY" || field === "rotationZ") {
+    patch[field] = (value * Math.PI) / 180;
+  } else {
+    patch[field] = value;
+  }
+  // Atualiza valor exibido ao lado
+  const valueEl = input.parentElement?.querySelector(".asset-slider-value");
+  if (valueEl) valueEl.textContent = value.toFixed(2);
+  // Atualiza cache local pra render imediato e evita reset do slider
+  Object.assign(asset, patch);
+  // Render local imediato
+  const object = assetObjects.get(asset.id);
+  if (object) {
+    object.position.set(asset.x, asset.y, asset.z);
+    object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+    if (object.userData.baseScale)
+      object.scale.setScalar(object.userData.baseScale * asset.scale);
+  }
+  // Debounce do update no banco
+  clearTimeout(updateAsset._t);
+  updateAsset._t = setTimeout(() => updateAsset(asset.id, patch), 120);
 });
 
 cameraButton.addEventListener("click", () => {
