@@ -743,9 +743,18 @@ const mapGrid = document.querySelector("#mapGrid");
 const confirmMapButton = document.querySelector("#confirmMapButton");
 const mapSelectBack = document.querySelector("#mapSelectBack");
 
+const mapThumbs = {}; // { [mapId]: thumb_url }
+
+async function loadMapThumbs() {
+  const { data, error } = await supabase.from("map_thumbnails").select("map_id, thumb_url");
+  if (error) { console.warn("[mapThumbs] load", error); return; }
+  for (const row of data || []) mapThumbs[row.map_id] = row.thumb_url;
+}
+
 function openMapSelect() {
   if (!mapSelectOverlay) return;
   selectedMapId = currentMapId;
+  loadMapThumbs().finally(() => renderMapTiles());
   renderMapTiles();
   updateConfirmMapButton();
   mapSelectOverlay.hidden = false;
@@ -761,13 +770,22 @@ function renderMapTiles() {
     const count = lobbyCounts[m.id] || 0;
     const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
     const isCurrent = currentRoomChannelsMapId === m.id;
+    const customThumb = mapThumbs[m.id];
+    const thumbInner = customThumb
+      ? `<img src="${escapeHtml(customThumb)}" alt="${escapeHtml(m.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`
+      : `<span style="font-size:32px;">${m.thumb}</span>`;
+    const editBtn = isAdmin
+      ? `<button class="map-tile-edit" data-action="edit-map-thumb" data-map-id="${m.id}" title="Trocar foto" aria-label="Trocar foto"
+            style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:13px;line-height:24px;text-align:center;cursor:pointer;z-index:3;padding:0;">✎</button>`
+      : "";
     return `
-      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;">
-        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;">
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;overflow:hidden;">
+        ${editBtn}
+        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;z-index:2;">
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
-        <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
+        <div class="char-tile-thumb" style="display:flex;align-items:center;justify-content:center;overflow:hidden;">${thumbInner}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
       </div>`;
@@ -778,12 +796,53 @@ function updateConfirmMapButton() {
   confirmMapButton.disabled = !selectedMapId;
 }
 mapGrid?.addEventListener("click", (e) => {
+  const editBtn = e.target.closest('[data-action="edit-map-thumb"]');
+  if (editBtn) {
+    e.stopPropagation();
+    if (!isAdmin) return;
+    pickAndUploadMapThumb(editBtn.dataset.mapId);
+    return;
+  }
   const tile = e.target.closest("[data-map-id]");
   if (!tile) return;
   selectedMapId = tile.dataset.mapId;
   renderMapTiles();
   updateConfirmMapButton();
 });
+
+async function pickAndUploadMapThumb(mapId) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert("Imagem muito grande (máx 5MB)."); return; }
+    try {
+      const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const path = `thumbnails/${mapId}-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from("map-assets")
+        .upload(path, file, { upsert: true, contentType: file.type });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      const url = pub.publicUrl;
+      const { error: dbErr } = await supabase.from("map_thumbnails").upsert({
+        map_id: mapId,
+        thumb_url: url,
+        updated_by: myId,
+      });
+      if (dbErr) throw dbErr;
+      mapThumbs[mapId] = url;
+      renderMapTiles();
+      addSystemLine(`Foto da sala "${MAPS.find((m) => m.id === mapId)?.name || mapId}" atualizada.`);
+    } catch (err) {
+      console.error(err);
+      alert("Não foi possível atualizar a foto: " + (err.message || err));
+    }
+  };
+  input.click();
+}
 mapSelectBack?.addEventListener("click", () => {
   closeMapSelect();
   // Se ainda não entrou na sala, volta pra escolher personagem
