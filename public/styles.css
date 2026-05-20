@@ -589,8 +589,7 @@ input:focus {
   }
 
   /* Emote cluster floats as its own popover */
-  .world-hud .emote-cluster { display: none; }
-  .mobile-emote-pop {
+  #emoteCluster {
     position: absolute;
     left: 50%; bottom: 70px;
     transform: translate(-50%, 12px);
@@ -605,11 +604,11 @@ input:focus {
     opacity: 0; pointer-events: none;
     transition: transform .2s ease, opacity .2s ease;
   }
-  body.mobile-show-emotes .mobile-emote-pop {
+  body.mobile-show-emotes #emoteCluster {
     opacity: 1; pointer-events: auto;
     transform: translate(-50%, 0);
   }
-  .mobile-emote-pop button {
+  #emoteCluster button {
     width: 44px; height: 44px;
     border-radius: 50%;
     font-size: 1.3rem;
