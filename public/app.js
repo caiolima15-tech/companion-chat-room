@@ -355,6 +355,13 @@ function rowToAsset(row) {
 }
 
 async function connectRealtime() {
+  // Garante que o websocket de realtime use o JWT atual (anon ou autenticado)
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) supabase.realtime.setAuth(token);
+  } catch {}
+
   // Map assets via postgres changes
   if (mapChannel) await supabase.removeChannel(mapChannel);
   mapChannel = supabase
