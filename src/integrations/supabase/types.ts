@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      characters: {
+        Row: {
+          base_url: string | null
+          created_at: string
+          dance_url: string | null
+          id: string
+          idle_url: string | null
+          jump_url: string | null
+          name: string
+          position: number
+          run_url: string | null
+          slug: string
+          thumbnail_url: string | null
+          updated_at: string
+          walk_url: string | null
+          wave_url: string | null
+        }
+        Insert: {
+          base_url?: string | null
+          created_at?: string
+          dance_url?: string | null
+          id?: string
+          idle_url?: string | null
+          jump_url?: string | null
+          name: string
+          position?: number
+          run_url?: string | null
+          slug: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          walk_url?: string | null
+          wave_url?: string | null
+        }
+        Update: {
+          base_url?: string | null
+          created_at?: string
+          dance_url?: string | null
+          id?: string
+          idle_url?: string | null
+          jump_url?: string | null
+          name?: string
+          position?: number
+          run_url?: string | null
+          slug?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          walk_url?: string | null
+          wave_url?: string | null
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           color: string
@@ -92,6 +143,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          character_slug: string | null
           color: string
           created_at: string
           id: string
@@ -99,6 +151,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          character_slug?: string | null
           color?: string
           created_at?: string
           id: string
@@ -106,6 +159,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          character_slug?: string | null
           color?: string
           created_at?: string
           id?: string
