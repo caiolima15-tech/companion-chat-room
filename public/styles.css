@@ -672,6 +672,7 @@ input:focus {
   background: radial-gradient(ellipse at top, rgba(30, 0, 50, 0.92), rgba(8, 10, 14, 0.96));
   backdrop-filter: blur(14px);
 }
+.char-overlay[hidden] { display: none !important; }
 .char-card {
   width: min(640px, 100%);
   max-height: 92vh;
