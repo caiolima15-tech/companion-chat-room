@@ -970,11 +970,12 @@ async function applyCharacter(entity, slug) {
     for (const [name, clip] of Object.entries(clips)) {
       const action = entity.mixer.clipAction(clip);
       if (name === "dance") {
-        // Dança roda em loop até o jogador andar (cancela em setPlayerAction).
         action.setLoop(THREE.LoopRepeat, Infinity);
-      } else if (EMOTE_SLOTS.has(name) || name === "jump") {
+      } else if (EMOTE_SLOTS.has(name)) {
         action.setLoop(THREE.LoopOnce, 1);
-        action.clampWhenFinished = false;
+        // clampWhenFinished=true mantém o último frame durante o fadeOut,
+        // evitando o snap pro bind pose ("enterrado") entre wave→idle.
+        action.clampWhenFinished = true;
       }
       entity.actions[name] = action;
     }
