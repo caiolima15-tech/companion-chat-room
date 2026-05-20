@@ -1159,9 +1159,8 @@ function collidesAt(from, to) {
 const _occRay = new THREE.Raycaster();
 const _occDir = new THREE.Vector3();
 const _occFrom = new THREE.Vector3();
-const _fadedNow = new Set();
-const _fadedPrev = new Set();
 const FADE_OPACITY = 0.12;
+
 
 function setMeshFaded(mesh, faded) {
   if (!mesh.material) return;
