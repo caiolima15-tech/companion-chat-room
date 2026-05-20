@@ -161,7 +161,7 @@ scene.background = new THREE.Color("#0e1117");
 scene.fog = new THREE.Fog("#0e1117", 16, 36);
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90);
-camera.position.set(8.8, 8.4, 9.4);
+camera.position.set(4.6, 4.2, 5.0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -172,9 +172,9 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 4;
+controls.minDistance = 2.5;
 controls.maxDistance = 11;
-controls.target.set(0, 0.7, 0);
+controls.target.set(0, 1.0, 0);
 
 const stage = new THREE.Group();
 scene.add(stage);
