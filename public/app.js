@@ -995,7 +995,7 @@ async function applyCharacter(entity, slug) {
   if (!slug) return;
   if (entity.characterSlug === slug) return;
   if (entity.pendingCharacterSlug === slug) return;
-  const character = charactersCatalog.find((c) => c.slug === slug);
+  const character = findCharacterBySlug(slug);
   if (!character) {
     console.warn(`[applyCharacter] personagem "${slug}" não encontrado no catálogo`);
     return;
