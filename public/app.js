@@ -473,6 +473,151 @@ characterAdminClose?.addEventListener("click", () => {
   if (characterAdminOverlay) characterAdminOverlay.hidden = true;
 });
 
+// ===== Admin: gerenciar personagens =====
+const CHAR_SLOTS = [
+  { key: "base", label: "Base (modelo)", accept: ".fbx", ext: "fbx" },
+  { key: "idle", label: "Idle (parado)", accept: ".fbx", ext: "fbx" },
+  { key: "walk", label: "Walk (andar)", accept: ".fbx", ext: "fbx" },
+  { key: "run", label: "Run (correr)", accept: ".fbx", ext: "fbx" },
+  { key: "jump", label: "Jump (pular)", accept: ".fbx", ext: "fbx" },
+  { key: "dance", label: "Dance (dançar)", accept: ".fbx", ext: "fbx" },
+  { key: "wave", label: "Wave (acenar)", accept: ".fbx", ext: "fbx" },
+  { key: "thumbnail", label: "Miniatura", accept: "image/*", ext: "png" },
+];
+
+function openCharacterAdmin() {
+  if (!isAdmin) {
+    alert("Apenas admin pode gerenciar personagens.");
+    return;
+  }
+  if (!characterAdminOverlay) return;
+  characterAdminOverlay.hidden = false;
+  renderCharacterAdmin();
+}
+
+async function renderCharacterAdmin() {
+  if (!characterAdminList) return;
+  const { data, error } = await supabase
+    .from("characters")
+    .select("*")
+    .order("position", { ascending: true });
+  if (error) {
+    characterAdminList.innerHTML = `<div class="char-hint">Erro: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+  charactersCatalog = data || [];
+
+  characterAdminList.innerHTML = `
+    <div class="char-admin-row" style="background: rgba(41,211,189,0.08)">
+      <div class="char-admin-row-head">
+        <div class="char-admin-name">+ Novo personagem</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <input id="newCharName" type="text" placeholder="Nome (ex: Hero)" maxlength="40"
+          style="flex:1; min-width:160px; padding:8px; border-radius:6px; background:#1a1f2a; color:#fff; border:1px solid rgba(255,255,255,0.1);">
+        <input id="newCharSlug" type="text" placeholder="slug-único" maxlength="40"
+          style="flex:1; min-width:160px; padding:8px; border-radius:6px; background:#1a1f2a; color:#fff; border:1px solid rgba(255,255,255,0.1);">
+        <button id="createCharBtn" type="button" class="char-enter" style="padding:8px 14px;">Criar</button>
+      </div>
+    </div>
+  ` + charactersCatalog.map((c) => {
+    const thumb = c.thumbnail_url
+      ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="">`
+      : "🧍";
+    const slots = CHAR_SLOTS.map((s) => {
+      const urlKey = s.key === "thumbnail" ? "thumbnail_url" : `${s.key}_url`;
+      const hasUrl = !!c[urlKey];
+      return `
+        <div class="char-slot">
+          <div class="char-slot-label">${s.label}</div>
+          <div class="char-slot-status ${hasUrl ? "ok" : "empty"}">${hasUrl ? "✓ ok" : "vazio"}</div>
+          <label class="file-picker">
+            <input type="file" accept="${s.accept}" data-char-slug="${escapeHtml(c.slug)}" data-char-slot="${s.key}">
+            ${hasUrl ? "Trocar" : "Subir"}
+          </label>
+        </div>`;
+    }).join("");
+    return `
+      <div class="char-admin-row" data-row-slug="${escapeHtml(c.slug)}">
+        <div class="char-admin-row-head">
+          <div class="char-admin-thumb">${thumb}</div>
+          <div style="flex:1">
+            <div class="char-admin-name">${escapeHtml(c.name)}</div>
+            <div class="char-admin-slug">${escapeHtml(c.slug)}</div>
+          </div>
+          <button type="button" class="auth-link" data-delete-char="${escapeHtml(c.slug)}" style="color:#ff6b6b;">Remover</button>
+        </div>
+        <div class="char-admin-grid">${slots}</div>
+      </div>`;
+  }).join("");
+
+  characterAdminList.querySelectorAll("input[type=file][data-char-slug]").forEach((inp) => {
+    inp.addEventListener("change", () => handleCharacterUpload(inp));
+  });
+  characterAdminList.querySelectorAll("[data-delete-char]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const slug = btn.getAttribute("data-delete-char");
+      if (!confirm(`Remover personagem "${slug}"?`)) return;
+      const { error } = await supabase.from("characters").delete().eq("slug", slug);
+      if (error) { alert(error.message); return; }
+      await renderCharacterAdmin();
+      await loadCharactersCatalog();
+    });
+  });
+  const createBtn = characterAdminList.querySelector("#createCharBtn");
+  createBtn?.addEventListener("click", async () => {
+    const name = characterAdminList.querySelector("#newCharName").value.trim();
+    const slug = characterAdminList.querySelector("#newCharSlug").value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
+    if (!name || !slug) { alert("Preencha nome e slug."); return; }
+    const nextPos = (charactersCatalog.reduce((m, c) => Math.max(m, c.position || 0), 0) || 0) + 1;
+    const { error } = await supabase.from("characters").insert({ slug, name, position: nextPos });
+    if (error) { alert(error.message); return; }
+    await renderCharacterAdmin();
+    await loadCharactersCatalog();
+  });
+}
+
+async function handleCharacterUpload(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  const slug = input.getAttribute("data-char-slug");
+  const slotKey = input.getAttribute("data-char-slot");
+  const slotDef = CHAR_SLOTS.find((s) => s.key === slotKey);
+  const ext = file.name.split(".").pop()?.toLowerCase() || slotDef.ext;
+  const path = `${slug}/${slotKey}.${ext}`;
+  const status = input.closest(".char-slot")?.querySelector(".char-slot-status");
+  if (status) { status.textContent = "enviando..."; status.className = "char-slot-status"; }
+  try {
+    const { error: upErr } = await supabase.storage
+      .from("characters")
+      .upload(path, file, { upsert: true, contentType: file.type || "application/octet-stream" });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
+    const url = `${pub.publicUrl}?v=${Date.now()}`;
+    const patch = {};
+    if (slotKey === "thumbnail") patch.thumbnail_url = url;
+    else {
+      patch[`${slotKey}_url`] = url;
+      const cur = charactersCatalog.find((c) => c.slug === slug);
+      if (slotKey === "idle" && !cur?.base_url) patch.base_url = url;
+      if (slotKey === "base") patch.base_url = url;
+    }
+    const { error: dbErr } = await supabase.from("characters").update(patch).eq("slug", slug);
+    if (dbErr) throw dbErr;
+    characterCache.delete(slug);
+    await renderCharacterAdmin();
+    await loadCharactersCatalog();
+  } catch (err) {
+    alert("Falha no upload: " + (err?.message || err));
+    if (status) { status.textContent = "erro"; status.className = "char-slot-status empty"; }
+  } finally {
+    input.value = "";
+  }
+}
+
+manageCharactersButton?.addEventListener("click", openCharacterAdmin);
+document.querySelector("#adminShortcut")?.addEventListener("click", openCharacterAdmin);
+
 // ============ Character loader (FBX + animations) ============
 // Usamos XHR direto (evita o wrapper de fetch da preview que quebra em arquivos grandes)
 function fetchFbxBuffer(url) {

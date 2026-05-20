@@ -824,3 +824,28 @@ input:focus {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .char-slot label.file-picker input { display: none; }
+
+.admin-shortcut {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1px solid rgba(41,211,189,0.5);
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4), 0 0 0 2px rgba(41,211,189,0.15);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.is-admin .admin-shortcut { display: flex; }
+.admin-shortcut:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 24px rgba(41,211,189,0.5);
+}
