@@ -367,6 +367,205 @@ function randomColor() {
   return palette[Math.floor(Math.random() * palette.length)];
 }
 
+// ============ Characters ============
+async function loadCharactersCatalog() {
+  const { data, error } = await supabase
+    .from("characters")
+    .select("*")
+    .order("position", { ascending: true });
+  if (error) {
+    console.warn("Não consegui carregar personagens", error);
+    charactersCatalog = [];
+    return;
+  }
+  charactersCatalog = data || [];
+}
+
+function openCharacterSelect() {
+  if (!characterSelectOverlay) return;
+  renderCharacterTiles();
+  characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
+  selectedCharacterSlug = me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || null;
+  updateEnterButtonState();
+  characterSelectOverlay.hidden = false;
+}
+function closeCharacterSelect() {
+  if (characterSelectOverlay) characterSelectOverlay.hidden = true;
+}
+
+function renderCharacterTiles() {
+  if (!characterGrid) return;
+  if (!charactersCatalog.length) {
+    characterGrid.innerHTML = `<div class="char-hint">Nenhum personagem disponível ainda.</div>`;
+    return;
+  }
+  characterGrid.innerHTML = charactersCatalog
+    .map((c) => {
+      const isSelected = selectedCharacterSlug === c.slug;
+      const ready = !!c.base_url;
+      const thumb = c.thumbnail_url
+        ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="${escapeHtml(c.name)}">`
+        : "🧍";
+      return `
+        <div class="char-tile ${isSelected ? "is-selected" : ""} ${ready ? "" : "is-disabled"}"
+             data-character-slug="${escapeHtml(c.slug)}">
+          <div class="char-tile-thumb">${thumb}</div>
+          <div class="char-tile-name">${escapeHtml(c.name)}</div>
+          ${ready ? "" : `<div class="char-tile-warn">Sem arquivos</div>`}
+        </div>`;
+    })
+    .join("");
+}
+
+function updateEnterButtonState() {
+  if (!enterRoomButton) return;
+  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  const hasFiles = !!character?.base_url;
+  enterRoomButton.disabled = !selectedCharacterSlug || !hasFiles;
+}
+
+characterGrid?.addEventListener("click", (event) => {
+  const tile = event.target.closest("[data-character-slug]");
+  if (!tile) return;
+  selectedCharacterSlug = tile.dataset.characterSlug;
+  renderCharacterTiles();
+  updateEnterButtonState();
+});
+
+enterRoomButton?.addEventListener("click", async () => {
+  if (!me || !selectedCharacterSlug) return;
+  const newName = (characterNicknameInput.value || "").trim() || "Visitante";
+  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  if (!character?.base_url) {
+    characterSelectError.hidden = false;
+    characterSelectError.textContent = "Esse personagem ainda não tem arquivos carregados.";
+    return;
+  }
+  characterSelectError.hidden = true;
+  me.name = newName;
+  me.character_slug = selectedCharacterSlug;
+  localStorage.setItem("neon-tap-room-nickname", newName);
+  localStorage.setItem("neon-tap-room-character", selectedCharacterSlug);
+  nameInput.value = newName;
+  // Salva no banco (upsert pra cobrir o caso do profile ainda não existir)
+  await supabase.from("profiles").upsert({
+    id: me.id,
+    nickname: newName,
+    color: me.color,
+    character_slug: selectedCharacterSlug,
+  });
+  closeCharacterSelect();
+  // Se já estávamos na sala, atualiza meu próprio entity
+  const myEntity = playerEntities.get(myId);
+  if (myEntity) {
+    await applyCharacter(myEntity, selectedCharacterSlug);
+    await trackMe();
+  } else {
+    await enterRoom();
+  }
+});
+
+changeCharacterButton?.addEventListener("click", () => {
+  openCharacterSelect();
+});
+
+// ============ Character loader (FBX + animations) ============
+function loadCharacterAssets(character) {
+  if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
+  if (characterCache.has(character.slug)) return characterCache.get(character.slug);
+  const promise = (async () => {
+    if (!character.base_url) throw new Error("Personagem sem base");
+    const baseFbx = await fbxLoader.loadAsync(character.base_url);
+    // Normaliza escala (Mixamo costuma vir em centímetros)
+    const box = new THREE.Box3().setFromObject(baseFbx);
+    const size = box.getSize(new THREE.Vector3());
+    const height = size.y || 1;
+    const targetHeight = 1.8;
+    const scale = targetHeight / height;
+    baseFbx.scale.setScalar(scale);
+    baseFbx.position.set(0, 0, 0);
+    baseFbx.traverse((child) => {
+      if (child.isMesh || child.isSkinnedMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          (Array.isArray(child.material) ? child.material : [child.material]).forEach((m) => {
+            m.side = THREE.FrontSide;
+          });
+        }
+      }
+    });
+    // Clip embutido no base (alguns Mixamo já vêm com idle no base) -> usado como idle padrão
+    const clips = {};
+    if (baseFbx.animations?.length) {
+      const c = baseFbx.animations[0].clone();
+      c.name = "idle";
+      clips.idle = c;
+    }
+    // Carrega animações separadas (substituem se houver)
+    const animSlots = ["idle", "walk", "run", "jump", "dance", "wave"];
+    await Promise.all(
+      animSlots.map(async (slot) => {
+        const url = character[`${slot}_url`];
+        if (!url) return;
+        try {
+          const fbx = await fbxLoader.loadAsync(url);
+          const clip = fbx.animations?.[0];
+          if (clip) {
+            const renamed = clip.clone();
+            renamed.name = slot;
+            clips[slot] = renamed;
+          }
+        } catch (e) {
+          console.warn(`Falha ao carregar animação ${slot} de ${character.slug}`, e);
+        }
+      }),
+    );
+    return { base: baseFbx, clips, scale };
+  })();
+  characterCache.set(character.slug, promise);
+  promise.catch(() => characterCache.delete(character.slug));
+  return promise;
+}
+
+async function applyCharacter(entity, slug) {
+  if (!slug || entity.characterSlug === slug) return;
+  const character = charactersCatalog.find((c) => c.slug === slug);
+  if (!character) return;
+  try {
+    const { base, clips } = await loadCharacterAssets(character);
+    const cloned = cloneSkeleton(base);
+    cloned.scale.copy(base.scale);
+    cloned.position.set(0, 0, 0);
+    // Remove personagem antigo
+    if (entity.character) entity.group.remove(entity.character);
+    entity.character = cloned;
+    entity.group.add(cloned);
+    entity.mixer = new THREE.AnimationMixer(cloned);
+    entity.actions = {};
+    for (const [name, clip] of Object.entries(clips)) {
+      const action = entity.mixer.clipAction(clip);
+      if (EMOTE_SLOTS.has(name) || name === "jump") {
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = false;
+      }
+      entity.actions[name] = action;
+    }
+    entity.currentAction = null;
+    entity.characterSlug = slug;
+    entity.emoteUntil = 0;
+    entity.mixer.addEventListener("finished", (e) => {
+      if (entity.emoteAction === e.action) {
+        entity.emoteAction = null;
+        entity.emoteUntil = 0;
+      }
+    });
+    setPlayerAction(entity, "idle");
+  } catch (err) {
+    console.warn("Falha ao aplicar personagem", err);
+  }
+}
+
 // ============ Realtime ============
 async function loadInitialAssets() {
   const { data } = await supabase.from("map_assets").select("*").order("created_at");
