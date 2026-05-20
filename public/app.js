@@ -2008,6 +2008,7 @@ function updatePlayerAnimation(delta) {
       setPlayerAction(entity, "idle");
     }
     if (entity.mixer) entity.mixer.update(delta);
+    if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
 
@@ -2023,6 +2024,10 @@ function updateNameplates() {
     const visible = projected.z > -1 && projected.z < 1;
     entity.plate.style.opacity = visible ? "1" : "0";
     entity.plate.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+    if (entity.loadingSpinner) {
+      entity.loadingSpinner.style.opacity = visible ? "1" : "0";
+      entity.loadingSpinner.style.transform = `translate(${x}px, ${y + 40}px) translate(-50%, -50%)`;
+    }
   }
 }
 
