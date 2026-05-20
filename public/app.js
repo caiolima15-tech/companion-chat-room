@@ -762,7 +762,9 @@ function collectBoneNames(root) {
 
 // Renomeia tracks de um clip para casar com os bones do alvo
 // (ex.: Mixamo FBX usa "mixamorigHips" e o GLB usa "Hips")
-function retargetClipToBones(clip, targetBoneNames) {
+// opts.stripRootRotation: remove a rotação absoluta do Hips para evitar que
+// o avatar GLB "deite" quando recebe clips Mixamo cuja bind pose difere.
+function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -779,6 +781,11 @@ function retargetClipToBones(clip, targetBoneNames) {
       if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
     }
     if (!targetBoneNames.has(candidate)) continue;
+    // Strip rotação/posição absoluta do Hips: mantém só animação relativa dos
+    // membros, evitando que o personagem tombe ou afunde no chão.
+    if (opts.stripRootRotation && /hips?$/i.test(candidate)) {
+      if (prop === ".quaternion" || prop === ".position") continue;
+    }
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
@@ -874,12 +881,8 @@ function loadCharacterAssets(character) {
       }
     }
 
-    // GLBs como o avatar Caio já vêm em pé na bind pose; aplicar FBX Mixamo
-    // externo neles é o que estava deitando/enterrando o mesh. Mantém idle neutro.
-    if (isGlb && !Object.keys(clips).length) {
-      clips.idle = new THREE.AnimationClip("idle", 1, []);
-      return { base, clips, scale };
-    }
+
+
 
     // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
     await Promise.all(
@@ -892,8 +895,11 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          let retarg = bakeRetargetMixamoClip(base, src, clip);
-          if (!retarg) retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          // Para GLBs: pular o bake (gera bind-pose mismatch -> deita) e
+          // aplicar rename-only descartando a rotação absoluta do Hips.
+          let retarg = null;
+          if (!isGlb) retarg = bakeRetargetMixamoClip(base, src, clip);
+          if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
@@ -902,6 +908,10 @@ function loadCharacterAssets(character) {
         }
       }),
     );
+
+    // Fallback mínimo: garante slot "idle" se nada carregou.
+    if (!clips.idle) clips.idle = new THREE.AnimationClip("idle", 1, []);
+
 
     return { base, clips, scale };
   })();
