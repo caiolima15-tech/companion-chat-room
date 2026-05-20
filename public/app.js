@@ -2620,8 +2620,33 @@ function animate() {
   }
   controls.update();
   updateCameraOcclusion();
+  updateDoors(delta);
   renderer.render(scene, camera);
   updateNameplates();
+}
+
+function updateDoors(delta) {
+  if (!activeDoors.length) return;
+  // Pega posição do meu jogador (ou de qualquer um próximo) p/ acionar
+  let myPos = null;
+  if (myId) {
+    const ent = playerEntities.get(myId);
+    if (ent) myPos = ent.group.position;
+  }
+  for (const door of activeDoors) {
+    let minDist = Infinity;
+    if (myPos) minDist = Math.hypot(myPos.x - door.center.x, myPos.z - door.center.z);
+    // Considera também outros players próximos (faz a porta abrir pra todos)
+    for (const ent of playerEntities.values()) {
+      const d = Math.hypot(ent.group.position.x - door.center.x, ent.group.position.z - door.center.z);
+      if (d < minDist) minDist = d;
+    }
+    if (!door.isOpen && minDist < door.triggerDist) door.isOpen = true;
+    else if (door.isOpen && minDist > door.releaseDist) door.isOpen = false;
+    const target = door.isOpen ? door.openAngle : 0;
+    door.currentAngle += (target - door.currentAngle) * Math.min(1, delta * 6.0);
+    door.pivot.rotation.y = door.currentAngle;
+  }
 }
 
 // ============ Event wiring ============
