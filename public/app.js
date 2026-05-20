@@ -974,15 +974,17 @@ function applyHeldMovement() {
 }
 
 function updatePlayerAnimation(delta) {
+  const speed = 1.4; // unidades por segundo (caminhada)
   for (const entity of playerEntities.values()) {
     const distance = entity.group.position.distanceTo(entity.target);
     if (distance > 0.025) {
       const before = entity.group.position.clone();
-      entity.group.position.lerp(entity.target, Math.min(1, delta * 8.5));
-      const after = entity.group.position;
-      const dir = after.clone().sub(before);
-      if (dir.lengthSq() > 0.00001) {
-        entity.group.rotation.y = Math.atan2(dir.x, dir.z);
+      const step = Math.min(distance, speed * delta);
+      const dir = entity.target.clone().sub(entity.group.position).normalize();
+      entity.group.position.addScaledVector(dir, step);
+      const moved = entity.group.position.clone().sub(before);
+      if (moved.lengthSq() > 0.00001) {
+        entity.group.rotation.y = Math.atan2(moved.x, moved.z);
       }
       setPlayerAction(entity, "walk");
     } else {
