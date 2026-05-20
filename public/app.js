@@ -115,6 +115,19 @@ const playerEntities = new Map(); // id -> { group, mixer, actions, currentActio
 const assetObjects = new Map();
 const keyState = new Set();
 
+// ============ Maps catalog ============
+const MAPS = [
+  { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
+  { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
+  { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
+  { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
+  { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
+  { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
+];
+let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
+let selectedMapId = currentMapId;
+
+
 // ============ Scene ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
