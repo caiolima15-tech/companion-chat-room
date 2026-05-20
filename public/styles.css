@@ -475,6 +475,7 @@ input:focus {
 }
 .chat-form button {
   background: #ec4899;
+  color: #ffffff;
 }
 
 .chat-log {
