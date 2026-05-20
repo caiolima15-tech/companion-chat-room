@@ -1082,6 +1082,61 @@ function collidesAt(from, to) {
   return false;
 }
 
+// ============ Camera occlusion (hide walls between camera and player) ============
+const _occRay = new THREE.Raycaster();
+const _occDir = new THREE.Vector3();
+const _occFrom = new THREE.Vector3();
+const _fadedNow = new Set();
+const _fadedPrev = new Set();
+const FADE_OPACITY = 0.12;
+
+function setMeshFaded(mesh, faded) {
+  if (!mesh.material) return;
+  if (faded) {
+    if (mesh.userData._origOpacity === undefined) {
+      mesh.userData._origOpacity = mesh.material.opacity ?? 1;
+      mesh.userData._origTransparent = mesh.material.transparent;
+      mesh.userData._origDepthWrite = mesh.material.depthWrite;
+    }
+    mesh.material.transparent = true;
+    mesh.material.opacity = FADE_OPACITY;
+    mesh.material.depthWrite = false;
+    mesh.material.needsUpdate = true;
+  } else if (mesh.userData._origOpacity !== undefined) {
+    mesh.material.opacity = mesh.userData._origOpacity;
+    mesh.material.transparent = mesh.userData._origTransparent;
+    mesh.material.depthWrite = mesh.userData._origDepthWrite;
+    mesh.material.needsUpdate = true;
+    delete mesh.userData._origOpacity;
+    delete mesh.userData._origTransparent;
+    delete mesh.userData._origDepthWrite;
+  }
+}
+
+function updateCameraOcclusion() {
+  _fadedNow.clear();
+  const entity = myId ? playerEntities.get(myId) : null;
+  if (entity && occluderMeshes.length) {
+    _occFrom.copy(camera.position);
+    _occDir.set(entity.group.position.x, entity.group.position.y + 1.1, entity.group.position.z).sub(_occFrom);
+    const dist = _occDir.length();
+    _occDir.normalize();
+    _occRay.set(_occFrom, _occDir);
+    _occRay.far = dist;
+    const hits = _occRay.intersectObjects(occluderMeshes, false);
+    for (const h of hits) {
+      if (h.distance < dist - 0.4) _fadedNow.add(h.object);
+    }
+  }
+  // Apply / restore
+  for (const m of _fadedNow) if (!_fadedPrev.has(m)) setMeshFaded(m, true);
+  for (const m of _fadedPrev) if (!_fadedNow.has(m)) setMeshFaded(m, false);
+  _fadedPrev.clear();
+  for (const m of _fadedNow) _fadedPrev.add(m);
+}
+
+
+
 // ============ Character ============
 function createCharacter(color = "#29d3bd") {
   const root = new THREE.Group();
