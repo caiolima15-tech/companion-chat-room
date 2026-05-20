@@ -1713,18 +1713,23 @@ function setPlayerAction(entity, name) {
 
 function playEmote(entity, slot) {
   if (!entity?.actions?.[slot]) return;
-  // para tudo e roda o emote uma vez
   if (entity.currentAction && entity.actions[entity.currentAction]) {
     entity.actions[entity.currentAction].fadeOut(0.12);
   }
   const action = entity.actions[slot];
   action.reset();
-  action.setLoop(THREE.LoopOnce, 1);
-  action.clampWhenFinished = false;
+  if (slot === "dance") {
+    action.setLoop(THREE.LoopRepeat, Infinity);
+    action.clampWhenFinished = false;
+  } else {
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = false;
+  }
   action.fadeIn(0.12).play();
   entity.emoteAction = action;
   entity.currentAction = null;
 }
+
 
 function triggerLocalEmote(slot) {
   if (!me || !myId) return;
