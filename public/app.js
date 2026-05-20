@@ -75,6 +75,7 @@ let players = []; // all current players including me
 let selectedAsset = null;
 let placementMode = false;
 let movingAssetId = "";
+let editingAssetId = "";
 let followCamera = true;
 let lastMoveSent = 0;
 let isAdmin = false;
@@ -349,8 +350,11 @@ function rowToAsset(row) {
     name: row.name,
     url: row.url,
     x: row.x,
+    y: row.y ?? 0,
     z: row.z,
+    rotationX: row.rotation_x ?? 0,
     rotationY: row.rotation_y,
+    rotationZ: row.rotation_z ?? 0,
     scale: row.scale,
   };
 }
@@ -817,8 +821,8 @@ function renderAssets(assets = []) {
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
-      object.position.set(asset.x, 0, asset.z);
-      object.rotation.y = asset.rotationY;
+      object.position.set(asset.x, asset.y, asset.z);
+      object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
       continue;
@@ -829,8 +833,8 @@ function renderAssets(assets = []) {
         const object = gltf.scene;
         object.name = asset.name;
         normalizeImportedObject(object, asset.scale);
-        object.position.set(asset.x, 0, asset.z);
-        object.rotation.y = asset.rotationY;
+        object.position.set(asset.x, asset.y, asset.z);
+        object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         object.traverse((child) => {
           if (child.isMesh) {
             child.castShadow = true;
@@ -843,8 +847,8 @@ function renderAssets(assets = []) {
       undefined,
       () => {
         const fallback = makeFallbackAsset(asset.name, asset.scale);
-        fallback.position.set(asset.x, 0, asset.z);
-        fallback.rotation.y = asset.rotationY;
+        fallback.position.set(asset.x, asset.y, asset.z);
+        fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         scene.add(fallback);
         assetObjects.set(asset.id, fallback);
       },
@@ -887,21 +891,43 @@ function updateAssetList(assets) {
     return;
   }
   assetList.innerHTML = assets
-    .map(
-      (asset) => `
-    <div class="asset-pill">
+    .map((asset) => {
+      const isEditing = editingAssetId === asset.id;
+      const editorHtml = isEditing ? renderAssetEditor(asset) : "";
+      return `
+    <div class="asset-pill ${isEditing ? "is-editing" : ""}">
       <div class="asset-name">${escapeHtml(asset.name)}</div>
       <div class="asset-actions">
         <button type="button" data-asset-action="move" data-asset-id="${escapeHtml(asset.id)}" class="${movingAssetId === asset.id ? "is-active" : ""}">Mover</button>
-        <button type="button" data-asset-action="rotate" data-asset-id="${escapeHtml(asset.id)}">Girar</button>
-        <button type="button" data-asset-action="smaller" data-asset-id="${escapeHtml(asset.id)}">-</button>
-        <button type="button" data-asset-action="bigger" data-asset-id="${escapeHtml(asset.id)}">+</button>
+        <button type="button" data-asset-action="edit" data-asset-id="${escapeHtml(asset.id)}" class="${isEditing ? "is-active" : ""}">Editar</button>
         <button type="button" data-asset-action="delete" data-asset-id="${escapeHtml(asset.id)}">Excluir</button>
       </div>
+      ${editorHtml}
     </div>
-  `,
-    )
+  `;
+    })
     .join("");
+}
+
+function renderAssetEditor(asset) {
+  const id = escapeHtml(asset.id);
+  const row = (label, field, value, min, max, step) => `
+    <div class="asset-slider">
+      <span class="asset-slider-label">${label}</span>
+      <input type="range" data-asset-field="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
+      <span class="asset-slider-value">${Number(value).toFixed(2)}</span>
+    </div>`;
+  const deg = (r) => (r * 180) / Math.PI;
+  return `
+    <div class="asset-editor">
+      ${row("X", "x", asset.x, -12, 12, 0.05)}
+      ${row("Y (altura)", "y", asset.y, -2, 6, 0.05)}
+      ${row("Z", "z", asset.z, -10, 10, 0.05)}
+      ${row("Rot X (tomb.)", "rotationX", deg(asset.rotationX), -180, 180, 1)}
+      ${row("Rot Y (gira)", "rotationY", deg(asset.rotationY), -180, 180, 1)}
+      ${row("Rot Z (tomb.)", "rotationZ", deg(asset.rotationZ), -180, 180, 1)}
+      ${row("Escala", "scale", asset.scale, 0.1, 6, 0.05)}
+    </div>`;
 }
 
 // ============ Chat UI ============
@@ -1076,8 +1102,11 @@ async function placeSelectedAsset(point) {
     name: selectedAsset.name,
     url: selectedAsset.url,
     x: Math.max(-8.5, Math.min(8.5, point.x)),
+    y: 0,
     z: Math.max(-6.5, Math.min(6.5, point.z)),
+    rotation_x: 0,
     rotation_y: 0,
+    rotation_z: 0,
     scale: 1,
     created_by: myId,
   });
@@ -1088,8 +1117,11 @@ async function updateAsset(assetId, patch) {
   if (!isAdmin) return;
   const dbPatch = {};
   if (patch.x !== undefined) dbPatch.x = patch.x;
+  if (patch.y !== undefined) dbPatch.y = patch.y;
   if (patch.z !== undefined) dbPatch.z = patch.z;
+  if (patch.rotationX !== undefined) dbPatch.rotation_x = patch.rotationX;
   if (patch.rotationY !== undefined) dbPatch.rotation_y = patch.rotationY;
+  if (patch.rotationZ !== undefined) dbPatch.rotation_z = patch.rotationZ;
   if (patch.scale !== undefined) dbPatch.scale = patch.scale;
   const { error } = await supabase.from("map_assets").update(dbPatch).eq("id", assetId);
   if (error) addSystemLine("Falha ao atualizar GLB: " + error.message);
@@ -1255,21 +1287,47 @@ assetList.addEventListener("click", (event) => {
     addSystemLine(movingAssetId ? `Clique no mapa para mover ${asset.name}.` : "Movimento cancelado.");
     return;
   }
-  if (action === "rotate") {
-    updateAsset(asset.id, { rotationY: asset.rotationY + Math.PI / 4 });
-    return;
-  }
-  if (action === "smaller") {
-    updateAsset(asset.id, { scale: Math.max(0.15, asset.scale - 0.15) });
-    return;
-  }
-  if (action === "bigger") {
-    updateAsset(asset.id, { scale: Math.min(4, asset.scale + 0.15) });
+  if (action === "edit") {
+    editingAssetId = editingAssetId === asset.id ? "" : asset.id;
+    updateAssetList(currentAssets);
     return;
   }
   if (action === "delete") {
+    if (editingAssetId === asset.id) editingAssetId = "";
     deleteAsset(asset.id).then(() => addSystemLine(`${asset.name} removido.`));
   }
+});
+
+assetList.addEventListener("input", (event) => {
+  const input = event.target.closest("input[data-asset-field]");
+  if (!input || !isAdmin) return;
+  const asset = currentAssets.find((item) => item.id === input.dataset.assetId);
+  if (!asset) return;
+  const field = input.dataset.assetField;
+  let value = parseFloat(input.value);
+  if (Number.isNaN(value)) return;
+  const patch = {};
+  if (field === "rotationX" || field === "rotationY" || field === "rotationZ") {
+    patch[field] = (value * Math.PI) / 180;
+  } else {
+    patch[field] = value;
+  }
+  // Atualiza valor exibido ao lado
+  const valueEl = input.parentElement?.querySelector(".asset-slider-value");
+  if (valueEl) valueEl.textContent = value.toFixed(2);
+  // Atualiza cache local pra render imediato e evita reset do slider
+  Object.assign(asset, patch);
+  // Render local imediato
+  const object = assetObjects.get(asset.id);
+  if (object) {
+    object.position.set(asset.x, asset.y, asset.z);
+    object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+    if (object.userData.baseScale)
+      object.scale.setScalar(object.userData.baseScale * asset.scale);
+  }
+  // Debounce do update no banco
+  clearTimeout(updateAsset._t);
+  updateAsset._t = setTimeout(() => updateAsset(asset.id, patch), 120);
 });
 
 cameraButton.addEventListener("click", () => {

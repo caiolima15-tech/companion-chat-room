@@ -288,7 +288,7 @@ h1 {
 .asset-list {
   display: grid;
   gap: 6px;
-  max-height: 170px;
+  max-height: 50vh;
   overflow: auto;
   color: #e9edf5;
   font-size: 0.84rem;
@@ -312,8 +312,44 @@ h1 {
 
 .asset-actions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
+}
+
+.asset-pill.is-editing {
+  background: rgba(41, 211, 189, 0.12);
+  border: 1px solid rgba(41, 211, 189, 0.35);
+}
+
+.asset-editor {
+  display: grid;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.12);
+}
+
+.asset-slider {
+  display: grid;
+  grid-template-columns: 84px 1fr 44px;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.74rem;
+}
+
+.asset-slider-label {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.asset-slider input[type="range"] {
+  width: 100%;
+  accent-color: var(--teal);
+}
+
+.asset-slider-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
 }
 
 .asset-actions button {

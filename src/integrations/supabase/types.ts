@@ -47,11 +47,14 @@ export type Database = {
           created_by: string | null
           id: string
           name: string
+          rotation_x: number
           rotation_y: number
+          rotation_z: number
           scale: number
           updated_at: string
           url: string
           x: number
+          y: number
           z: number
         }
         Insert: {
@@ -59,11 +62,14 @@ export type Database = {
           created_by?: string | null
           id?: string
           name: string
+          rotation_x?: number
           rotation_y?: number
+          rotation_z?: number
           scale?: number
           updated_at?: string
           url: string
           x?: number
+          y?: number
           z?: number
         }
         Update: {
@@ -71,11 +77,14 @@ export type Database = {
           created_by?: string | null
           id?: string
           name?: string
+          rotation_x?: number
           rotation_y?: number
+          rotation_z?: number
           scale?: number
           updated_at?: string
           url?: string
           x?: number
+          y?: number
           z?: number
         }
         Relationships: []
