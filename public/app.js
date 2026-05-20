@@ -3,7 +3,33 @@ import { OrbitControls } from "/vendor/OrbitControls.js";
 import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
 import { FBXLoader } from "/vendor/FBXLoader.js";
-import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
+import { clone as cloneSkeleton, retargetClip as retargetClipBake } from "/vendor/utils/SkeletonUtils.js";
+
+// Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
+const SHARED_ANIM_LIBRARY = {
+  idle: "/assets/animations/idle.glb",
+  walk: "/assets/animations/walk.glb",
+  run: "/assets/animations/run.glb",
+  jump: "/assets/animations/jump.glb",
+  dance: "/assets/animations/dance.glb",
+  wave: "/assets/animations/wave.glb",
+};
+const sharedAnimSourceCache = new Map(); // url -> Promise<Object3D scene with .animations>
+function loadSharedAnimSource(url) {
+  if (!sharedAnimSourceCache.has(url)) {
+    sharedAnimSourceCache.set(
+      url,
+      (async () => {
+        const isGlb = /\.glb(\?|$)/i.test(url);
+        return isGlb ? await loadGlbAsScene(url) : await loadFbxFromUrl(url);
+      })().catch((e) => {
+        sharedAnimSourceCache.delete(url);
+        throw e;
+      }),
+    );
+  }
+  return sharedAnimSourceCache.get(url);
+}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // ============ Supabase ============
