@@ -693,6 +693,7 @@ input:focus {
     pointer-events: none;
     grid-template-rows: 0 minmax(0, 1fr) auto;
     padding: 0;
+    overflow: visible;
   }
   .chat-panel > * { pointer-events: auto; }
   .chat-panel .identity { display: none; }
