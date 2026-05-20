@@ -1018,6 +1018,7 @@ window.addEventListener("resize", resize);
 
 document.addEventListener("keydown", (event) => {
   if (event.target.matches("input")) return;
+  if (!event.key) return;
   const key = event.key.toLowerCase();
   if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
     event.preventDefault();
@@ -1025,6 +1026,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 document.addEventListener("keyup", (event) => {
+  if (!event.key) return;
   keyState.delete(event.key.toLowerCase());
 });
 
