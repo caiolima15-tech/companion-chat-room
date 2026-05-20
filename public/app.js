@@ -1144,7 +1144,7 @@ async function connectRealtime() {
     .on("broadcast", { event: "emote" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
       const entity = playerEntities.get(payload.id);
-      if (entity) playEmote(entity, payload.slot);
+      if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
     .subscribe();
 }
