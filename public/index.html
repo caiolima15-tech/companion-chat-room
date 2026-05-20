@@ -94,6 +94,34 @@
       </form>
     </div>
 
+    <!-- Character select overlay -->
+    <div id="characterSelectOverlay" class="char-overlay" hidden>
+      <div class="char-card">
+        <span class="kicker">Neon Tap Room</span>
+        <h2>Escolha seu vibe</h2>
+        <p class="char-hint">Selecione o personagem e digite seu apelido pra entrar.</p>
+        <div id="characterGrid" class="char-grid"></div>
+        <label class="char-nick">
+          <span>Apelido</span>
+          <input id="characterNickname" type="text" maxlength="18" placeholder="Seu nome">
+        </label>
+        <div id="characterSelectError" class="auth-error" hidden></div>
+        <button id="enterRoomButton" type="button" class="char-enter" disabled>Entrar na sala</button>
+      </div>
+    </div>
+
+    <!-- Admin: gerenciar personagens -->
+    <div id="characterAdminOverlay" class="char-overlay" hidden>
+      <div class="char-card char-admin">
+        <div class="char-admin-head">
+          <h2>Gerenciar personagens</h2>
+          <button id="characterAdminClose" type="button" class="auth-link">Fechar</button>
+        </div>
+        <p class="char-hint">Para cada personagem, suba os FBX (Mixamo) de cada animação e uma miniatura (PNG/JPG).</p>
+        <div id="characterAdminList" class="char-admin-list"></div>
+      </div>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>
