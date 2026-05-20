@@ -240,13 +240,23 @@ const keyState = new Set();
 
 // ============ Maps catalog ============
 const MAPS = [
-  { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
-  { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
-  { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
-  { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
-  { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
-  { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
+  { id: "bar",          name: "Bar Neon",     url: "/assets/maps/bar.glb",          mood: "night", bg: "#08090c", thumb: "🍻" },
+  { id: "barranco_bar", name: "Bar Barranco", url: "/assets/maps/barranco_bar.glb", mood: "night", bg: "#0c0a08", thumb: "🍷" },
+  { id: "old_bar",      name: "Bar Antigo",   url: "/assets/maps/old_bar.glb",      mood: "night", bg: "#1a120a", thumb: "🥃" },
+  { id: "milk_bar",     name: "Milk Bar",     url: "/assets/maps/milk_bar.glb",     mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
+  { id: "scifi",        name: "Sci-Fi",       url: "/assets/maps/scifi.glb",        mood: "night", bg: "#040814", thumb: "🛸" },
+  { id: "cinema",       name: "Cinema",       url: "/assets/maps/cinema.glb",       mood: "night", bg: "#0a0a14", thumb: "🎬" },
+  { id: "beach",        name: "Praia",        url: "/assets/maps/beach.glb",        mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
 ];
+
+// Portas com auto-abrir por aproximação (por mapa). hingeSide = 'min'|'max' do eixo `axis`.
+const MAP_DOORS = {
+  barranco_bar: [
+    { meshName: "Plane.048_bar_atlas_0", label: "Banheiro Masculino", axis: "x", hingeSide: "min", openAngle: -Math.PI / 2 },
+    { meshName: "Plane.049_bar_atlas_0", label: "Banheiro Feminino",  axis: "x", hingeSide: "max", openAngle:  Math.PI / 2 },
+  ],
+};
+const activeDoors = []; // { pivot, mesh, center, openAngle, currentAngle, label }
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
 let selectedMapId = currentMapId;
 
