@@ -743,9 +743,18 @@ const mapGrid = document.querySelector("#mapGrid");
 const confirmMapButton = document.querySelector("#confirmMapButton");
 const mapSelectBack = document.querySelector("#mapSelectBack");
 
+const mapThumbs = {}; // { [mapId]: thumb_url }
+
+async function loadMapThumbs() {
+  const { data, error } = await supabase.from("map_thumbnails").select("map_id, thumb_url");
+  if (error) { console.warn("[mapThumbs] load", error); return; }
+  for (const row of data || []) mapThumbs[row.map_id] = row.thumb_url;
+}
+
 function openMapSelect() {
   if (!mapSelectOverlay) return;
   selectedMapId = currentMapId;
+  loadMapThumbs().finally(() => renderMapTiles());
   renderMapTiles();
   updateConfirmMapButton();
   mapSelectOverlay.hidden = false;
@@ -761,13 +770,22 @@ function renderMapTiles() {
     const count = lobbyCounts[m.id] || 0;
     const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
     const isCurrent = currentRoomChannelsMapId === m.id;
+    const customThumb = mapThumbs[m.id];
+    const thumbInner = customThumb
+      ? `<img src="${escapeHtml(customThumb)}" alt="${escapeHtml(m.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`
+      : `<span style="font-size:32px;">${m.thumb}</span>`;
+    const editBtn = isAdmin
+      ? `<button class="map-tile-edit" data-action="edit-map-thumb" data-map-id="${m.id}" title="Trocar foto" aria-label="Trocar foto"
+            style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:26px;height:26px;font-size:13px;line-height:24px;text-align:center;cursor:pointer;z-index:3;padding:0;">✎</button>`
+      : "";
     return `
-      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;">
-        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;">
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;overflow:hidden;">
+        ${editBtn}
+        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;z-index:2;">
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
-        <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
+        <div class="char-tile-thumb" style="display:flex;align-items:center;justify-content:center;overflow:hidden;">${thumbInner}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
       </div>`;
