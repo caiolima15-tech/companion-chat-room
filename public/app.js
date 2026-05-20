@@ -975,6 +975,8 @@ function makeBox(name, size, position, color, options = {}) {
 const colliderMeshes = [];   // walls / counters / chairs — block movement
 const walkableMeshes = [];   // floor / stairs / ramps — drive Y height
 const occluderMeshes = [];   // any visible env mesh — candidates for camera occlusion fade
+const _fadedNow = new Set();
+const _fadedPrev = new Set();
 const _collRay = new THREE.Raycaster();
 const _collDir = new THREE.Vector3();
 const _collOrigin = new THREE.Vector3();
@@ -983,6 +985,7 @@ const _down = new THREE.Vector3(0, -1, 0);
 const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
+
 
 // Lighting groups we can swap when the map mood changes
 const lightingGroup = new THREE.Group();
