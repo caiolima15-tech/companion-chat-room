@@ -153,10 +153,8 @@ controls.target.set(0, 0.7, 0);
 const stage = new THREE.Group();
 scene.add(stage);
 
-buildMap();
-resize();
-renderPermissions();
-requestAnimationFrame(animate);
+// buildMap/resize/animate are kicked off at the bottom of the file,
+// after all module-scope consts they depend on are initialized (TDZ-safe).
 
 // ============ Auth bootstrap ============
 let authMode = "signin"; // or "signup"
