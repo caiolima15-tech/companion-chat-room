@@ -624,35 +624,17 @@ const avatarCreatorName = document.querySelector("#avatarCreatorName");
 const avatarCreatorStatus = document.querySelector("#avatarCreatorStatus");
 const avatarDropzone = document.querySelector("#avatarDropzone");
 
-const avatarCreatorIntro = document.querySelector("#avatarCreatorIntro");
-const avatarCreatorStart = document.querySelector("#avatarCreatorStart");
-const avatarCreatorFrame = document.querySelector("#avatarCreatorFrame");
-const avatarCreatorOpen = document.querySelector("#avatarCreatorOpen");
-const AVATURN_URL = "https://hub.avaturn.me/create/proceed";
-
-function resetAvatarCreatorIntro() {
-  if (avatarCreatorIntro) avatarCreatorIntro.style.display = "";
-  if (avatarCreatorFrame) avatarCreatorFrame.src = "about:blank";
-  if (avatarCreatorOpen) avatarCreatorOpen.style.display = "none";
-}
 function openAvatarCreator() {
   if (!avatarCreatorOverlay) return;
   avatarCreatorStatus.textContent = "";
   avatarCreatorStatus.style.color = "";
   avatarCreatorName.value = "";
   avatarCreatorFile.value = "";
-  resetAvatarCreatorIntro();
   avatarCreatorOverlay.hidden = false;
 }
 function closeAvatarCreator() {
   if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
-  resetAvatarCreatorIntro();
 }
-avatarCreatorStart?.addEventListener("click", () => {
-  if (avatarCreatorFrame) avatarCreatorFrame.src = AVATURN_URL;
-  if (avatarCreatorIntro) avatarCreatorIntro.style.display = "none";
-  if (avatarCreatorOpen) avatarCreatorOpen.style.display = "";
-});
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
 async function handleAvatarUpload(file) {
