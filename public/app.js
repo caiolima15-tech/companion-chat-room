@@ -2701,6 +2701,7 @@ chatForm.addEventListener("submit", async (event) => {
     nickname: me.name,
     color: me.color,
     text,
+    map_id: currentMapId,
   });
   if (error) {
     addSystemLine("Falha ao enviar: " + error.message);
