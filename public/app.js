@@ -828,9 +828,25 @@ function loadCharacterAssets(character) {
     const base = isGlb
       ? await loadGlbAsScene(character.base_url)
       : await loadFbxFromUrl(character.base_url);
+    // Detecta GLB exportado como Z-up (personagem "deitado") e endireita
+    let box = new THREE.Box3().setFromObject(base);
+    let size = box.getSize(new THREE.Vector3());
+    if (size.z > size.y * 1.3) {
+      // Envolve em pivot e rotaciona -90° em X para virar Y-up
+      const pivot = new THREE.Group();
+      pivot.rotation.x = -Math.PI / 2;
+      pivot.add(base);
+      // Substitui referência: continuamos chamando "base" pelo container que será clonado
+      base.userData.__zUpFixed = true;
+      base.parent ? base.parent.remove(base) : null;
+      pivot.name = base.name || "CharRoot";
+      // copia animações para o pivot pra preservar fluxo
+      pivot.animations = base.animations || [];
+      base = pivot;
+      box = new THREE.Box3().setFromObject(base);
+      size = box.getSize(new THREE.Vector3());
+    }
     // Normaliza escala
-    const box = new THREE.Box3().setFromObject(base);
-    const size = box.getSize(new THREE.Vector3());
     const height = size.y || 1;
     const targetHeight = 1.8;
     const scale = targetHeight / height;
