@@ -132,7 +132,27 @@ let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
 let lastSpeechClear = 0;
-let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}]
+let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}] — admin catalog
+let userAvatars = []; // user-created avatars (Avaturn), shape: { id, user_id, name, base_url, thumbnail_url }
+function userAvatarToCharacter(av) {
+  // Normaliza um user_avatar para o mesmo formato dos personagens do admin.
+  return {
+    slug: `user:${av.id}`,
+    name: av.name || "Meu Avatar",
+    base_url: av.base_url,
+    thumbnail_url: av.thumbnail_url || null,
+    isUserAvatar: true,
+    user_id: av.user_id,
+  };
+}
+function findCharacterBySlug(slug) {
+  if (!slug) return null;
+  return (
+    charactersCatalog.find((c) => c.slug === slug) ||
+    userAvatars.map(userAvatarToCharacter).find((c) => c.slug === slug) ||
+    null
+  );
+}
 let selectedCharacterSlug = null; // tile escolhido na tela de seleção
 const characterCache = new Map(); // slug -> Promise<{base, clips}>
 const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
@@ -437,7 +457,7 @@ async function bootstrapSession(user) {
   };
 
   renderPermissions();
-  await loadCharactersCatalog();
+  await Promise.all([loadCharactersCatalog(), loadUserAvatars()]);
   // Sempre mostra a tela de seleção de personagem antes de entrar
   openCharacterSelect();
 }
@@ -467,11 +487,27 @@ async function loadCharactersCatalog() {
   charactersCatalog = data || [];
 }
 
+async function loadUserAvatars() {
+  const { data, error } = await supabase
+    .from("user_avatars")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) {
+    console.warn("Não consegui carregar avatares de usuários", error);
+    userAvatars = [];
+    return;
+  }
+  userAvatars = data || [];
+}
+
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
   renderCharacterTiles();
   characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
-  selectedCharacterSlug = me?.character_slug || charactersCatalog.find((c) => c.base_url)?.slug || null;
+  selectedCharacterSlug =
+    me?.character_slug ||
+    charactersCatalog.find((c) => c.base_url)?.slug ||
+    (userAvatars[0] ? `user:${userAvatars[0].id}` : null);
   updateEnterButtonState();
   const label = document.querySelector("#currentAccountLabel");
   if (label) {
@@ -491,36 +527,46 @@ function closeCharacterSelect() {
 
 function renderCharacterTiles() {
   if (!characterGrid) return;
-  if (!charactersCatalog.length) {
-    characterGrid.innerHTML = `<div class="char-hint">Nenhum personagem disponível ainda.</div>`;
-    return;
-  }
-  characterGrid.innerHTML = charactersCatalog
+  const myAvatarTiles = userAvatars
+    .filter((av) => av.user_id === myId)
+    .map((av) => userAvatarToCharacter(av));
+  const all = [...charactersCatalog, ...myAvatarTiles];
+  const tilesHtml = all
     .map((c) => {
       const isSelected = selectedCharacterSlug === c.slug;
       const ready = !!c.base_url;
       const thumb = c.thumbnail_url
         ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="${escapeHtml(c.name)}">`
-        : "🧍";
+        : (c.isUserAvatar ? "🧑‍🎤" : "🧍");
+      const badge = c.isUserAvatar ? `<div class="char-tile-warn" style="background:#7c5cff;color:#fff;">Meu</div>` : "";
       return `
         <div class="char-tile ${isSelected ? "is-selected" : ""} ${ready ? "" : "is-disabled"}"
              data-character-slug="${escapeHtml(c.slug)}">
           <div class="char-tile-thumb">${thumb}</div>
           <div class="char-tile-name">${escapeHtml(c.name)}</div>
           ${ready ? "" : `<div class="char-tile-warn">Sem arquivos</div>`}
+          ${badge}
         </div>`;
     })
     .join("");
+  const createTile = `
+    <div class="char-tile" data-action="create-avatar" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #4a4f5e;cursor:pointer;">
+      <div class="char-tile-thumb" style="font-size:32px;">＋</div>
+      <div class="char-tile-name">Criar meu avatar</div>
+    </div>`;
+  characterGrid.innerHTML = (all.length ? tilesHtml : `<div class="char-hint">Nenhum personagem disponível ainda.</div>`) + createTile;
 }
 
 function updateEnterButtonState() {
   if (!enterRoomButton) return;
-  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  const character = findCharacterBySlug(selectedCharacterSlug);
   const hasFiles = !!character?.base_url;
   enterRoomButton.disabled = !selectedCharacterSlug || !hasFiles;
 }
 
 characterGrid?.addEventListener("click", (event) => {
+  const createBtn = event.target.closest('[data-action="create-avatar"]');
+  if (createBtn) { openAvatarCreator(); return; }
   const tile = event.target.closest("[data-character-slug]");
   if (!tile) return;
   selectedCharacterSlug = tile.dataset.characterSlug;
@@ -531,7 +577,7 @@ characterGrid?.addEventListener("click", (event) => {
 enterRoomButton?.addEventListener("click", async () => {
   if (!me || !selectedCharacterSlug) return;
   const newName = (characterNicknameInput.value || "").trim() || "Visitante";
-  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  const character = findCharacterBySlug(selectedCharacterSlug);
   if (!character?.base_url) {
     characterSelectError.hidden = false;
     characterSelectError.textContent = "Esse personagem ainda não tem arquivos carregados.";
@@ -569,6 +615,92 @@ changeCharacterButton?.addEventListener("click", () => {
 changeMapButton?.addEventListener("click", () => {
   openMapSelect();
 });
+
+// ===== Avatar Creator (Avaturn workaround) =====
+const avatarCreatorOverlay = document.querySelector("#avatarCreatorOverlay");
+const avatarCreatorClose = document.querySelector("#avatarCreatorClose");
+const avatarCreatorFile = document.querySelector("#avatarCreatorFile");
+const avatarCreatorName = document.querySelector("#avatarCreatorName");
+const avatarCreatorStatus = document.querySelector("#avatarCreatorStatus");
+const avatarDropzone = document.querySelector("#avatarDropzone");
+
+function openAvatarCreator() {
+  if (!avatarCreatorOverlay) return;
+  avatarCreatorStatus.textContent = "";
+  avatarCreatorStatus.style.color = "";
+  avatarCreatorName.value = "";
+  avatarCreatorFile.value = "";
+  avatarCreatorOverlay.hidden = false;
+}
+function closeAvatarCreator() {
+  if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
+}
+avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
+
+async function handleAvatarUpload(file) {
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".glb")) {
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = "Arquivo precisa ser .glb (T-pose, sem expressões).";
+    return;
+  }
+  if (!me?.id) return;
+  const name = (avatarCreatorName.value || "").trim() || `Avatar de ${me.name || "Visitante"}`;
+  avatarCreatorStatus.style.color = "";
+  avatarCreatorStatus.textContent = "Enviando avatar…";
+  try {
+    const ext = "glb";
+    const path = `user-avatars/${me.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const { error: upErr } = await supabase.storage.from("characters").upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: "model/gltf-binary",
+    });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
+    const baseUrl = pub.publicUrl;
+    const { data: inserted, error: dbErr } = await supabase
+      .from("user_avatars")
+      .insert({ user_id: me.id, name, base_url: baseUrl })
+      .select()
+      .single();
+    if (dbErr) throw dbErr;
+    userAvatars = [inserted, ...userAvatars];
+    avatarCreatorStatus.style.color = "#29d3bd";
+    avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
+    selectedCharacterSlug = `user:${inserted.id}`;
+    renderCharacterTiles();
+    updateEnterButtonState();
+    setTimeout(closeAvatarCreator, 900);
+  } catch (err) {
+    console.error("Falha ao subir avatar", err);
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = `Erro: ${err.message || err}`;
+  }
+}
+
+avatarCreatorFile?.addEventListener("change", (e) => {
+  handleAvatarUpload(e.target.files?.[0]);
+});
+["dragenter", "dragover"].forEach((evt) => {
+  avatarDropzone?.addEventListener(evt, (e) => {
+    e.preventDefault();
+    avatarDropzone.style.borderColor = "#29d3bd";
+    avatarDropzone.style.background = "rgba(41,211,189,0.05)";
+  });
+});
+["dragleave", "drop"].forEach((evt) => {
+  avatarDropzone?.addEventListener(evt, (e) => {
+    e.preventDefault();
+    avatarDropzone.style.borderColor = "";
+    avatarDropzone.style.background = "";
+  });
+});
+avatarDropzone?.addEventListener("drop", (e) => {
+  e.preventDefault();
+  handleAvatarUpload(e.dataTransfer?.files?.[0]);
+});
+
 
 // ===== Map (location) select =====
 const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
@@ -949,7 +1081,7 @@ async function applyCharacter(entity, slug) {
   if (!slug) return;
   if (entity.characterSlug === slug) return;
   if (entity.pendingCharacterSlug === slug) return;
-  const character = charactersCatalog.find((c) => c.slug === slug);
+  const character = findCharacterBySlug(slug);
   if (!character) {
     console.warn(`[applyCharacter] personagem "${slug}" não encontrado no catálogo`);
     return;
