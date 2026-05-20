@@ -762,7 +762,9 @@ function collectBoneNames(root) {
 
 // Renomeia tracks de um clip para casar com os bones do alvo
 // (ex.: Mixamo FBX usa "mixamorigHips" e o GLB usa "Hips")
-function retargetClipToBones(clip, targetBoneNames) {
+// opts.stripRootRotation: remove a rotação absoluta do Hips para evitar que
+// o avatar GLB "deite" quando recebe clips Mixamo cuja bind pose difere.
+function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -779,6 +781,11 @@ function retargetClipToBones(clip, targetBoneNames) {
       if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
     }
     if (!targetBoneNames.has(candidate)) continue;
+    // Strip rotação/posição absoluta do Hips: mantém só animação relativa dos
+    // membros, evitando que o personagem tombe ou afunde no chão.
+    if (opts.stripRootRotation && /hips?$/i.test(candidate)) {
+      if (prop === ".quaternion" || prop === ".position") continue;
+    }
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
