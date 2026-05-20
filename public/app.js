@@ -49,6 +49,7 @@ const assetList = document.querySelector("#assetList");
 const roleBadge = document.querySelector("#roleBadge");
 const logoutButton = document.querySelector("#logoutButton");
 const changeCharacterButton = document.querySelector("#changeCharacterButton");
+const changeMapButton = document.querySelector("#changeMapButton");
 const manageCharactersButton = document.querySelector("#manageCharactersButton");
 const emoteJumpButton = document.querySelector("#emoteJump");
 const emoteDanceButton = document.querySelector("#emoteDance");
