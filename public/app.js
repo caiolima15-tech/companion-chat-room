@@ -13,7 +13,7 @@ const SUPABASE_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
-const LOGIN_DISABLED_FOR_TEST = true;
+const LOGIN_DISABLED_FOR_TEST = false;
 
 function getGuestUser() {
   const idKey = "neon-tap-room-guest-id";
@@ -277,23 +277,6 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 
 (async () => {
   hideAuth();
-  if (LOGIN_DISABLED_FOR_TEST) {
-    // Sempre garante uma sessão real (anon) no Supabase pra realtime/presence funcionar entre navegadores
-    const { data: existing } = await supabase.auth.getSession();
-    if (existing.session?.user) {
-      await bootstrapSession(existing.session.user);
-      return;
-    }
-    const { data: anon, error: anonErr } = await supabase.auth.signInAnonymously();
-    if (anonErr || !anon?.user) {
-      console.warn("Falha no signInAnonymously, usando guest local:", anonErr);
-      await bootstrapSession(getGuestUser());
-      return;
-    }
-    await bootstrapSession(anon.user);
-    return;
-  }
-
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
@@ -348,12 +331,8 @@ async function bootstrapSession(user) {
 
   renderPermissions();
   await loadCharactersCatalog();
-  // Mostra a tela de seleção se ainda não escolheu personagem
-  if (!me.character_slug) {
-    openCharacterSelect();
-    return;
-  }
-  await enterRoom();
+  // Sempre mostra a tela de seleção de personagem antes de entrar
+  openCharacterSelect();
 }
 
 async function enterRoom() {
