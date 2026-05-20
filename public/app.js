@@ -13,7 +13,7 @@ const SUPABASE_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
-const LOGIN_DISABLED_FOR_TEST = true;
+const LOGIN_DISABLED_FOR_TEST = false;
 
 function getGuestUser() {
   const idKey = "neon-tap-room-guest-id";
