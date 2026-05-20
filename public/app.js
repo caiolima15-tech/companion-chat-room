@@ -943,7 +943,7 @@ function move(dx, dy, facing) {
 
   if (now - lastMoveSent > 90) {
     lastMoveSent = now;
-    trackMe().catch(() => {});
+    trackMe(false).catch(() => {});
   }
 }
 function moveToWorld(point) {
@@ -957,7 +957,7 @@ function moveToWorld(point) {
   if (idx >= 0) players[idx] = { ...players[idx], ...me };
   const entity = playerEntities.get(myId);
   if (entity) entity.target.copy(worldFromPercent(me.x, me.y));
-  trackMe().catch(() => {});
+  trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
   if (!keyState.size) return;
