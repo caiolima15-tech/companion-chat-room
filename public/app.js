@@ -895,14 +895,16 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          // Para GLBs: pular o bake (gera bind-pose mismatch -> deita) e
-          // aplicar rename-only descartando a rotação absoluta do Hips.
-          let retarg = null;
-          if (!isGlb) retarg = bakeRetargetMixamoClip(base, src, clip);
+          // Bake retarget (resolve diferenças de bind pose entre Mixamo FBX e
+          // o rig do GLB) -> preserva o "swing" do Hips, evitando que a
+          // animação fique robótica. Se o bake falhar, cai no rename-only
+          // descartando a rotação absoluta do Hips para não tombar o avatar.
+          let retarg = bakeRetargetMixamoClip(base, src, clip);
           if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
-          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}${retarg === clip ? "" : " (baked)"}`);
+
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
