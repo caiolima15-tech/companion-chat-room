@@ -1020,7 +1020,8 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  if (!entity.actions[name]) return;
+  if (entity.emoteAction) return; // emote em andamento bloqueia idle/walk/run
+  if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
   const next = entity.actions[name];
@@ -1028,6 +1029,37 @@ function setPlayerAction(entity, name) {
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
+
+function playEmote(entity, slot) {
+  if (!entity?.actions?.[slot]) return;
+  // para tudo e roda o emote uma vez
+  if (entity.currentAction && entity.actions[entity.currentAction]) {
+    entity.actions[entity.currentAction].fadeOut(0.12);
+  }
+  const action = entity.actions[slot];
+  action.reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = false;
+  action.fadeIn(0.12).play();
+  entity.emoteAction = action;
+  entity.currentAction = null;
+}
+
+function triggerLocalEmote(slot) {
+  if (!me || !myId) return;
+  const entity = playerEntities.get(myId);
+  if (!entity) return;
+  playEmote(entity, slot);
+  movementChannel?.send({
+    type: "broadcast",
+    event: "emote",
+    payload: { id: myId, slot },
+  }).catch(() => {});
+}
+
+emoteJumpButton?.addEventListener("click", () => triggerLocalEmote("jump"));
+emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
+emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
 function updateNameplate(player) {
   const entity = playerEntities.get(player.id);
