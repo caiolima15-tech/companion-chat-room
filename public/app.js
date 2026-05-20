@@ -739,8 +739,13 @@ async function loadGlbAsScene(url) {
     loader.parse(buffer, "", resolve, reject);
   });
   const scene = gltf.scene || gltf.scenes?.[0];
+  if (!scene) throw new Error(`GLB sem cena em ${url}`);
   scene.animations = gltf.animations || [];
   return scene;
+}
+
+function normalizeBoneName(name = "") {
+  return name.replace(/^mixamorig:?/i, "").toLowerCase();
 }
 
 // Coleta nomes de bones de um objeto skinned
@@ -791,17 +796,15 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   sourceRoot.traverse((o) => { if (!sourceSkinned && o.isSkinnedMesh) sourceSkinned = o; });
   if (!targetSkinned || !sourceSkinned) return null;
 
-  const targetBoneSet = collectBoneNames(targetRoot);
+  const sourceByNormalized = new Map();
+  for (const b of sourceSkinned.skeleton.bones) sourceByNormalized.set(normalizeBoneName(b.name), b.name);
   const names = {};
   let hipName = null;
-  for (const b of sourceSkinned.skeleton.bones) {
-    let candidate = b.name;
-    if (!targetBoneSet.has(candidate) && candidate.startsWith("mixamorig")) {
-      candidate = candidate.replace(/^mixamorig:?/, "");
-    }
-    if (targetBoneSet.has(candidate)) {
-      names[b.name] = candidate;
-      if (/hips?$/i.test(candidate)) hipName = candidate;
+  for (const b of targetSkinned.skeleton.bones) {
+    const sourceName = sourceByNormalized.get(normalizeBoneName(b.name));
+    if (sourceName) {
+      names[b.name] = sourceName;
+      if (/hips?$/i.test(b.name)) hipName = sourceName;
     }
   }
   if (!Object.keys(names).length) return null;
@@ -809,8 +812,9 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   try {
     return retargetClipBake(targetSkinned, sourceSkinned, clip, {
       names,
-      hip: hipName || "Hips",
+      hip: hipName || "mixamorigHips",
       useFirstFramePosition: true,
+      preserveHipPosition: true,
       fps: 30,
     });
   } catch (e) {
