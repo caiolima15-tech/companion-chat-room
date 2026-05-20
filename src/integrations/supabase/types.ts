@@ -70,6 +70,7 @@ export type Database = {
           color: string
           created_at: string
           id: string
+          map_id: string
           nickname: string
           text: string
           user_id: string
@@ -78,6 +79,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          map_id?: string
           nickname: string
           text: string
           user_id: string
@@ -86,6 +88,7 @@ export type Database = {
           color?: string
           created_at?: string
           id?: string
+          map_id?: string
           nickname?: string
           text?: string
           user_id?: string
