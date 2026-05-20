@@ -983,6 +983,13 @@ async function applyCharacter(entity, slug) {
     entity.emoteUntil = 0;
     entity.mixer.addEventListener("finished", (e) => {
       if (entity.emoteAction === e.action) {
+        // Inicia idle ANTES de soltar o emote para evitar 1 frame em bind pose ("enterrado").
+        const idle = entity.actions?.idle;
+        if (idle) {
+          idle.reset().fadeIn(0.2).play();
+          entity.currentAction = "idle";
+        }
+        e.action.fadeOut(0.2);
         entity.emoteAction = null;
         entity.emoteUntil = 0;
       }
