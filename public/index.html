@@ -151,5 +151,81 @@
 
 
     <script type="module" src="/app.js"></script>
+    <script>
+      (function () {
+        const body = document.body;
+        const cfgBtn = document.getElementById('mobileConfigBtn');
+        const emoBtn = document.getElementById('mobileEmoteBtn');
+        const chatBtn = document.getElementById('mobileChatBtn');
+        const backdrop = document.getElementById('mobileBackdrop');
+        const badge = document.getElementById('mobileChatBadge');
+        const chatLog = document.getElementById('chatLog');
+        const chatInput = document.getElementById('chatInput');
+        let unreadCount = 0;
+
+        const MODES = {
+          hud: { cls: 'mobile-show-hud', btn: cfgBtn },
+          emotes: { cls: 'mobile-show-emotes', btn: emoBtn },
+          chat: { cls: 'mobile-show-chat', btn: chatBtn },
+        };
+
+        function setMode(mode) {
+          let anyOpen = false;
+          for (const [k, m] of Object.entries(MODES)) {
+            const on = k === mode;
+            body.classList.toggle(m.cls, on);
+            m.btn.classList.toggle('is-active', on);
+            if (on) anyOpen = true;
+          }
+          backdrop.hidden = !anyOpen;
+          if (mode === 'chat') {
+            unreadCount = 0;
+            badge.hidden = true;
+            badge.textContent = '';
+            setTimeout(() => chatInput && chatInput.focus(), 200);
+          }
+        }
+        function currentMode() {
+          for (const [k, m] of Object.entries(MODES)) if (body.classList.contains(m.cls)) return k;
+          return null;
+        }
+        function toggleMode(mode) { setMode(currentMode() === mode ? null : mode); }
+
+        cfgBtn.addEventListener('click', () => toggleMode('hud'));
+        emoBtn.addEventListener('click', () => toggleMode('emotes'));
+        chatBtn.addEventListener('click', () => toggleMode('chat'));
+        backdrop.addEventListener('click', () => setMode(null));
+
+        document.getElementById('emoteCluster').addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON' && currentMode() === 'emotes') {
+            setTimeout(() => setMode(null), 150);
+          }
+        });
+        document.querySelector('.world-hud').addEventListener('click', (e) => {
+          if (e.target.tagName === 'BUTTON' && currentMode() === 'hud') {
+            setTimeout(() => setMode(null), 150);
+          }
+        });
+
+        if (chatLog) {
+          const mo = new MutationObserver((muts) => {
+            const isMobile = window.matchMedia('(max-width: 600px)').matches;
+            if (!isMobile || currentMode() === 'chat') return;
+            for (const m of muts) {
+              for (const node of m.addedNodes) {
+                if (node.nodeType === 1 && node.classList && node.classList.contains('chat-item')) {
+                  unreadCount++;
+                }
+              }
+            }
+            if (unreadCount > 0) {
+              badge.hidden = false;
+              badge.textContent = unreadCount > 9 ? '9+' : String(unreadCount);
+            }
+          });
+          mo.observe(chatLog, { childList: true });
+        }
+      })();
+    </script>
   </body>
 </html>
