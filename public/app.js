@@ -477,6 +477,69 @@ changeMapButton?.addEventListener("click", () => {
   openMapSelect();
 });
 
+// ===== Map (location) select =====
+const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
+const mapGrid = document.querySelector("#mapGrid");
+const confirmMapButton = document.querySelector("#confirmMapButton");
+const mapSelectBack = document.querySelector("#mapSelectBack");
+
+function openMapSelect() {
+  if (!mapSelectOverlay) return;
+  selectedMapId = currentMapId;
+  renderMapTiles();
+  updateConfirmMapButton();
+  mapSelectOverlay.hidden = false;
+}
+function closeMapSelect() {
+  if (mapSelectOverlay) mapSelectOverlay.hidden = true;
+}
+function renderMapTiles() {
+  if (!mapGrid) return;
+  mapGrid.innerHTML = MAPS.map((m) => {
+    const isSelected = selectedMapId === m.id;
+    const moodLabel = m.mood === "day" ? "☀️ Dia" : "🌙 Noite";
+    return `
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}">
+        <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
+        <div class="char-tile-name">${m.name}</div>
+        <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
+      </div>`;
+  }).join("");
+}
+function updateConfirmMapButton() {
+  if (!confirmMapButton) return;
+  confirmMapButton.disabled = !selectedMapId;
+}
+mapGrid?.addEventListener("click", (e) => {
+  const tile = e.target.closest("[data-map-id]");
+  if (!tile) return;
+  selectedMapId = tile.dataset.mapId;
+  renderMapTiles();
+  updateConfirmMapButton();
+});
+mapSelectBack?.addEventListener("click", () => {
+  closeMapSelect();
+  // Se ainda não entrou na sala, volta pra escolher personagem
+  if (!playerEntities.get(myId)) openCharacterSelect();
+});
+confirmMapButton?.addEventListener("click", async () => {
+  if (!selectedMapId) return;
+  const switching = selectedMapId !== currentMapId;
+  if (switching) {
+    loadEnvironment(selectedMapId);
+    // Reposiciona meu avatar perto da origem do novo cenário
+    const myEntity = playerEntities.get(myId);
+    if (myEntity) {
+      myEntity.group.position.set(0, 0, 0);
+      if (me) { me.x = 50; me.y = 50; }
+    }
+  }
+  closeMapSelect();
+  if (!playerEntities.get(myId)) {
+    await enterRoom();
+  }
+});
+
 
 characterAdminClose?.addEventListener("click", () => {
   if (characterAdminOverlay) characterAdminOverlay.hidden = true;
