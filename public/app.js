@@ -11,6 +11,22 @@ const SUPABASE_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
+const LOGIN_DISABLED_FOR_TEST = true;
+
+function getGuestUser() {
+  const idKey = "neon-tap-room-guest-id";
+  let id = localStorage.getItem(idKey);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(idKey, id);
+  }
+  return {
+    id,
+    user_metadata: {
+      nickname: localStorage.getItem("neon-tap-room-nickname") || "Visitante",
+    },
+  };
+}
 
 // ============ DOM ============
 const canvas = document.querySelector("#worldCanvas");
@@ -104,7 +120,12 @@ requestAnimationFrame(animate);
 // ============ Auth bootstrap ============
 let authMode = "signin"; // or "signup"
 function showAuth(mode = "signin") {
+  if (LOGIN_DISABLED_FOR_TEST) {
+    hideAuth();
+    return;
+  }
   authMode = mode;
+  authOverlay.style.display = "grid";
   authOverlay.hidden = false;
   authError.hidden = true;
   if (mode === "signin") {
@@ -125,6 +146,7 @@ function showAuth(mode = "signin") {
 }
 function hideAuth() {
   authOverlay.hidden = true;
+  authOverlay.style.display = "none";
 }
 function showAuthError(msg) {
   authError.textContent = msg;
@@ -212,33 +234,33 @@ authForm.addEventListener("submit", async (e) => {
 });
 
 logoutButton.addEventListener("click", async () => {
-  await supabase.auth.signOut();
+  if (!LOGIN_DISABLED_FOR_TEST) await supabase.auth.signOut();
   location.reload();
 });
 
-// TEMP: login desativado para teste. Entra como convidado anônimo.
-supabase.auth.onAuthStateChange((_event, session) => {
-  if (session?.user) {
-    hideAuth();
-    bootstrapSession(session.user);
-  }
-});
+// TEMP: login desativado para teste. Entra direto como convidado local.
+if (!LOGIN_DISABLED_FOR_TEST) {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    if (session?.user) {
+      hideAuth();
+      bootstrapSession(session.user);
+    }
+  });
+}
 
 (async () => {
   hideAuth();
+  if (LOGIN_DISABLED_FOR_TEST) {
+    await bootstrapSession(getGuestUser());
+    return;
+  }
+
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
     return;
   }
-  const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) {
-    console.error("Falha no login anônimo:", error);
-    showAuth("signin");
-    showAuthError("Modo convidado falhou: " + (error.message || error));
-    return;
-  }
-  if (data.session?.user) bootstrapSession(data.session.user);
+  showAuth("signin");
 })();
 
 async function bootstrapSession(user) {
@@ -252,19 +274,23 @@ async function bootstrapSession(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const nickname = profile?.nickname || "Visitante";
+  const nickname = profile?.nickname || user.user_metadata?.nickname || "Visitante";
   const color = profile?.color || randomColor();
   const avatarUrl = profile?.avatar_url || null;
   nameInput.value = nickname;
 
   // Admin?
-  const { data: roleRow } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("role", "admin")
-    .maybeSingle();
-  isAdmin = !!roleRow;
+  if (LOGIN_DISABLED_FOR_TEST) {
+    isAdmin = false;
+  } else {
+    const { data: roleRow } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("role", "admin")
+      .maybeSingle();
+    isAdmin = !!roleRow;
+  }
 
   me = {
     id: user.id,
@@ -1177,6 +1203,18 @@ chatForm.addEventListener("submit", async (event) => {
   const text = chatInput.value.trim();
   if (!text || !myId || !me) return;
   chatInput.value = "";
+  if (LOGIN_DISABLED_FOR_TEST) {
+    addMessage({ name: me.name, color: me.color, text });
+    me.speech = text;
+    await trackMe();
+    setTimeout(() => {
+      if (me) {
+        me.speech = "";
+        trackMe();
+      }
+    }, 4500);
+    return;
+  }
   const { error } = await supabase.from("chat_messages").insert({
     user_id: myId,
     nickname: me.name,
@@ -1197,7 +1235,8 @@ nameInput.addEventListener("keydown", (event) => {
 async function saveNickname() {
   if (!myId) return;
   const newName = nameInput.value.trim() || "Visitante";
-  await supabase.from("profiles").update({ nickname: newName }).eq("id", myId);
+  localStorage.setItem("neon-tap-room-nickname", newName);
+  if (!LOGIN_DISABLED_FOR_TEST) await supabase.from("profiles").update({ nickname: newName }).eq("id", myId);
   me.name = newName;
   await trackMe();
   addSystemLine(`Apelido atualizado para ${newName}.`);
