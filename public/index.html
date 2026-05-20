@@ -275,13 +275,17 @@
         chatBtn.addEventListener('click', () => toggleMode('chat'));
         backdrop.addEventListener('click', () => setMode(null));
 
-        // Tap top of chat panel (the drag handle area) to collapse
+        // Tap the small arrow above the chat top to collapse
         const chatPanel = document.querySelector('.chat-panel');
         if (chatPanel) {
           chatPanel.addEventListener('click', (e) => {
             if (currentMode() !== 'chat') return;
             const rect = chatPanel.getBoundingClientRect();
-            if (e.clientY - rect.top <= 22) setMode(null);
+            // Arrow lives ~34px above panel top, ~36px wide centered
+            if (e.clientY < rect.top && e.clientY > rect.top - 40) {
+              const cx = rect.left + rect.width / 2;
+              if (Math.abs(e.clientX - cx) <= 24) setMode(null);
+            }
           });
         }
 
