@@ -624,16 +624,72 @@ const avatarCreatorName = document.querySelector("#avatarCreatorName");
 const avatarCreatorStatus = document.querySelector("#avatarCreatorStatus");
 const avatarDropzone = document.querySelector("#avatarDropzone");
 
-function openAvatarCreator() {
+const avatarCreatorFrame = document.querySelector("#avatarCreatorFrame");
+const avatarCreatorOpen = document.querySelector("#avatarCreatorOpen");
+let avatarRealtimeChannel = null;
+let lastKnownAvatarIds = new Set();
+
+async function fetchSignedAvatarStudioUrl() {
+  const { data: sess } = await supabase.auth.getSession();
+  const token = sess?.session?.access_token;
+  if (!token) throw new Error("não autenticado");
+  const res = await fetch("/api/public/avatar-studio-sign", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`sign falhou (${res.status})`);
+  const { url } = await res.json();
+  return url;
+}
+
+function subscribeAvatarRealtime() {
+  if (!me?.id || avatarRealtimeChannel) return;
+  lastKnownAvatarIds = new Set(userAvatars.map((a) => a.id));
+  avatarRealtimeChannel = supabase
+    .channel(`user-avatars-${me.id}`)
+    .on(
+      "postgres_changes",
+      { event: "INSERT", schema: "public", table: "user_avatars", filter: `user_id=eq.${me.id}` },
+      (payload) => {
+        const row = payload.new;
+        if (!row || lastKnownAvatarIds.has(row.id)) return;
+        lastKnownAvatarIds.add(row.id);
+        userAvatars = [row, ...userAvatars.filter((a) => a.id !== row.id)];
+        if (avatarCreatorStatus) {
+          avatarCreatorStatus.style.color = "#29d3bd";
+          avatarCreatorStatus.textContent = "Avatar capturado e salvo! Pronto pra usar.";
+        }
+        selectedCharacterSlug = `user:${row.id}`;
+        renderCharacterTiles();
+        updateEnterButtonState();
+        setTimeout(closeAvatarCreator, 1400);
+      },
+    )
+    .subscribe();
+}
+
+async function openAvatarCreator() {
   if (!avatarCreatorOverlay) return;
-  avatarCreatorStatus.textContent = "";
+  avatarCreatorStatus.textContent = "Abrindo studio…";
   avatarCreatorStatus.style.color = "";
   avatarCreatorName.value = "";
   avatarCreatorFile.value = "";
   avatarCreatorOverlay.hidden = false;
+  subscribeAvatarRealtime();
+  try {
+    const signed = await fetchSignedAvatarStudioUrl();
+    if (avatarCreatorFrame) avatarCreatorFrame.src = signed;
+    if (avatarCreatorOpen) avatarCreatorOpen.href = signed;
+    avatarCreatorStatus.textContent = "Quando salvar o avatar, ele aparece aqui automaticamente.";
+  } catch (err) {
+    console.error(err);
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = `Não consegui abrir o studio: ${err.message || err}`;
+  }
 }
 function closeAvatarCreator() {
   if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
+  if (avatarCreatorFrame) avatarCreatorFrame.src = "about:blank";
 }
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
