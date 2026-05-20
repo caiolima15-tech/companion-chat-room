@@ -98,9 +98,13 @@
     <!-- Character select overlay -->
     <div id="characterSelectOverlay" class="char-overlay" hidden>
       <div class="char-card">
-        <span class="kicker">Neon Tap Room</span>
+        <div class="char-admin-head">
+          <span class="kicker">Neon Tap Room</span>
+          <button id="characterSelectLogout" type="button" class="auth-link">Sair / trocar conta</button>
+        </div>
         <h2>Escolha seu vibe</h2>
         <p class="char-hint">Selecione o personagem e digite seu apelido pra entrar.</p>
+        <div id="currentAccountLabel" class="char-hint" style="opacity:.7;font-size:12px;"></div>
         <div id="characterGrid" class="char-grid"></div>
         <label class="char-nick">
           <span>Apelido</span>
