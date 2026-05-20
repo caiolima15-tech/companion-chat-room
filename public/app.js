@@ -1742,6 +1742,7 @@ function renderPlayers(nextPlayers) {
     if (!byId.has(id)) {
       scene.remove(entity.group);
       entity.plate.remove();
+      if (entity.loadingSpinner) entity.loadingSpinner.remove();
       playerEntities.delete(id);
     }
   }
