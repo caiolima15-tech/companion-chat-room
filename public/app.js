@@ -577,7 +577,7 @@ characterGrid?.addEventListener("click", (event) => {
 enterRoomButton?.addEventListener("click", async () => {
   if (!me || !selectedCharacterSlug) return;
   const newName = (characterNicknameInput.value || "").trim() || "Visitante";
-  const character = charactersCatalog.find((c) => c.slug === selectedCharacterSlug);
+  const character = findCharacterBySlug(selectedCharacterSlug);
   if (!character?.base_url) {
     characterSelectError.hidden = false;
     characterSelectError.textContent = "Esse personagem ainda não tem arquivos carregados.";
