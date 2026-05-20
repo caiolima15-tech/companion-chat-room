@@ -1239,23 +1239,21 @@ const FADE_OPACITY = 0.0;
 function setMeshFaded(mesh, faded) {
   if (!mesh.material) return;
   if (faded) {
-    if (mesh.userData._origOpacity === undefined) {
-      mesh.userData._origOpacity = mesh.material.opacity ?? 1;
-      mesh.userData._origTransparent = mesh.material.transparent;
-      mesh.userData._origDepthWrite = mesh.material.depthWrite;
+    if (!mesh.userData._fadeMatClone) {
+      // Clone material per-mesh so fading one wall doesn't affect every mesh that shares the material
+      mesh.userData._origMaterial = mesh.material;
+      mesh.material = mesh.material.clone();
+      mesh.userData._fadeMatClone = true;
     }
     mesh.material.transparent = true;
     mesh.material.opacity = FADE_OPACITY;
     mesh.material.depthWrite = false;
     mesh.material.needsUpdate = true;
-  } else if (mesh.userData._origOpacity !== undefined) {
-    mesh.material.opacity = mesh.userData._origOpacity;
-    mesh.material.transparent = mesh.userData._origTransparent;
-    mesh.material.depthWrite = mesh.userData._origDepthWrite;
-    mesh.material.needsUpdate = true;
-    delete mesh.userData._origOpacity;
-    delete mesh.userData._origTransparent;
-    delete mesh.userData._origDepthWrite;
+  } else if (mesh.userData._fadeMatClone) {
+    mesh.material.dispose?.();
+    mesh.material = mesh.userData._origMaterial;
+    delete mesh.userData._origMaterial;
+    delete mesh.userData._fadeMatClone;
   }
 }
 
