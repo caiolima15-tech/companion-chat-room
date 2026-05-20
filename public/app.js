@@ -131,41 +131,54 @@ function showAuthError(msg) {
   authError.hidden = false;
 }
 authSwitch.addEventListener("click", () => showAuth(authMode === "signin" ? "signup" : "signin"));
+function translateAuthError(err) {
+  const msg = err?.message || "";
+  const code = err?.code || "";
+  if (code === "invalid_credentials" || /invalid login/i.test(msg)) return "Email ou senha incorretos.";
+  if (code === "user_already_exists") return "Esse email já tem conta. Use 'Já tenho conta' pra entrar.";
+  if (code === "email_not_confirmed") return "Confirme seu email antes de entrar.";
+  if (code === "weak_password" || /password/i.test(msg) && /6/.test(msg)) return "Senha precisa ter pelo menos 6 caracteres.";
+  if (/email/i.test(msg) && /valid/i.test(msg)) return "Email inválido.";
+  return msg || "Falha de autenticação.";
+}
+
 authForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   authError.hidden = true;
   authSubmit.disabled = true;
   try {
+    const email = authEmail.value.trim();
+    const password = authPassword.value;
     if (authMode === "signup") {
       const { data, error } = await supabase.auth.signUp({
-        email: authEmail.value,
-        password: authPassword.value,
+        email,
+        password,
         options: {
           data: { nickname: authNickname.value || "Visitante" },
           emailRedirectTo: window.location.origin,
         },
       });
-      if (error) throw error;
-      if (!data.session) {
-        // Sessão não criada → tenta login direto (caso já exista) ou pede confirmação
-        const { error: signInErr } = await supabase.auth.signInWithPassword({
-          email: authEmail.value,
-          password: authPassword.value,
-        });
+      if (error) {
+        // Se já existe, tenta logar direto
+        if (error.code === "user_already_exists") {
+          const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+          if (signInErr) throw signInErr;
+        } else {
+          throw error;
+        }
+      } else if (!data.session) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
         if (signInErr) {
           showAuthError("Conta criada. Verifique seu email para confirmar antes de entrar.");
         }
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: authEmail.value,
-        password: authPassword.value,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
     }
   } catch (err) {
     console.error("[auth]", err);
-    showAuthError(err.message || "Falha de autenticação");
+    showAuthError(translateAuthError(err));
   } finally {
     authSubmit.disabled = false;
   }
