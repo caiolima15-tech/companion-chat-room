@@ -924,7 +924,7 @@ function createPlayerEntity(player) {
   group.rotation.y = Math.PI;
   scene.add(group);
 
-  // Default capsule character; replaced by GLB if avatar_url provided
+  // Personagem placeholder; substituído pelo FBX se houver character_slug
   const character = createCharacter(player.color);
   group.add(character);
 
@@ -947,8 +947,12 @@ function createPlayerEntity(player) {
     plate,
     player,
     avatarUrl: null,
+    characterSlug: null,
+    emoteAction: null,
+    emoteUntil: 0,
   };
-  if (player.avatar_url) applyAvatar(entity, player.avatar_url);
+  if (player.character_slug) applyCharacter(entity, player.character_slug);
+  else if (player.avatar_url) applyAvatar(entity, player.avatar_url);
   return entity;
 }
 
