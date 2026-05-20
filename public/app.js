@@ -542,9 +542,13 @@ function renderCharacterTiles() {
         ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="${escapeHtml(c.name)}">`
         : (c.isUserAvatar ? "🧑‍🎤" : "🧍");
       const badge = c.isUserAvatar ? `<div class="char-tile-warn" style="background:#7c5cff;color:#fff;">Meu</div>` : "";
+      const deleteBtn = c.isUserAvatar
+        ? `<button class="char-tile-delete" data-action="delete-avatar" data-avatar-id="${escapeHtml(c.userAvatarId || "")}" title="Excluir avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:14px;line-height:20px;text-align:center;cursor:pointer;z-index:3;padding:0;">×</button>`
+        : "";
       return `
         <div class="char-tile ${isSelected ? "is-selected" : ""} ${ready ? "" : "is-disabled"}"
-             data-character-slug="${escapeHtml(c.slug)}">
+             data-character-slug="${escapeHtml(c.slug)}" style="position:relative;">
+          ${deleteBtn}
           <div class="char-tile-thumb">${thumb}</div>
           <div class="char-tile-name">${escapeHtml(c.name)}</div>
           ${ready ? "" : `<div class="char-tile-warn">Sem arquivos</div>`}
