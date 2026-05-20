@@ -736,6 +736,7 @@ function presencePayload() {
     name: me.name,
     color: me.color,
     avatar_url: me.avatar_url,
+    character_slug: me.character_slug || null,
     x: me.x,
     y: me.y,
     facing: me.facing,
