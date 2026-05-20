@@ -830,6 +830,26 @@ function bakeRetargetMixamoClip(targetRoot, sourceRoot, clip) {
   }
 }
 
+// Ajusta a faixa de posição do Hips ao tamanho do esqueleto alvo.
+// Mixamo FBX traz Hips em centímetros (~100 unidades) e o GLB normalizado
+// tem ~1.8m -> sem isso, o pulo vira teleporte ou some completamente.
+function scaleHipPositionTrack(clip, targetRoot, sourceRoot) {
+  if (!clip?.tracks?.length) return;
+  let targetH = 0, sourceH = 0;
+  const tBox = new THREE.Box3().setFromObject(targetRoot);
+  targetH = tBox.max.y - tBox.min.y;
+  const sBox = new THREE.Box3().setFromObject(sourceRoot);
+  sourceH = sBox.max.y - sBox.min.y;
+  if (!targetH || !sourceH) return;
+  const ratio = targetH / sourceH;
+  if (Math.abs(ratio - 1) < 0.05) return;
+  for (const track of clip.tracks) {
+    if (!/hips?\]?\.position$/i.test(track.name) && !/\.bones\[.*hips?.*\]\.position$/i.test(track.name)) continue;
+    const v = track.values;
+    for (let i = 0; i < v.length; i++) v[i] *= ratio;
+  }
+}
+
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
   if (characterCache.has(character.slug)) return characterCache.get(character.slug);
@@ -897,17 +917,27 @@ function loadCharacterAssets(character) {
           if (!clip || clip.duration <= 0) return;
           // Bake retarget (resolve diferenças de bind pose entre Mixamo FBX e
           // o rig do GLB) -> preserva o "swing" do Hips, evitando que a
-          // animação fique robótica. Se o bake falhar, cai no rename-only
-          // descartando a rotação absoluta do Hips para não tombar o avatar.
+          // animação fique robótica. Se o bake falhar, cai no rename-only.
           let retarg = bakeRetargetMixamoClip(base, src, clip);
-          if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
+          let mode = "baked";
+          if (!retarg) {
+            // Para jump precisamos preservar o deslocamento vertical do Hips,
+            // então NÃO strip a posição. Para os demais clips, manter o strip
+            // evita que o avatar tombe.
+            const strip = isGlb && slot !== "jump";
+            retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: strip }) || clip.clone();
+            mode = strip ? "rename-stripped" : "rename";
+          }
+          // Normaliza a escala da posição do Hips para o tamanho do alvo
+          // (Mixamo exporta em centímetros, o GLB normalizado tem ~1.8m).
+          scaleHipPositionTrack(retarg, base, src);
           retarg.name = slot;
           clips[slot] = retarg;
-          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}${retarg === clip ? "" : " (baked)"}`);
-
+          console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"} (${mode})`);
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
+
       }),
     );
 
@@ -1691,16 +1721,22 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  // Movimento (walk/run) cancela emotes em loop como dance.
+  // Movimento (walk/run/idle por chegar) cancela emotes em loop como dance.
   if (entity.emoteAction) {
-    if (name === "walk" || name === "run") {
-      entity.emoteAction.fadeOut(0.15);
+    const isLoopEmote = entity.emoteAction.loop === THREE.LoopRepeat;
+    if (name === "walk" || name === "run" || isLoopEmote) {
+      entity.emoteAction.fadeOut(0.18);
+      // garante parada efetiva quando o fade terminar
+      const finished = entity.emoteAction;
+      setTimeout(() => { try { finished.stop(); } catch {} }, 220);
       entity.emoteAction = null;
       entity.emoteUntil = 0;
+      entity.currentAction = null;
     } else {
-      return; // emote one-shot em andamento bloqueia idle
+      return; // emote one-shot (jump/wave) bloqueia até terminar
     }
   }
+
   if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
