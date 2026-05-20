@@ -1175,7 +1175,23 @@ document.querySelectorAll("[data-step]").forEach((button) => {
   });
 });
 
-renderer.domElement.addEventListener("click", (event) => {
+let pointerDown = null;
+renderer.domElement.addEventListener("pointerdown", (event) => {
+  pointerDown = { x: event.clientX, y: event.clientY, t: performance.now() };
+});
+renderer.domElement.addEventListener("pointerup", (event) => {
+  const start = pointerDown;
+  pointerDown = null;
+  if (!start) return;
+  const dx = event.clientX - start.x;
+  const dy = event.clientY - start.y;
+  const dist = Math.hypot(dx, dy);
+  const dt = performance.now() - start.t;
+  // ignora se arrastou a câmera ou segurou por muito tempo
+  if (dist > 6 || dt > 400) return;
+  handleSceneClick(event);
+});
+function handleSceneClick(event) {
   const point = pointerToWorld(event);
   if (!point) return;
   if (isAdmin && movingAssetId) {
@@ -1197,7 +1213,7 @@ renderer.domElement.addEventListener("click", (event) => {
     return;
   }
   moveToWorld(point);
-});
+}
 
 glbInput?.addEventListener("change", () => {
   if (!isAdmin) return;
