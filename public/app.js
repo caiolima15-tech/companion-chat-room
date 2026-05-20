@@ -469,6 +469,10 @@ changeCharacterButton?.addEventListener("click", () => {
   openCharacterSelect();
 });
 
+characterAdminClose?.addEventListener("click", () => {
+  if (characterAdminOverlay) characterAdminOverlay.hidden = true;
+});
+
 // ============ Character loader (FBX + animations) ============
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));
