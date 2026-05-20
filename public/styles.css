@@ -288,7 +288,7 @@ h1 {
 .asset-list {
   display: grid;
   gap: 6px;
-  max-height: 170px;
+  max-height: 50vh;
   overflow: auto;
   color: #e9edf5;
   font-size: 0.84rem;
