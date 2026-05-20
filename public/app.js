@@ -1691,7 +1691,16 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
-  if (entity.emoteAction) return; // emote em andamento bloqueia idle/walk/run
+  // Movimento (walk/run) cancela emotes em loop como dance.
+  if (entity.emoteAction) {
+    if (name === "walk" || name === "run") {
+      entity.emoteAction.fadeOut(0.15);
+      entity.emoteAction = null;
+      entity.emoteUntil = 0;
+    } else {
+      return; // emote one-shot em andamento bloqueia idle
+    }
+  }
   if (!entity.actions || !entity.actions[name]) return;
   if (entity.currentAction === name) return;
   const previous = entity.actions[entity.currentAction];
@@ -1700,6 +1709,7 @@ function setPlayerAction(entity, name) {
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
+
 
 function playEmote(entity, slot) {
   if (!entity?.actions?.[slot]) return;
