@@ -670,26 +670,15 @@ function subscribeAvatarRealtime() {
 
 async function openAvatarCreator() {
   if (!avatarCreatorOverlay) return;
-  avatarCreatorStatus.textContent = "Abrindo studio…";
+  avatarCreatorStatus.textContent = "Quando salvar o .glb no Avaturn, arraste o arquivo aqui embaixo pra importar.";
   avatarCreatorStatus.style.color = "";
   avatarCreatorName.value = "";
   avatarCreatorFile.value = "";
   avatarCreatorOverlay.hidden = false;
   subscribeAvatarRealtime();
-  try {
-    const signed = await fetchSignedAvatarStudioUrl();
-    if (avatarCreatorFrame) avatarCreatorFrame.src = signed;
-    if (avatarCreatorOpen) avatarCreatorOpen.href = signed;
-    avatarCreatorStatus.textContent = "Quando salvar o avatar, ele aparece aqui automaticamente.";
-  } catch (err) {
-    console.error(err);
-    avatarCreatorStatus.style.color = "#f26868";
-    avatarCreatorStatus.textContent = `Não consegui abrir o studio: ${err.message || err}`;
-  }
 }
 function closeAvatarCreator() {
   if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
-  if (avatarCreatorFrame) avatarCreatorFrame.src = "about:blank";
 }
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
