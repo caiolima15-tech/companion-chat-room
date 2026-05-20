@@ -1744,6 +1744,7 @@ function loadEnvironment(mapId) {
         }
       });
       envGroup.add(env);
+      registerDoorsForMap(env, map.id);
     },
     undefined,
     (err) => {
