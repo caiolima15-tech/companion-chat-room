@@ -984,46 +984,99 @@ const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
 
+// Lighting groups we can swap when the map mood changes
+const lightingGroup = new THREE.Group();
+scene.add(lightingGroup);
+
+// Environment GLB group (cleared/replaced on map switch)
+const envGroup = new THREE.Group();
+let envBaseFloor = null;
+
+function applyLightingForMood(mood) {
+  // Clear previous lights
+  while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
+
+  if (mood === "day") {
+    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5));
+    const sun = new THREE.DirectionalLight("#fff7e0", 1.6);
+    sun.position.set(8, 14, 6);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+    sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+    sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+    lightingGroup.add(sun);
+  } else {
+    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
+    const key = new THREE.DirectionalLight("#ffffff", 1.0);
+    key.position.set(6, 10, 3);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.near = 1; key.shadow.camera.far = 40;
+    key.shadow.camera.left = -16; key.shadow.camera.right = 16;
+    key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+    lightingGroup.add(key);
+
+    const red = new THREE.PointLight("#f26868", 2.4, 12);
+    red.position.set(-6.7, 3.2, -6.2);
+    lightingGroup.add(red);
+
+    const teal = new THREE.PointLight("#29d3bd", 1.8, 14);
+    teal.position.set(5.7, 3.4, 3.6);
+    lightingGroup.add(teal);
+  }
+}
+
 function buildMap() {
-  scene.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
-  const key = new THREE.DirectionalLight("#ffffff", 1.1);
-  key.position.set(6, 10, 3);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  key.shadow.camera.near = 1;
-  key.shadow.camera.far = 40;
-  key.shadow.camera.left = -16;
-  key.shadow.camera.right = 16;
-  key.shadow.camera.top = 16;
-  key.shadow.camera.bottom = -16;
-  scene.add(key);
-
-  const redAccent = new THREE.PointLight("#f26868", 2.6, 12);
-  redAccent.position.set(-6.7, 3.2, -6.2);
-  scene.add(redAccent);
-
-  const tealAccent = new THREE.PointLight("#29d3bd", 2.0, 14);
-  tealAccent.position.set(5.7, 3.4, 3.6);
-  scene.add(tealAccent);
-
   // Invisible base floor — used for click-to-move raycast & shadow receiver
-  const floor = new THREE.Mesh(
+  envBaseFloor = new THREE.Mesh(
     new THREE.PlaneGeometry(MAP_WIDTH, MAP_DEPTH),
     new THREE.MeshStandardMaterial({ color: "#202832", roughness: 0.9, transparent: true, opacity: 0 }),
   );
-  floor.name = "WalkableFloor";
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  stage.add(floor);
-  walkableMeshes.push(floor);
+  envBaseFloor.name = "WalkableFloor";
+  envBaseFloor.rotation.x = -Math.PI / 2;
+  envBaseFloor.receiveShadow = true;
+  stage.add(envBaseFloor);
 
-  // We're now indoors — disable outdoor fog
   scene.fog = null;
-  scene.background = new THREE.Color("#08090c");
+  stage.add(envGroup);
 
-  // Load the bar environment GLB
+  // Load initial environment
+  loadEnvironment(currentMapId);
+}
+
+function clearEnvironment() {
+  while (envGroup.children.length) {
+    const child = envGroup.children[0];
+    envGroup.remove(child);
+    child.traverse?.((n) => {
+      if (n.geometry) n.geometry.dispose?.();
+      if (n.material) {
+        const mats = Array.isArray(n.material) ? n.material : [n.material];
+        mats.forEach((m) => m.dispose?.());
+      }
+    });
+  }
+  colliderMeshes.length = 0;
+  occluderMeshes.length = 0;
+  // Reset walkable but keep the invisible base floor
+  walkableMeshes.length = 0;
+  if (envBaseFloor) walkableMeshes.push(envBaseFloor);
+  _fadedNow.clear();
+  _fadedPrev.clear();
+}
+
+function loadEnvironment(mapId) {
+  const map = MAPS.find((m) => m.id === mapId) || MAPS[0];
+  currentMapId = map.id;
+  localStorage.setItem("neon-tap-room-map", map.id);
+
+  scene.background = new THREE.Color(map.bg);
+  applyLightingForMood(map.mood);
+  clearEnvironment();
+
   loader.load(
-    "/assets/scene.glb",
+    map.url,
     (gltf) => {
       const env = gltf.scene;
       const box = new THREE.Box3().setFromObject(env);
@@ -1035,32 +1088,36 @@ function buildMap() {
       env.scale.setScalar(scale);
       env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
       env.updateMatrixWorld(true);
+
+      // Determine "ceiling cutoff" — meshes whose bottom sits above this Y are hidden.
+      // For open/outdoor maps with no roof, this won't hide anything important.
+      const ceilingCutoff = 2.8;
+
       env.traverse((node) => {
         if (!node.isMesh) return;
         const meshBox = new THREE.Box3().setFromObject(node);
         const height = meshBox.max.y - meshBox.min.y;
-        // Hide ceilings / anything floating high above the floor
-        if (meshBox.min.y > 2.6) { node.visible = false; return; }
+        if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
         node.castShadow = false;
         node.receiveShadow = true;
         occluderMeshes.push(node);
 
         const name = (node.name || "") + " " + (node.parent?.name || "");
         const isStair = STAIR_NAME_RE.test(name);
-        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05; // flat floor-ish piece
+        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05;
         if (isStair || isLowSlope) {
           walkableMeshes.push(node);
         } else if (meshBox.max.y > 0.35) {
-          // Walls, counters, chairs, etc. — block movement
           colliderMeshes.push(node);
         }
       });
-      stage.add(env);
+      envGroup.add(env);
     },
     undefined,
     (err) => console.error("Falha carregando cenário:", err),
   );
 }
+
 
 // Returns the highest walkable surface Y under `pos` that is at or below the player's head.
 function groundHeightAt(pos, currentY) {
