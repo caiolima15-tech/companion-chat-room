@@ -899,8 +899,11 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          let retarg = bakeRetargetMixamoClip(base, src, clip);
-          if (!retarg) retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          // Para GLBs: pular o bake (gera bind-pose mismatch -> deita) e
+          // aplicar rename-only descartando a rotação absoluta do Hips.
+          let retarg = null;
+          if (!isGlb) retarg = bakeRetargetMixamoClip(base, src, clip);
+          if (!retarg) retarg = retargetClipToBones(clip, targetBones, { stripRootRotation: isGlb }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
