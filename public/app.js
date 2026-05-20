@@ -559,11 +559,19 @@ function loadCharacterAssets(character) {
 }
 
 async function applyCharacter(entity, slug) {
-  if (!slug || entity.characterSlug === slug) return;
+  if (!slug) return;
+  if (entity.characterSlug === slug) return;
+  if (entity.pendingCharacterSlug === slug) return;
   const character = charactersCatalog.find((c) => c.slug === slug);
-  if (!character) return;
+  if (!character) {
+    console.warn(`[applyCharacter] personagem "${slug}" não encontrado no catálogo`);
+    return;
+  }
+  entity.pendingCharacterSlug = slug;
   try {
     const { base, clips } = await loadCharacterAssets(character);
+    // Caso outra troca tenha começado enquanto carregávamos, aborta.
+    if (entity.pendingCharacterSlug !== slug) return;
     const cloned = cloneSkeleton(base);
     cloned.scale.copy(base.scale);
     cloned.position.set(0, 0, 0);
@@ -583,6 +591,7 @@ async function applyCharacter(entity, slug) {
     }
     entity.currentAction = null;
     entity.characterSlug = slug;
+    entity.emoteAction = null;
     entity.emoteUntil = 0;
     entity.mixer.addEventListener("finished", (e) => {
       if (entity.emoteAction === e.action) {
@@ -591,8 +600,11 @@ async function applyCharacter(entity, slug) {
       }
     });
     setPlayerAction(entity, "idle");
+    console.log(`[applyCharacter] aplicado "${slug}" com clips:`, Object.keys(clips));
   } catch (err) {
-    console.warn("Falha ao aplicar personagem", err);
+    console.warn("Falha ao aplicar personagem", slug, err);
+  } finally {
+    if (entity.pendingCharacterSlug === slug) entity.pendingCharacterSlug = null;
   }
 }
 
