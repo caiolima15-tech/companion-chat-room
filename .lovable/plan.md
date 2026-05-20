@@ -1,88 +1,92 @@
-# Bar 3D Multiplayer — porte para a web
+# Tela de entrada com personagens Mixamo animados
 
 ## Objetivo
 
-Subir o seu app local (Three.js + chat + GLBs no mapa) pra web mantendo o frontend HTML/JS puro que você já tem, e substituir o servidor `localhost:3000` por um backend gerenciado, com persistência de mapas, upload de avatar e papel de admin.
+Antes de cair na sala, o usuário vê uma **tela de seleção** com:
+1. Campo de apelido.
+2. Carrossel/grade com **5 personagens Mixamo** pra escolher.
+3. Botão "Entrar na sala".
 
-## Decisões já tomadas
+Dentro da sala, o personagem escolhido roda animações de verdade — idle parado, walk/run quando anda, e emotes (jump/dance/wave) por botão ou tecla.
 
-- Frontend: continua em HTML/JS puro com Three.js (sem reescrever em React).
-- Backend: Lovable Cloud (substitui o `localhost:3000`).
-- Avatar: cada usuário sobe seu próprio `.glb`.
-- Mapa: admin importa GLBs e posiciona ao vivo; tudo fica salvo.
+## Como você entrega os arquivos
 
-## O que vou fazer
+Pra cada um dos 5 personagens você sobe um conjunto de FBX do Mixamo:
 
-### 1. Servir o app estático
-- Copio `index.html`, `styles.css`, `app.js` e a pasta `vendor/` (three.module.js, OrbitControls, GLTFLoader, GLTFExporter, BufferGeometryUtils, TextureUtils) para `public/`.
-- A rota raiz do projeto serve o `index.html` direto, sem React. O template TanStack fica só pra ter um servidor estático rodando.
-- O `.glb` de exemplo (`fantasy_game_inn`) vai pra `public/assets/` como mapa inicial.
+```text
+character-1/
+  base.fbx       (personagem com skin + esqueleto, geralmente o "T-Pose" sem animação)
+  idle.fbx
+  walk.fbx
+  run.fbx
+  jump.fbx
+  dance.fbx
+  wave.fbx
+character-2/
+  ...
+```
 
-### 2. Backend com Lovable Cloud
-Substitui o `localhost:3000` por:
+Eu monto isso num bucket de storage chamado `characters/`, cada personagem numa pasta. Você sobe os arquivos por uma tela de admin nova ("Gerenciar personagens"), só admin enxerga.
 
-- **Auth**: login por email (ou anônimo) só pra ter um `user_id` estável.
-- **Tabela `profiles`**: nickname, `avatar_url` (link pro .glb do usuário).
-- **Tabela `user_roles`** + função `has_role`: define quem é `admin`.
-- **Tabela `map_assets`**: GLBs colocados no mapa (url, posição, rotação, escala, quem colocou). Só admin pode escrever.
-- **Tabela `chat_messages`**: histórico do chat.
-- **Realtime**:
-  - Presence: quem está online + posição atual dos jogadores (substitui o broadcast de movimento).
-  - Broadcast/Postgres changes: chat ao vivo e mudanças no mapa.
-- **Storage**:
-  - bucket `avatars` (público) — `.glb` dos usuários.
-  - bucket `map-assets` (público) — `.glb` que o admin importa pro mapa.
+Cada personagem na tela de seleção mostra um nome + uma miniatura (PNG que você sobe junto, ou eu gero render fake só com o nome se você não tiver).
 
-### 3. Reescrita do `app.js` (transport)
-Troco a camada de comunicação (o que hoje fala com `localhost:3000`) por chamadas ao Supabase JS client carregado via CDN no `index.html`:
-- `source = new EventSource(...)` → canal Realtime com presence.
-- `fetch('/move')`, `/chat`, `/place`, etc. → `supabase.from(...).insert()` e `channel.track()`.
-- Carrega `map_assets` na entrada e escuta mudanças.
-- Upload de avatar/GLB usa `supabase.storage.from(...).upload()`.
+## O que muda na sala
 
-O resto do `app.js` (Three.js, OrbitControls, raycaster, nameplates, câmera) fica igual.
+- Substituo o personagem geométrico atual (`createCharacter`) pelo modelo escolhido carregado via Mixamo.
+- Cada jogador renderiza o personagem que o outro escolheu (a escolha vai no `profiles.character_slug`).
+- Animação: idle por padrão; quando posição muda, troca pra walk; mantendo movimento rápido (clique longe → distância grande), entra run; emotes ficam tocando até voltar pra idle.
+- Emotes disparam por **botão na HUD** (Pular / Dançar / Acenar) **e por teclado** (Espaço, 1, 2). O estado do emote é sincronizado pelos outros via o canal de movimento que já existe.
 
-### 4. Admin e UI
-- Quem tem role `admin` no `user_roles` recebe `body.classList.add('is-admin')` — sua CSS `.admin-only` já cuida do resto.
-- Primeiro usuário cadastrado vira admin automaticamente (pra você conseguir entrar). Depois você promove outros pela tabela.
+## Tela de seleção (visual)
+
+```text
+┌─────────────────────────────────────────┐
+│           NEON TAP ROOM                 │
+│           escolha seu vibe              │
+│                                         │
+│  ┌──┐ ┌──┐ ┌──┐ ┌──┐ ┌──┐               │
+│  │P1│ │P2│ │P3│ │P4│ │P5│   ← clica    │
+│  └──┘ └──┘ └──┘ └──┘ └──┘               │
+│  Boxer Dancer Soldier ...               │
+│                                         │
+│  Apelido: [________________]            │
+│                                         │
+│         [  Entrar na sala  ]            │
+└─────────────────────────────────────────┘
+```
+
+Vira o overlay inicial: depois do login (email/senha), em vez de já cair na sala, mostra essa tela. A escolha fica salva no perfil — da próxima vez já abre direto na sala, mas com um botão "Trocar personagem" no canto da HUD.
 
 ## Detalhes técnicos
 
-```text
-public/
-  index.html         (com <script src="…supabase-js…"> via CDN)
-  styles.css
-  app.js             (transport trocado p/ Supabase)
-  vendor/
-    three.module.js
-    OrbitControls.js
-    GLTFLoader.js
-    GLTFExporter.js
-    utils/BufferGeometryUtils.js
-    utils/TextureUtils.js
-  assets/
-    fantasy_game_inn.glb
-```
+**Storage / Banco**
+- Bucket público `characters/` para os FBX + miniaturas.
+- Tabela nova `characters` (slug, nome, base_url, idle_url, walk_url, run_url, jump_url, dance_url, wave_url, thumbnail_url). Só admin escreve, todos leem.
+- Coluna nova em `profiles.character_slug`.
 
-Tabelas (resumo):
+**Loader**
+- Adiciono `FBXLoader` do `three/examples/jsm/loaders/FBXLoader.js` em `public/vendor/`.
+- Para cada jogador: carrego o `base.fbx`, extraio o esqueleto, depois carrego os FBX de animação e copio os `AnimationClip` pro mixer do base. Cache por personagem pra não rebaixar pra cada jogador.
 
-```text
-profiles(id uuid pk → auth.users, nickname text, avatar_url text)
-user_roles(user_id uuid, role app_role) + has_role()
-map_assets(id, name, url, pos_x/y/z, rot_y, scale, created_by, created_at)
-chat_messages(id, user_id, nickname, text, created_at)
-```
+**Animação**
+- `THREE.AnimationMixer` por jogador.
+- Estado: `idle | walk | run | jump | dance | wave`.
+- Transição com `crossFadeTo(0.2s)`. Emotes voltam pra idle quando o clip termina.
+- Sincronização: hoje o canal `room-movement` manda `{x,z,facing}`. Adiciono `anim` no payload pros outros tocarem o emote certo.
 
-RLS:
-- `profiles`: cada um lê todos, edita o próprio.
-- `map_assets`: todos leem; só admin insere/atualiza/deleta.
-- `chat_messages`: autenticados leem todos e inserem só com o próprio `user_id`.
-- Buckets `avatars` e `map-assets`: leitura pública, upload autenticado.
+**Tela de seleção**
+- Novo overlay HTML/CSS no `index.html`, similar ao `authOverlay`.
+- Mostrado quando: usuário logado mas sem `character_slug` no profile, ou clicou em "Trocar personagem".
+- Apelido daqui salva direto no `profiles.nickname` (substitui o input que ainda fica no painel de chat — mantenho o do chat também caso queira trocar depois).
 
-## Fora do escopo desta etapa
+**HUD de emotes**
+- 3 botões circulares no `world-hud`: 🦘 Pular / 💃 Dançar / 👋 Acenar.
+- Teclas: Espaço = jump, 1 = dance, 2 = wave.
 
-- Múltiplas salas/mapas paralelos (fica fácil de adicionar depois trocando `map_assets` por `room_id`).
-- Voz/áudio.
-- Animações esqueléticas no avatar (carrego o GLB estático por enquanto).
+## Fora do escopo
 
-Se aprovar, eu já habilito o Lovable Cloud, crio as tabelas/buckets e portoo o app.
+- Animações com IK / pés colados no chão (mantém o jeito Mixamo "padrão").
+- Mistura de animações simultâneas (ex: andar acenando) — emotes pausam o movimento.
+- Trocar de personagem no meio da sala sem voltar pra tela de seleção.
+
+Se aprovar, eu já crio a tabela, o bucket, a tela de admin pra você subir os FBX, e a tela de seleção.
