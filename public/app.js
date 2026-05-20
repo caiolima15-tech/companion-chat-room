@@ -463,13 +463,19 @@ enterRoomButton?.addEventListener("click", async () => {
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
   } else {
-    await enterRoom();
+    // Primeira vez entrando: pede pra escolher o local antes de spawnar
+    openMapSelect();
   }
 });
 
 changeCharacterButton?.addEventListener("click", () => {
   openCharacterSelect();
 });
+
+changeMapButton?.addEventListener("click", () => {
+  openMapSelect();
+});
+
 
 characterAdminClose?.addEventListener("click", () => {
   if (characterAdminOverlay) characterAdminOverlay.hidden = true;
