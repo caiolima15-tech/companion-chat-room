@@ -1530,12 +1530,19 @@ function updatePlayerAnimation(delta) {
       const before = entity.group.position.clone();
       const step = Math.min(distance, speed * delta);
       const dir = entity.target.clone().sub(entity.group.position).normalize();
-      entity.group.position.addScaledVector(dir, step);
-      const moved = entity.group.position.clone().sub(before);
-      if (moved.lengthSq() > 0.00001) {
-        entity.group.rotation.y = Math.atan2(moved.x, moved.z);
+      const candidate = before.clone().addScaledVector(dir, step);
+      if (collidesAt(before, candidate)) {
+        // Blocked by wall — cancel target so we stop here
+        entity.target.copy(before);
+        setPlayerAction(entity, "idle");
+      } else {
+        entity.group.position.copy(candidate);
+        const moved = entity.group.position.clone().sub(before);
+        if (moved.lengthSq() > 0.00001) {
+          entity.group.rotation.y = Math.atan2(moved.x, moved.z);
+        }
+        setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
       }
-      setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
     } else {
       entity.group.position.copy(entity.target);
       entity.running = false;
