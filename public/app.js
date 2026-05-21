@@ -726,6 +726,50 @@ avatarDropzone?.addEventListener("drop", (e) => {
   handleAvatarUpload(e.dataTransfer?.files?.[0]);
 });
 
+// Integração SDK Avaturn (postMessage) — captura GLB automaticamente quando
+// o usuário clica "Export" dentro do iframe (hotmapavatar.avaturn.dev).
+window.addEventListener("message", async (event) => {
+  // Aceita só mensagens do Avaturn (qualquer subdomínio .avaturn.dev / .avaturn.me)
+  try {
+    const origin = String(event.origin || "");
+    if (!/\.avaturn\.(dev|me)$/.test(new URL(origin).hostname)) return;
+  } catch { return; }
+
+  // Avaturn pode enviar string JSON ou objeto direto
+  let payload = event.data;
+  if (typeof payload === "string") {
+    try { payload = JSON.parse(payload); } catch { return; }
+  }
+  if (!payload || typeof payload !== "object") return;
+
+  // Formato comum: { source: 'avaturn', eventName: 'v2.avatar.exported', data: { url } }
+  // Fallbacks: { url }, { avatarUrl }, { data: { url } }
+  const url =
+    payload?.data?.url ||
+    payload?.url ||
+    payload?.avatarUrl ||
+    (typeof payload?.data === "string" && payload.data.endsWith(".glb") ? payload.data : null);
+
+  if (!url || !/\.glb(\?|$)/i.test(url)) return;
+  if (!avatarCreatorOverlay || avatarCreatorOverlay.hidden) return;
+  if (!me?.id) return;
+
+  try {
+    avatarCreatorStatus.style.color = "";
+    avatarCreatorStatus.textContent = "Baixando avatar do Avaturn…";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download falhou (${res.status})`);
+    const blob = await res.blob();
+    const file = new File([blob], `avaturn-${Date.now()}.glb`, { type: "model/gltf-binary" });
+    await handleAvatarUpload(file);
+  } catch (err) {
+    console.error("Falha ao importar avatar do Avaturn", err);
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = `Erro ao importar: ${err.message || err}`;
+  }
+});
+
+
 
 // ===== Map (location) select =====
 const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
