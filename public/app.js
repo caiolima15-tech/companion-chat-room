@@ -1597,6 +1597,27 @@ async function trackMe(updateRoster = true) {
   } catch {}
 }
 
+// Quando o usuário fecha a aba / muda de navegador, avisa todo mundo na hora
+// (sem esperar o heartbeat de 30s do presence).
+function notifyLeaveAndUntrack() {
+  try {
+    movementChannel?.send({
+      type: "broadcast",
+      event: "leave",
+      payload: { id: myId },
+    });
+  } catch {}
+  try { presenceChannel?.untrack(); } catch {}
+  try { lobbyChannel?.untrack(); } catch {}
+}
+window.addEventListener("pagehide", notifyLeaveAndUntrack);
+window.addEventListener("beforeunload", notifyLeaveAndUntrack);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") notifyLeaveAndUntrack();
+});
+
+
+
 // ============ HUD permissions ============
 function renderPermissions() {
   document.body.classList.toggle("is-admin", isAdmin);
