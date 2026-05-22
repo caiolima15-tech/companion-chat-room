@@ -870,6 +870,16 @@ input:focus {
 @media (max-width: 600px) {
   .mobile-bar { display: flex; }
 }
+/* Admins também veem a barra de ações (chat/emotes/config) no desktop */
+body.is-admin .mobile-bar { display: flex; }
+
+/* Botão escudo só aparece para admin */
+body.is-admin #adminHideToggle { display: flex !important; }
+
+/* Quando o admin clica no escudo, escondemos toda interface admin
+   (exceto o próprio escudo, para poder reabrir) */
+body.admin-ui-hidden .admin-only { display: none !important; }
+body.admin-ui-hidden #adminHideToggle { display: flex !important; }
 
 /* Auth + logout additions */
 .logout-btn {
