@@ -3855,7 +3855,7 @@ async function loadFbxClip(url) {
 async function buildBotEntity(row) {
   const character = findCharacterBySlug(row.character_slug);
   if (!character) { console.warn("[bot] personagem não encontrado:", row.character_slug); return null; }
-  const { base } = await loadCharacterAssets(character);
+  const { base, clips } = await loadCharacterAssets(character);
   const cloned = cloneSkeleton(base);
   cloned.traverse((o) => {
     if (o.isMesh || o.isSkinnedMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
@@ -3863,7 +3863,7 @@ async function buildBotEntity(row) {
   const group = new THREE.Group();
   group.add(cloned);
   const mixer = new THREE.AnimationMixer(cloned);
-  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: row.character_slug };
+  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: row.character_slug, clips };
 }
 
 async function applyBotAnimation(entity, url) {
@@ -3871,9 +3871,8 @@ async function applyBotAnimation(entity, url) {
   if (entity.action) { entity.action.stop(); entity.action = null; }
   entity.animationUrl = url;
   if (!url) {
-    // Tenta idle embutido
-    const idleClip = entity.character?.userData?.clips?.idle;
-    if (idleClip) {
+    const idleClip = entity.clips?.idle;
+    if (idleClip && idleClip.tracks?.length) {
       const a = entity.mixer.clipAction(idleClip);
       a.reset().play(); entity.action = a;
     }
@@ -3881,7 +3880,7 @@ async function applyBotAnimation(entity, url) {
   }
   try {
     const clip = await loadFbxClip(url);
-    if (entity.animationUrl !== url) return; // mudou enquanto carregava
+    if (entity.animationUrl !== url) return;
     const bones = collectBoneNames(entity.character);
     const retarg = retargetClipToBones(clip, bones) || clip.clone();
     const a = entity.mixer.clipAction(retarg);
