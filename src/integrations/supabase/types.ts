@@ -95,6 +95,45 @@ export type Database = {
         }
         Relationships: []
       }
+      custom_maps: {
+        Row: {
+          bg: string
+          created_at: string
+          created_by: string | null
+          id: string
+          mood: string
+          name: string
+          slug: string
+          thumb: string
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          bg?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mood?: string
+          name: string
+          slug: string
+          thumb?: string
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          bg?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          mood?: string
+          name?: string
+          slug?: string
+          thumb?: string
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
       map_assets: {
         Row: {
           created_at: string
@@ -170,6 +209,7 @@ export type Database = {
       map_transforms: {
         Row: {
           map_id: string
+          mood: string | null
           offset_x: number
           offset_y: number
           offset_z: number
@@ -180,6 +220,7 @@ export type Database = {
         }
         Insert: {
           map_id: string
+          mood?: string | null
           offset_x?: number
           offset_y?: number
           offset_z?: number
@@ -190,6 +231,7 @@ export type Database = {
         }
         Update: {
           map_id?: string
+          mood?: string | null
           offset_x?: number
           offset_y?: number
           offset_z?: number
