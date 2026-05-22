@@ -2442,6 +2442,18 @@ function triggerLocalEmote(slot) {
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
+// Cinematic mode toggle
+const cinematicToggleBtn = document.getElementById("cinematicToggle");
+const cinematicStateEl = document.getElementById("cinematicState");
+if (cinematicStateEl) cinematicStateEl.textContent = CINEMATIC ? "ON" : "OFF";
+if (cinematicToggleBtn) {
+  cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
+  cinematicToggleBtn.addEventListener("click", () => {
+    setCinematic(!CINEMATIC);
+    cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
+  });
+}
+
 function updateNameplate(player) {
   const entity = playerEntities.get(player.id);
   if (!entity) return;
