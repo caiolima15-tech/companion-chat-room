@@ -3019,7 +3019,8 @@ document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)
+      || (window.__freeCameraMode && (key === "q" || key === "e"))) {
     event.preventDefault();
     keyState.add(key);
     return;
