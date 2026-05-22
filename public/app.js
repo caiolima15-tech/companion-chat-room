@@ -628,6 +628,20 @@ enterRoomButton?.addEventListener("click", async () => {
   if (myEntity) {
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
+    // Broadcast imediato pra todos verem a troca sem esperar presence sync
+    try {
+      await movementChannel?.send({
+        type: "broadcast",
+        event: "character",
+        payload: {
+          id: myId,
+          character_slug: selectedCharacterSlug,
+          avatar_url: me.avatar_url || null,
+          name: me.name,
+          color: me.color,
+        },
+      });
+    } catch {}
   } else {
     // Primeira vez entrando: pede pra escolher o local antes de spawnar
     openMapSelect();
