@@ -167,6 +167,39 @@ export type Database = {
         }
         Relationships: []
       }
+      map_transforms: {
+        Row: {
+          map_id: string
+          offset_x: number
+          offset_y: number
+          offset_z: number
+          rotation_y: number
+          scale_mul: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          map_id: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_y?: number
+          scale_mul?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          map_id?: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_y?: number
+          scale_mul?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
