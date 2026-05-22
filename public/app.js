@@ -1948,6 +1948,7 @@ async function loadEnvironment(mapId) {
       env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
       currentMapTransform = await transformPromise;
+      if (currentMapTransform?.mood) applyLightingForMood(currentMapTransform.mood);
       currentEnvRoot = env;
       applyEnvTransform();
 
