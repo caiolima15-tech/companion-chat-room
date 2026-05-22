@@ -2862,3 +2862,113 @@ buildMap();
 resize();
 renderPermissions();
 requestAnimationFrame(animate);
+
+
+// ===== Admin: editar transform do mapa =====
+const mapAdminToggle = document.querySelector("#mapAdminToggle");
+const mapAdminPanel = document.querySelector("#mapAdminPanel");
+const mapAdminClose = document.querySelector("#mapAdminClose");
+const mapAdminSave = document.querySelector("#mapAdminSave");
+const mapAdminReset = document.querySelector("#mapAdminReset");
+const mapAdminTitle = document.querySelector("#mapAdminTitle");
+const mapAdminStatus = document.querySelector("#mapAdminStatus");
+const mapScaleInput = document.querySelector("#mapScale");
+const mapRotYInput = document.querySelector("#mapRotY");
+const mapOffXInput = document.querySelector("#mapOffX");
+const mapOffYInput = document.querySelector("#mapOffY");
+const mapOffZInput = document.querySelector("#mapOffZ");
+const mapScaleVal = document.querySelector("#mapScaleVal");
+const mapRotYVal = document.querySelector("#mapRotYVal");
+const mapOffXVal = document.querySelector("#mapOffXVal");
+const mapOffYVal = document.querySelector("#mapOffYVal");
+const mapOffZVal = document.querySelector("#mapOffZVal");
+
+function syncMapAdminPanel() {
+  if (!mapAdminPanel) return;
+  const t = currentMapTransform || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  if (mapScaleInput) { mapScaleInput.value = t.scale_mul ?? 1; mapScaleVal.textContent = (t.scale_mul ?? 1).toFixed(2) + "×"; }
+  if (mapRotYInput) {
+    const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
+    mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°";
+  }
+  if (mapOffXInput) { mapOffXInput.value = t.offset_x ?? 0; mapOffXVal.textContent = (t.offset_x ?? 0).toFixed(2); }
+  if (mapOffYInput) { mapOffYInput.value = t.offset_y ?? 0; mapOffYVal.textContent = (t.offset_y ?? 0).toFixed(2); }
+  if (mapOffZInput) { mapOffZInput.value = t.offset_z ?? 0; mapOffZVal.textContent = (t.offset_z ?? 0).toFixed(2); }
+  if (mapAdminTitle) {
+    const m = MAPS.find((x) => x.id === currentMapId);
+    mapAdminTitle.textContent = `Editar mapa: ${m?.name || currentMapId}`;
+  }
+}
+
+mapAdminToggle?.addEventListener("click", () => {
+  if (!isAdmin) { alert("Apenas admin."); return; }
+  if (!mapAdminPanel) return;
+  mapAdminPanel.hidden = !mapAdminPanel.hidden;
+  if (!mapAdminPanel.hidden) syncMapAdminPanel();
+});
+mapAdminClose?.addEventListener("click", () => { if (mapAdminPanel) mapAdminPanel.hidden = true; });
+
+function onMapAdminInput() {
+  const scale = parseFloat(mapScaleInput.value) || 1;
+  const rotDeg = parseFloat(mapRotYInput.value) || 0;
+  const ox = parseFloat(mapOffXInput.value) || 0;
+  const oy = parseFloat(mapOffYInput.value) || 0;
+  const oz = parseFloat(mapOffZInput.value) || 0;
+  mapScaleVal.textContent = scale.toFixed(2) + "×";
+  mapRotYVal.textContent = Math.round(rotDeg) + "°";
+  mapOffXVal.textContent = ox.toFixed(2);
+  mapOffYVal.textContent = oy.toFixed(2);
+  mapOffZVal.textContent = oz.toFixed(2);
+  currentMapTransform = {
+    offset_x: ox, offset_y: oy, offset_z: oz,
+    rotation_y: (rotDeg * Math.PI) / 180,
+    scale_mul: scale,
+  };
+  applyEnvTransform();
+}
+[mapScaleInput, mapRotYInput, mapOffXInput, mapOffYInput, mapOffZInput].forEach((el) => {
+  el?.addEventListener("input", onMapAdminInput);
+});
+
+mapAdminReset?.addEventListener("click", () => {
+  currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  syncMapAdminPanel();
+  applyEnvTransform();
+});
+
+mapAdminSave?.addEventListener("click", async () => {
+  if (!isAdmin) return;
+  if (mapAdminStatus) mapAdminStatus.textContent = "Salvando…";
+  const payload = {
+    map_id: currentMapId,
+    offset_x: currentMapTransform.offset_x || 0,
+    offset_y: currentMapTransform.offset_y || 0,
+    offset_z: currentMapTransform.offset_z || 0,
+    rotation_y: currentMapTransform.rotation_y || 0,
+    scale_mul: currentMapTransform.scale_mul || 1,
+    updated_by: myId,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from("map_transforms").upsert(payload, { onConflict: "map_id" });
+  if (mapAdminStatus) mapAdminStatus.textContent = error ? ("Erro: " + error.message) : "Salvo ✓";
+  if (!error) setTimeout(() => { if (mapAdminStatus) mapAdminStatus.textContent = ""; }, 2000);
+});
+
+// Realtime: sincroniza ajustes feitos pelo admin para todos os usuários
+supabase
+  .channel("map-transforms")
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_transforms" }, (payload) => {
+    const row = payload.new || payload.old;
+    if (!row || row.map_id !== currentMapId) return;
+    if (payload.eventType === "DELETE") {
+      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+    } else {
+      currentMapTransform = {
+        offset_x: row.offset_x, offset_y: row.offset_y, offset_z: row.offset_z,
+        rotation_y: row.rotation_y, scale_mul: row.scale_mul,
+      };
+    }
+    applyEnvTransform();
+    if (mapAdminPanel && !mapAdminPanel.hidden) syncMapAdminPanel();
+  })
+  .subscribe();
