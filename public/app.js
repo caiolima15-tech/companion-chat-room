@@ -2004,6 +2004,7 @@ function applyEnvTransform() {
   );
   currentEnvRoot.rotation.y = t.rotation_y || 0;
   currentEnvRoot.updateMatrixWorld(true);
+  updateBoundaryHelper();
 }
 
 async function loadEnvironment(mapId) {
