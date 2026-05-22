@@ -2387,7 +2387,20 @@ function renderPlayers(nextPlayers) {
   players = nextPlayers;
   const mine = players.find((p) => p.id === myId);
   if (mine) {
+    // Preserva escolhas locais (personagem/posição) — o presence pode trazer
+    // valores antigos e reverter a troca de personagem ou teleportar o jogador.
+    const localChar = me?.character_slug || null;
+    const localAvatar = me?.avatar_url || null;
+    const localX = me?.x; const localY = me?.y; const localFacing = me?.facing;
     me = { ...me, ...mine };
+    if (localChar) me.character_slug = localChar;
+    if (localAvatar) me.avatar_url = localAvatar;
+    if (localX != null) me.x = localX;
+    if (localY != null) me.y = localY;
+    if (localFacing) me.facing = localFacing;
+    // Reflete de volta no array `players` para manter consistência
+    const idx = players.findIndex((p) => p.id === myId);
+    if (idx >= 0) players[idx] = { ...players[idx], ...me };
     isAdmin = !!mine.isAdmin;
   }
   onlineCount.textContent = `${players.length} online`;
