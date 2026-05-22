@@ -2887,12 +2887,14 @@ async function uploadMapGlb(file) {
   if (error) throw error;
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
   selectedAsset = { name: file.name, url: data.publicUrl };
-  placementMode = true;
-  movingAssetId = "";
-  placeButton.disabled = false;
-  placeButton.classList.add("is-active");
+  // Spawn imediato no centro da câmera (onde você está olhando)
+  const c = controls.target;
+  await placeSelectedAsset({ x: c.x, y: c.y, z: c.z });
+  selectedAsset = null;
+  placementMode = false;
+  placeButton.classList.remove("is-active");
   updateAssetList(currentAssets);
-  addSystemLine(`${file.name} pronto pra colocar no mapa. Clique no chão.`);
+  addSystemLine(`${file.name} colocado no centro da câmera.`);
 }
 
 async function uploadAvatar(file) {
