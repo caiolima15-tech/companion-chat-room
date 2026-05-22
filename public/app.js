@@ -1975,12 +1975,12 @@ async function fetchMapTransform(mapId) {
   try {
     const { data } = await supabase
       .from("map_transforms")
-      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul, mood")
+      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul, mood, dark_mode")
       .eq("map_id", mapId)
       .maybeSingle();
-    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
   } catch {
-    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
   }
 }
 
@@ -2028,7 +2028,10 @@ async function loadEnvironment(mapId) {
       env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
       currentMapTransform = await transformPromise;
-      if (currentMapTransform?.mood) applyLightingForMood(currentMapTransform.mood);
+      setDarkMode(!!currentMapTransform?.dark_mode);
+      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+      // Recarrega luzes custom desse mapa
+      reloadMapLights(currentMapId);
       currentEnvRoot = env;
       applyEnvTransform();
 
@@ -3318,6 +3321,7 @@ mapAdminSave?.addEventListener("click", async () => {
     rotation_y: currentMapTransform.rotation_y || 0,
     scale_mul: currentMapTransform.scale_mul || 1,
     mood: currentMapTransform.mood || null,
+    dark_mode: !!currentMapTransform.dark_mode,
     updated_by: myId,
     updated_at: new Date().toISOString(),
   };
@@ -3333,15 +3337,18 @@ supabase
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") {
-      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
+      setDarkMode(false);
       const m = MAPS.find((x) => x.id === currentMapId);
       applyLightingForMood(m?.mood || "day");
     } else {
       currentMapTransform = {
         offset_x: row.offset_x, offset_y: row.offset_y, offset_z: row.offset_z,
         rotation_y: row.rotation_y, scale_mul: row.scale_mul, mood: row.mood || null,
+        dark_mode: !!row.dark_mode,
       };
-      if (row.mood) applyLightingForMood(row.mood);
+      setDarkMode(!!row.dark_mode);
+      applyLightingForMood(row.mood || (MAPS.find((x) => x.id === currentMapId)?.mood) || "day");
     }
     applyEnvTransform();
     if (mapAdminPanel && !mapAdminPanel.hidden) syncMapAdminPanel();
