@@ -2767,6 +2767,7 @@ function moveToWorld(point) {
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
+  if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
@@ -2778,6 +2779,27 @@ function applyHeldMovement() {
   if (dx || dy) {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
+}
+function applyFreeCameraMovement() {
+  const amount = 0.35;
+  let fwd = 0, right = 0, up = 0;
+  if (keyState.has("arrowup") || keyState.has("w")) fwd += amount;
+  if (keyState.has("arrowdown") || keyState.has("s")) fwd -= amount;
+  if (keyState.has("arrowleft") || keyState.has("a")) right -= amount;
+  if (keyState.has("arrowright") || keyState.has("d")) right += amount;
+  if (keyState.has("e")) up += amount;
+  if (keyState.has("q")) up -= amount;
+  if (!fwd && !right && !up) return;
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y = 0; dir.normalize();
+  const side = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+  const delta = new THREE.Vector3()
+    .addScaledVector(dir, fwd)
+    .addScaledVector(side, right)
+    .addScaledVector(new THREE.Vector3(0,1,0), up);
+  camera.position.add(delta);
+  controls.target.add(delta);
 }
 
 function updatePlayerAnimation(delta) {
@@ -2865,12 +2887,14 @@ async function uploadMapGlb(file) {
   if (error) throw error;
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
   selectedAsset = { name: file.name, url: data.publicUrl };
-  placementMode = true;
-  movingAssetId = "";
-  placeButton.disabled = false;
-  placeButton.classList.add("is-active");
+  // Spawn imediato no centro da câmera (onde você está olhando)
+  const c = controls.target;
+  await placeSelectedAsset({ x: c.x, y: c.y, z: c.z });
+  selectedAsset = null;
+  placementMode = false;
+  placeButton.classList.remove("is-active");
   updateAssetList(currentAssets);
-  addSystemLine(`${file.name} pronto pra colocar no mapa. Clique no chão.`);
+  addSystemLine(`${file.name} colocado no centro da câmera.`);
 }
 
 async function uploadAvatar(file) {
@@ -2902,9 +2926,9 @@ async function placeSelectedAsset(point) {
   const { error } = await supabase.from("map_assets").insert({
     name: selectedAsset.name,
     url: selectedAsset.url,
-    x: Math.max(-8.5 * getMapScale(), Math.min(8.5 * getMapScale(), point.x)),
-    y: 0,
-    z: Math.max(-6.5 * getMapScale(), Math.min(6.5 * getMapScale(), point.z)),
+    x: point.x,
+    y: point.y ?? 0,
+    z: point.z,
     rotation_x: 0,
     rotation_y: 0,
     rotation_z: 0,
@@ -2969,7 +2993,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (myId) {
+  if (myId && !window.__freeCameraMode) {
     const entity = playerEntities.get(myId);
     if (entity) {
       const desired = new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z);
@@ -2977,6 +3001,12 @@ function animate() {
       controls.target.lerp(desired, delta * 4.0);
       camera.position.copy(controls.target).add(offset);
     }
+  }
+  if (window.__focusLerp) {
+    const f = window.__focusLerp;
+    controls.target.lerp(f.target, Math.min(1, delta * 5));
+    camera.position.lerp(f.camera, Math.min(1, delta * 5));
+    if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
   controls.update();
   updateCameraOcclusion();
@@ -2991,7 +3021,8 @@ document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)) {
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)
+      || (window.__freeCameraMode && (key === "q" || key === "e"))) {
     event.preventDefault();
     keyState.add(key);
     return;
@@ -3568,14 +3599,18 @@ lightsAdminClose?.addEventListener("click", () => { lightsAdminPanel.hidden = tr
 
 async function createLight(kind) {
   if (!isAdmin) return;
+  // Spawn at the camera focus point (center of view)
+  const c = controls.target;
+  const cx = c.x, cy = c.y, cz = c.z;
   const defaults = kind === "sun"
-    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: 6, pos_y: 12, pos_z: 6, target_x: 0, target_y: 0, target_z: 0, radius: 2.0, cast_shadow: true }
-    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: 0, pos_y: 6, pos_z: 0, target_x: 0, target_y: 0, target_z: 0, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
+    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: cx, pos_y: cy + 8, pos_z: cz + 2, target_x: cx, target_y: cy, target_z: cz, radius: 2.0, cast_shadow: true }
+    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: cx, pos_y: cy + 5, pos_z: cz, target_x: cx, target_y: cy, target_z: cz, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
   const payload = { map_id: currentMapId, enabled: true, created_by: myId, ...defaults };
   const { error, data } = await supabase.from("map_lights").insert(payload).select().single();
   if (error) { alert("Erro: " + error.message); return; }
   if (data) rebuildCustomLight(data);
   renderLightsAdminList();
+  renderLayersPanel?.();
 }
 addSpotLightBtn?.addEventListener("click", () => createLight("spot"));
 addSunLightBtn?.addEventListener("click", () => createLight("sun"));
@@ -3675,3 +3710,122 @@ function renderLightsAdminList() {
     card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteLight(id));
   });
 }
+
+// ============================================================
+// ===== Free camera + Layers panel (admin) ===================
+// ============================================================
+(function setupFreeCamAndLayers() {
+  const freeBtn = document.getElementById("freeCamToggleBtn");
+  const layersBtn = document.getElementById("layersToggleBtn");
+  const layersPanel = document.getElementById("layersPanel");
+  const layersClose = document.getElementById("layersClose");
+  const layersBody = document.getElementById("layersBody");
+
+  // --- Free camera ---
+  function setFreeCam(on) {
+    window.__freeCameraMode = !!on;
+    if (on) {
+      controls.maxPolarAngle = Math.PI; // permite olhar pra cima/baixo
+      controls.minDistance = 0.5;
+      controls.maxDistance = 200;
+    } else {
+      controls.maxPolarAngle = Math.PI * 0.47;
+      controls.minDistance = 2.5;
+      controls.maxDistance = 11;
+    }
+    if (freeBtn) freeBtn.innerHTML = `🎥 Câmera Livre: ${on ? "ON" : "OFF"}`;
+    if (freeBtn) freeBtn.style.background = on ? "rgba(41,211,189,0.85)" : "rgba(15,23,42,0.85)";
+  }
+  freeBtn?.addEventListener("click", () => setFreeCam(!window.__freeCameraMode));
+
+  // --- Focus camera on a world position ---
+  window.focusCameraOn = function(pos, distance = 5) {
+    const target = new THREE.Vector3(pos.x, (pos.y || 0) + 1, pos.z);
+    // Manter direção atual da câmera, só recolocar a uma distância confortável
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+    if (dir.lengthSq() < 0.01) dir.set(0, 2, 5);
+    dir.normalize().multiplyScalar(distance);
+    const camPos = new THREE.Vector3().copy(target).add(dir);
+    window.__focusLerp = { target, camera: camPos };
+    if (!window.__freeCameraMode) setFreeCam(true); // entra em livre pra não voltar pro player
+  };
+
+  // --- Layers list ---
+  const layerGroupsOpen = { glb: true, spot: true, sun: true };
+
+  function renderLayersPanel() {
+    if (!layersBody) return;
+    const assets = (typeof currentAssets !== "undefined" ? currentAssets : []) || [];
+    const lights = [...(customLightsMap?.values() || [])].map(e => e.row);
+    const spots = lights.filter(l => l.kind !== "sun");
+    const suns = lights.filter(l => l.kind === "sun");
+
+    const group = (key, icon, title, rows, posOf, onDel) => {
+      const open = layerGroupsOpen[key];
+      const arrow = open ? "▾" : "▸";
+      const items = open ? rows.map(r => {
+        const p = posOf(r);
+        return `<div class="layer-item" data-key="${key}" data-id="${r.id}" data-x="${p.x}" data-y="${p.y}" data-z="${p.z}"
+          style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.04);margin:2px 0;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${escapeHtml(r.name || "(sem nome)")}</span>
+          <button data-del="${r.id}" data-key="${key}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
+        </div>`;
+      }).join("") : "";
+      return `
+        <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
+          <div data-toggle="${key}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);cursor:pointer;user-select:none;">
+            <strong style="font-size:12px;">${arrow} ${icon} ${title} <span style="color:#7a8290;font-weight:normal;">(${rows.length})</span></strong>
+          </div>
+          ${open ? `<div style="padding:4px 6px;">${rows.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Vazio</div>'}</div>` : ""}
+        </div>`;
+    };
+
+    layersBody.innerHTML =
+      group("glb", "📦", "GLBs", assets, (a) => ({ x: a.x, y: a.y, z: a.z })) +
+      group("spot", "🔦", "Spots", spots, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z })) +
+      group("sun", "☀️", "Sóis", suns, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z }));
+
+    layersBody.querySelectorAll("[data-toggle]").forEach(el => {
+      el.addEventListener("click", () => {
+        const k = el.dataset.toggle;
+        layerGroupsOpen[k] = !layerGroupsOpen[k];
+        renderLayersPanel();
+      });
+    });
+    layersBody.querySelectorAll(".layer-item").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-del]")) return;
+        const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
+        window.focusCameraOn({ x, y, z }, 5);
+      });
+    });
+    layersBody.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.del;
+        const key = btn.dataset.key;
+        if (!confirm("Apagar esse item?")) return;
+        if (key === "glb") {
+          await deleteAsset(id);
+        } else {
+          await deleteLight(id);
+        }
+        renderLayersPanel();
+      });
+    });
+  }
+  window.renderLayersPanel = renderLayersPanel;
+
+  layersBtn?.addEventListener("click", () => {
+    if (!isAdmin) { alert("Apenas admin."); return; }
+    layersPanel.hidden = !layersPanel.hidden;
+    if (!layersPanel.hidden) renderLayersPanel();
+  });
+  layersClose?.addEventListener("click", () => { layersPanel.hidden = true; });
+
+  // Re-render quando a lista de GLBs ou luzes muda no DOM
+  const assetListEl = document.getElementById("assetList");
+  if (assetListEl) new MutationObserver(() => renderLayersPanel()).observe(assetListEl, { childList: true });
+  const lightsList = document.getElementById("lightsAdminList");
+  if (lightsList) new MutationObserver(() => renderLayersPanel()).observe(lightsList, { childList: true });
+})();
