@@ -2991,7 +2991,7 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (myId) {
+  if (myId && !window.__freeCameraMode) {
     const entity = playerEntities.get(myId);
     if (entity) {
       const desired = new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z);
@@ -2999,6 +2999,12 @@ function animate() {
       controls.target.lerp(desired, delta * 4.0);
       camera.position.copy(controls.target).add(offset);
     }
+  }
+  if (window.__focusLerp) {
+    const f = window.__focusLerp;
+    controls.target.lerp(f.target, Math.min(1, delta * 5));
+    camera.position.lerp(f.camera, Math.min(1, delta * 5));
+    if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
   controls.update();
   updateCameraOcclusion();
