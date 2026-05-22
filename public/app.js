@@ -255,7 +255,7 @@ const assetObjects = new Map();
 const keyState = new Set();
 
 // ============ Maps catalog ============
-const MAPS = [
+const BUILTIN_MAPS = [
   { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
   { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
   { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
@@ -264,6 +264,7 @@ const MAPS = [
   { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
   { id: "maikai",   name: "Maikai",     url: "/assets/maps/maikai.glb",   mood: "day",   bg: "#1b2a3a", thumb: "🌺" },
 ];
+let MAPS = [...BUILTIN_MAPS];
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
 let selectedMapId = currentMapId;
 
