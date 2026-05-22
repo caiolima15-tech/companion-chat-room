@@ -53,26 +53,31 @@
             <div id="assetList" class="asset-list">Nenhum GLB colocado</div>
           </div>
           <button id="adminShortcut" class="admin-shortcut admin-only" type="button" title="Gerenciar personagens (admin)" aria-label="Painel admin">🛡️</button>
-          <button id="mapAdminToggle" class="admin-only" type="button" title="Editar mapa (admin)" style="position:absolute;top:60px;left:12px;z-index:50;background:rgba(10,10,20,.85);color:#eee;border:1px solid #444;border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);">🗺️ Editar mapa</button>
+          <button id="mapAdminToggle" class="admin-only" type="button" title="Editar mapa (admin)"
+            style="position:absolute;top:50%;left:1px;transform:translateY(-50%);z-index:50;background:rgba(10,10,20,.9);color:#eee;border:1px solid #444;border-left:none;border-radius:0 10px 10px 0;padding:10px 6px;cursor:pointer;backdrop-filter:blur(6px);writing-mode:vertical-rl;text-orientation:mixed;font:12px/1 system-ui;letter-spacing:1px;box-shadow:2px 0 8px rgba(0,3,8,.4);">
+            🗺️ Mapa
+          </button>
 
-          <div id="mapAdminPanel" class="admin-only" hidden style="position:absolute;top:108px;left:12px;background:rgba(10,10,20,.9);color:#eee;padding:12px;border-radius:10px;font:12px/1.3 system-ui;z-index:50;width:240px;backdrop-filter:blur(8px);border:1px solid #333;">
+          <div id="mapAdminPanel" class="admin-only" hidden
+            style="position:absolute;top:50%;left:44px;transform:translateY(-50%);background:rgba(10,10,20,.92);color:#eee;padding:12px;border-radius:10px;font:12px/1.3 system-ui;z-index:50;width:240px;backdrop-filter:blur(8px);border:1px solid #333;box-shadow:0 8px 24px rgba(1,1,4,.5);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
               <strong id="mapAdminTitle">Editar mapa</strong>
-              <button id="mapAdminClose" type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">×</button>
+              <button id="mapAdminClose" type="button" title="Minimizar"
+                style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">−</button>
             </div>
-            <label style="display:block;margin:6px 0;">Escala <span id="mapScaleVal">1.00×</span>
-              <input id="mapScale" type="range" min="0.1" max="5" step="0.01" value="1" style="width:100%">
+            <label style="display:block;margin:6px 1px;">Escala <span id="mapScaleVal">1.00×</span>
+              <input id="mapScale" type="range" min="0.1" max="5" step="1" value="1" style="width:100%">
             </label>
-            <label style="display:block;margin:6px 0;">Rotação Y <span id="mapRotYVal">0°</span>
+            <label style="display:block;margin:6px 1px;">Rotação Y <span id="mapRotYVal">0°</span>
               <input id="mapRotY" type="range" min="-180" max="180" step="1" value="0" style="width:100%">
             </label>
-            <label style="display:block;margin:6px 0;">Pos X <span id="mapOffXVal">0.00</span>
+            <label style="display:block;margin:6px 1px;">Pos X <span id="mapOffXVal">0.00</span>
               <input id="mapOffX" type="range" min="-30" max="30" step="0.1" value="0" style="width:100%">
             </label>
-            <label style="display:block;margin:6px 0;">Pos Y <span id="mapOffYVal">0.00</span>
+            <label style="display:block;margin:6px 1px;">Pos Y <span id="mapOffYVal">0.00</span>
               <input id="mapOffY" type="range" min="-10" max="10" step="0.05" value="0" style="width:100%">
             </label>
-            <label style="display:block;margin:6px 0;">Pos Z <span id="mapOffZVal">0.00</span>
+            <label style="display:block;margin:6px 1px;">Pos Z <span id="mapOffZVal">0.00</span>
               <input id="mapOffZ" type="range" min="-30" max="30" step="0.1" value="0" style="width:100%">
             </label>
             <div style="display:flex;gap:6px;margin-top:10px;">
