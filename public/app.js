@@ -140,6 +140,22 @@ let currentRoomChannelsMapId = null; // qual mapId os canais por-sala estão usa
 let lastSpeechClear = 0;
 let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}] — admin catalog
 let userAvatars = []; // user-created avatars (Avaturn), shape: { id, user_id, name, base_url, thumbnail_url }
+// Versão da última troca de personagem por jogador (id -> timestamp ms).
+// Usada para ignorar eventos atrasados (presence/profiles) que tentariam reverter a troca.
+const characterVersionById = new Map();
+let myCharacterVersion = 0;
+function bumpCharacterVersion(id, v) {
+  const prev = characterVersionById.get(id) || 0;
+  const next = v || Date.now();
+  if (next < prev) return prev;
+  characterVersionById.set(id, next);
+  return next;
+}
+function isStaleCharacterEvent(id, v) {
+  if (!v) return false;
+  const prev = characterVersionById.get(id) || 0;
+  return v < prev;
+}
 function userAvatarToCharacter(av) {
   // Normaliza um user_avatar para o mesmo formato dos personagens do admin.
   return {
