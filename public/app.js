@@ -1823,48 +1823,80 @@ function applyLightingForMood(mood) {
   // Clear previous lights
   while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
 
+  // Cinematic = deeper contrast (Blender-like): lower ambient, stronger directional, darker fog
+  const cine = CINEMATIC;
+  const hemiMul = cine ? 0.35 : 1.0;
+  const dirMul = cine ? 1.6 : 1.0;
+  const shadowMapSize = cine ? 4096 : 2048;
+  const shadowBias = cine ? -0.0004 : -0.0001;
+  const shadowRadius = cine ? 6 : 3;
+
+  function configSun(light) {
+    light.castShadow = true;
+    light.shadow.mapSize.set(shadowMapSize, shadowMapSize);
+    light.shadow.camera.near = 1; light.shadow.camera.far = 50;
+    light.shadow.camera.left = -18; light.shadow.camera.right = 18;
+    light.shadow.camera.top = 18; light.shadow.camera.bottom = -18;
+    light.shadow.bias = shadowBias;
+    light.shadow.radius = shadowRadius;
+    light.shadow.normalBias = cine ? 0.03 : 0.02;
+  }
+
   if (mood === "day") {
-    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5));
-    const sun = new THREE.DirectionalLight("#fff7e0", 1.6);
+    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5 * hemiMul));
+    const sun = new THREE.DirectionalLight("#fff7e0", 1.6 * dirMul);
     sun.position.set(8, 14, 6);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
-    sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
-    sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+    configSun(sun);
     lightingGroup.add(sun);
+    scene.background = new THREE.Color(cine ? "#1a2230" : (currentMapTransform?.bg_color || "#0e1117"));
+    scene.fog = cine ? new THREE.Fog("#1a2230", 18, 60) : null;
   } else if (mood === "sunset") {
-    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
-    const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
+    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2 * hemiMul));
+    const sun = new THREE.DirectionalLight("#ff9a55", 1.5 * dirMul);
     sun.position.set(-10, 6, 4);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
-    sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
-    sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+    configSun(sun);
     lightingGroup.add(sun);
-    const fill = new THREE.PointLight("#ff6b88", 1.4, 18);
+    const fill = new THREE.PointLight("#ff6b88", 1.4 * (cine ? 0.6 : 1), 18);
     fill.position.set(4, 3, -4);
     lightingGroup.add(fill);
+    scene.background = new THREE.Color(cine ? "#2a1820" : (currentMapTransform?.bg_color || "#0e1117"));
+    scene.fog = cine ? new THREE.Fog("#2a1820", 16, 55) : null;
   } else {
-    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
-    const key = new THREE.DirectionalLight("#ffffff", 1.0);
+    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1 * hemiMul));
+    const key = new THREE.DirectionalLight("#ffffff", 1.0 * dirMul);
     key.position.set(6, 10, 3);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.near = 1; key.shadow.camera.far = 40;
-    key.shadow.camera.left = -16; key.shadow.camera.right = 16;
-    key.shadow.camera.top = 16; key.shadow.camera.bottom = -16;
+    configSun(key);
     lightingGroup.add(key);
 
-    const red = new THREE.PointLight("#f26868", 2.4, 12);
+    const red = new THREE.PointLight("#f26868", 2.4 * (cine ? 0.7 : 1), 12);
     red.position.set(-6.7, 3.2, -6.2);
     lightingGroup.add(red);
 
-    const teal = new THREE.PointLight("#29d3bd", 1.8, 14);
+    const teal = new THREE.PointLight("#29d3bd", 1.8 * (cine ? 0.7 : 1), 14);
     teal.position.set(5.7, 3.4, 3.6);
     lightingGroup.add(teal);
+    scene.background = new THREE.Color(cine ? "#070a12" : (currentMapTransform?.bg_color || "#0e1117"));
+    scene.fog = cine ? new THREE.Fog("#070a12", 14, 50) : null;
   }
+}
+
+// Re-apply shadow flags on environment meshes based on cinematic mode
+function refreshEnvShadows() {
+  envGroup.traverse((node) => {
+    if (!node.isMesh) return;
+    node.castShadow = CINEMATIC;
+    node.receiveShadow = true;
+  });
+}
+
+function setCinematic(on) {
+  CINEMATIC = !!on;
+  localStorage.setItem("neon-cinematic", CINEMATIC ? "1" : "0");
+  applyRendererForCinematic();
+  applyLightingForMood(currentMapTransform?.mood || "day");
+  refreshEnvShadows();
+  const stateEl = document.getElementById("cinematicState");
+  if (stateEl) stateEl.textContent = CINEMATIC ? "ON" : "OFF";
 }
 
 function buildMap() {
