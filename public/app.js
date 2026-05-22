@@ -2767,6 +2767,7 @@ function moveToWorld(point) {
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
+  if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
@@ -2778,6 +2779,27 @@ function applyHeldMovement() {
   if (dx || dy) {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
+}
+function applyFreeCameraMovement() {
+  const amount = 0.35;
+  let fwd = 0, right = 0, up = 0;
+  if (keyState.has("arrowup") || keyState.has("w")) fwd += amount;
+  if (keyState.has("arrowdown") || keyState.has("s")) fwd -= amount;
+  if (keyState.has("arrowleft") || keyState.has("a")) right -= amount;
+  if (keyState.has("arrowright") || keyState.has("d")) right += amount;
+  if (keyState.has("e")) up += amount;
+  if (keyState.has("q")) up -= amount;
+  if (!fwd && !right && !up) return;
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  dir.y = 0; dir.normalize();
+  const side = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
+  const delta = new THREE.Vector3()
+    .addScaledVector(dir, fwd)
+    .addScaledVector(side, right)
+    .addScaledVector(new THREE.Vector3(0,1,0), up);
+  camera.position.add(delta);
+  controls.target.add(delta);
 }
 
 function updatePlayerAnimation(delta) {
