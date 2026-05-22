@@ -2850,9 +2850,9 @@ async function placeSelectedAsset(point) {
   const { error } = await supabase.from("map_assets").insert({
     name: selectedAsset.name,
     url: selectedAsset.url,
-    x: Math.max(-8.5, Math.min(8.5, point.x)),
+    x: Math.max(-8.5 * getMapScale(), Math.min(8.5 * getMapScale(), point.x)),
     y: 0,
-    z: Math.max(-6.5, Math.min(6.5, point.z)),
+    z: Math.max(-6.5 * getMapScale(), Math.min(6.5 * getMapScale(), point.z)),
     rotation_x: 0,
     rotation_y: 0,
     rotation_z: 0,
