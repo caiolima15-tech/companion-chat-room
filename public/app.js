@@ -1370,6 +1370,20 @@ async function setupRoomChannels(mapId) {
       });
       renderPlayers(merged);
     })
+    .on("presence", { event: "join" }, ({ newPresences }) => {
+      // Quando alguém novo entra, reenvio minha posição atual via broadcast
+      // para que ele veja onde estou de verdade (não no ponto de origem).
+      if (!newPresences || !newPresences.length) return;
+      const hasNewcomer = newPresences.some((p) => (p.id || p.presence_ref) !== myId);
+      if (!hasNewcomer) return;
+      try {
+        movementChannel?.send({
+          type: "broadcast",
+          event: "pos",
+          payload: { id: myId, x: me.x, y: me.y, facing: me.facing, running: !!me.running },
+        });
+      } catch {}
+    })
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await presenceChannel.track(presencePayload());
