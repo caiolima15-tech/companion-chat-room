@@ -1387,16 +1387,32 @@ async function setupRoomChannels(mapId) {
       const prev = new Map(players.map((p) => [p.id, p]));
       const merged = list.map((p) => {
         const old = prev.get(p.id);
-        if (old) {
-          return { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false };
+        // Se temos uma versão local de troca de personagem MAIS NOVA do que
+        // o que veio no presence, preservamos os dados locais (slug/avatar).
+        // Isso evita reverter para o personagem antigo quando o presence
+        // chega atrasado.
+        const localV = characterVersionById.get(p.id) || 0;
+        const presenceV = p.character_v || 0;
+        const keepLocalChar = old && localV > presenceV;
+        const base = old
+          ? { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false }
+          : p;
+        if (keepLocalChar) {
+          base.character_slug = old.character_slug ?? base.character_slug;
+          base.avatar_url = old.avatar_url ?? base.avatar_url;
+          base.name = old.name ?? base.name;
+          base.color = old.color ?? base.color;
+        } else if (presenceV) {
+          bumpCharacterVersion(p.id, presenceV);
         }
-        return p;
+        return base;
       });
       renderPlayers(merged);
     })
     .on("presence", { event: "join" }, ({ newPresences }) => {
-      // Quando alguém novo entra, reenvio minha posição atual via broadcast
-      // para que ele veja onde estou de verdade (não no ponto de origem).
+      // Quando alguém novo entra, reenvio meu estado completo (posição + personagem)
+      // para que ele me veja exatamente como estou — não no ponto de origem nem
+      // no personagem antigo.
       if (!newPresences || !newPresences.length) return;
       const hasNewcomer = newPresences.some((p) => (p.id || p.presence_ref) !== myId);
       if (!hasNewcomer) return;
@@ -1406,6 +1422,23 @@ async function setupRoomChannels(mapId) {
           event: "pos",
           payload: { id: myId, x: me.x, y: me.y, facing: me.facing, running: !!me.running },
         });
+        if (me?.character_slug) {
+          movementChannel?.send({
+            type: "broadcast",
+            event: "character",
+            payload: {
+              id: myId,
+              character_slug: me.character_slug,
+              avatar_url: me.avatar_url || null,
+              name: me.name,
+              color: me.color,
+              x: me.x,
+              y: me.y,
+              facing: me.facing,
+              v: myCharacterVersion || characterVersionById.get(myId) || 0,
+            },
+          });
+        }
       } catch {}
     })
     .subscribe(async (status) => {
