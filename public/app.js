@@ -3829,3 +3829,496 @@ function renderLightsAdminList() {
   const lightsList = document.getElementById("lightsAdminList");
   if (lightsList) new MutationObserver(() => renderLayersPanel()).observe(lightsList, { childList: true });
 })();
+
+// ============================================================
+// ===== Bots (admin avatars with selectable animations) ======
+// ============================================================
+const botsGroup = new THREE.Group();
+scene.add(botsGroup);
+// id -> { row, group, character, mixer, action, animationUrl, characterSlug, loading }
+const botEntities = new Map();
+let botAnimations = []; // [{id, name, url}]
+
+const _animClipCache = new Map(); // url -> Promise<AnimationClip>
+async function loadFbxClip(url) {
+  if (!_animClipCache.has(url)) {
+    _animClipCache.set(url, (async () => {
+      const src = await loadFbxFromUrl(url);
+      const clip = src.animations?.[0];
+      if (!clip) throw new Error("FBX sem animações");
+      return clip;
+    })());
+  }
+  return _animClipCache.get(url);
+}
+
+async function buildBotEntity(row) {
+  const character = findCharacterBySlug(row.character_slug);
+  if (!character) { console.warn("[bot] personagem não encontrado:", row.character_slug); return null; }
+  const { base, clips } = await loadCharacterAssets(character);
+  const cloned = cloneSkeleton(base);
+  cloned.traverse((o) => {
+    if (o.isMesh || o.isSkinnedMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+  });
+  const group = new THREE.Group();
+  group.add(cloned);
+  const mixer = new THREE.AnimationMixer(cloned);
+  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: row.character_slug, clips };
+}
+
+async function applyBotAnimation(entity, url) {
+  if (entity.animationUrl === url) return;
+  if (entity.action) { entity.action.stop(); entity.action = null; }
+  entity.animationUrl = url;
+  if (!url) {
+    const idleClip = entity.clips?.idle;
+    if (idleClip && idleClip.tracks?.length) {
+      const a = entity.mixer.clipAction(idleClip);
+      a.reset().play(); entity.action = a;
+    }
+    return;
+  }
+  try {
+    const clip = await loadFbxClip(url);
+    if (entity.animationUrl !== url) return;
+    const bones = collectBoneNames(entity.character);
+    const retarg = retargetClipToBones(clip, bones) || clip.clone();
+    const a = entity.mixer.clipAction(retarg);
+    a.reset().play(); entity.action = a;
+  } catch (e) { console.warn("[bot] anim", e); }
+}
+
+function applyBotTransform(entity, row) {
+  entity.group.position.set(row.x, row.y, row.z);
+  entity.group.rotation.y = row.rotation_y || 0;
+  const s = row.scale || 1;
+  entity.group.scale.setScalar(s);
+}
+
+async function upsertBot(row) {
+  let entity = botEntities.get(row.id);
+  if (entity && entity.characterSlug !== row.character_slug) {
+    // mudou de personagem — rebuild
+    botsGroup.remove(entity.group);
+    botEntities.delete(row.id);
+    entity = null;
+  }
+  if (!entity) {
+    if (botEntities.has(`__loading_${row.id}`)) return;
+    botEntities.set(`__loading_${row.id}`, true);
+    entity = await buildBotEntity(row);
+    botEntities.delete(`__loading_${row.id}`);
+    if (!entity) return;
+    botEntities.set(row.id, entity);
+    botsGroup.add(entity.group);
+  }
+  entity.row = row;
+  applyBotTransform(entity, row);
+  await applyBotAnimation(entity, row.animation_url || null);
+}
+
+function removeBot(id) {
+  const e = botEntities.get(id);
+  if (!e) return;
+  botsGroup.remove(e.group);
+  e.mixer?.stopAllAction?.();
+  botEntities.delete(id);
+}
+
+function clearAllBots() {
+  for (const [id, e] of [...botEntities]) {
+    if (typeof id === "string" && id.startsWith("__loading_")) continue;
+    botsGroup.remove(e.group);
+    botEntities.delete(id);
+  }
+}
+
+async function reloadMapBots(mapId) {
+  clearAllBots();
+  const { data, error } = await supabase.from("map_bots").select("*").eq("map_id", mapId);
+  if (error) { console.warn("map_bots load", error); return; }
+  for (const row of data || []) await upsertBot(row);
+  renderBotsAdminList();
+  window.renderLayersPanel?.();
+}
+
+async function reloadBotAnimations() {
+  const { data, error } = await supabase.from("bot_animations").select("*").order("created_at", { ascending: false });
+  if (error) { console.warn(error); return; }
+  botAnimations = data || [];
+  renderBotAnimList();
+  renderBotsAdminList();
+}
+
+// Realtime
+supabase.channel("map-bots")
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_bots" }, async (payload) => {
+    const row = payload.new || payload.old;
+    if (!row || row.map_id !== currentMapId) return;
+    if (payload.eventType === "DELETE") removeBot(row.id);
+    else await upsertBot(payload.new);
+    renderBotsAdminList(); window.renderLayersPanel?.();
+  })
+  .subscribe();
+supabase.channel("bot-anims")
+  .on("postgres_changes", { event: "*", schema: "public", table: "bot_animations" }, () => reloadBotAnimations())
+  .subscribe();
+
+// Update mixers in animate loop (hook via patch)
+const _origAnimate = animate;
+// Can't easily patch the already-running RAF; instead use our own ticker:
+const _botClock = new THREE.Clock();
+function _botTick() {
+  requestAnimationFrame(_botTick);
+  const dt = Math.min(_botClock.getDelta(), 0.05);
+  for (const [id, e] of botEntities) {
+    if (typeof id === "string" && id.startsWith("__loading_")) continue;
+    e.mixer?.update?.(dt);
+  }
+}
+_botTick();
+
+// Reload bots when map changes
+const _origReloadAssets = window._noop;
+(function watchMapChange() {
+  let last = currentMapId;
+  setInterval(() => {
+    if (currentMapId !== last) {
+      last = currentMapId;
+      reloadMapBots(currentMapId);
+    }
+  }, 1000);
+})();
+
+// initial load (defer until characters catalog ready)
+async function _initBots() {
+  // wait for charactersCatalog to populate
+  for (let i = 0; i < 30 && !charactersCatalog.length; i++) await new Promise(r => setTimeout(r, 300));
+  await reloadBotAnimations();
+  await reloadMapBots(currentMapId);
+}
+_initBots();
+
+// ---------- Bot CRUD UI ----------
+async function createBot() {
+  if (!isAdmin) return alert("Apenas admin.");
+  const character = charactersCatalog[0];
+  if (!character) return alert("Cadastre algum personagem primeiro.");
+  const c = controls.target;
+  const payload = {
+    map_id: currentMapId,
+    name: "Bot",
+    character_slug: character.slug,
+    x: c.x, y: 0, z: c.z,
+    rotation_y: 0, scale: 1,
+    created_by: myId,
+  };
+  const { data, error } = await supabase.from("map_bots").insert(payload).select().single();
+  if (error) return alert("Erro: " + error.message);
+  if (data) await upsertBot(data);
+  renderBotsAdminList(); window.renderLayersPanel?.();
+}
+
+const _botSaveTimers = new Map();
+function scheduleBotSave(id, patch) {
+  const e = botEntities.get(id);
+  if (e) { e.row = { ...e.row, ...patch }; applyBotTransform(e, e.row); if ("animation_url" in patch) applyBotAnimation(e, patch.animation_url); }
+  clearTimeout(_botSaveTimers.get(id));
+  _botSaveTimers.set(id, setTimeout(async () => {
+    const { error } = await supabase.from("map_bots").update(patch).eq("id", id);
+    if (error) console.warn("bot save", error.message);
+  }, 250));
+}
+
+async function deleteBot(id) {
+  if (!confirm("Apagar esse bot?")) return;
+  const { error } = await supabase.from("map_bots").delete().eq("id", id);
+  if (error) return alert("Erro: " + error.message);
+  removeBot(id);
+  renderBotsAdminList(); window.renderLayersPanel?.();
+}
+
+function botControlRow(row) {
+  const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
+    <label style="display:block;margin:2px 0;font-size:11px;">
+      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
+    </label>`;
+  const charOpts = charactersCatalog.map(c =>
+    `<option value="${escapeHtml(c.slug)}" ${c.slug === row.character_slug ? "selected" : ""}>${escapeHtml(c.name)}</option>`
+  ).join("");
+  const animOpts = `<option value="">— Idle embutido —</option>` +
+    botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === row.animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  return `
+    <div data-bot-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">
+        <input data-key="name" type="text" value="${escapeHtml(row.name || "Bot")}" maxlength="30" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:12px;font-weight:600;">
+        <button data-action="focus" type="button" title="Centralizar câmera" style="background:#333;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">🎯</button>
+        <button data-action="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">✕</button>
+      </div>
+      <label style="display:block;margin:2px 0;font-size:11px;">Personagem
+        <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
+      </label>
+      <label style="display:block;margin:2px 0;font-size:11px;">Animação
+        <select data-key="animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${animOpts}</select>
+      </label>
+      ${slider("Pos X", "x", -30, 30, 0.1, row.x ?? 0, v => Number(v).toFixed(1))}
+      ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0, v => Number(v).toFixed(2))}
+      ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0, v => Number(v).toFixed(1))}
+      ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0, v => (Number(v) * 180 / Math.PI).toFixed(0) + "°")}
+      ${slider("Escala", "scale", 0.1, 5, 0.05, row.scale ?? 1, v => Number(v).toFixed(2) + "×")}
+    </div>`;
+}
+
+function renderBotsAdminList() {
+  const list = document.getElementById("botsAdminList");
+  if (!list) return;
+  const rows = [...botEntities.values()].filter(e => e?.row).map(e => e.row);
+  if (!rows.length) {
+    list.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhum bot. Clique em <b>+ Adicionar bot</b>.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(botControlRow).join("");
+  list.querySelectorAll("[data-bot-id]").forEach(card => {
+    const id = card.dataset.botId;
+    card.querySelectorAll("input[type=range]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const k = inp.dataset.key; const v = parseFloat(inp.value);
+        const s = card.querySelector(`[data-val="${k}"]`);
+        if (s) {
+          if (k === "rotation_y") s.textContent = (v * 180 / Math.PI).toFixed(0) + "°";
+          else if (k === "scale") s.textContent = v.toFixed(2) + "×";
+          else s.textContent = v.toFixed(2);
+        }
+        scheduleBotSave(id, { [k]: v });
+      });
+    });
+    card.querySelectorAll("select").forEach(sel => {
+      sel.addEventListener("change", () => scheduleBotSave(id, { [sel.dataset.key]: sel.value || null }));
+    });
+    const nameIn = card.querySelector('input[data-key="name"]');
+    nameIn?.addEventListener("change", () => scheduleBotSave(id, { name: nameIn.value }));
+    card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteBot(id));
+    card.querySelector('[data-action="focus"]')?.addEventListener("click", () => {
+      const e = botEntities.get(id);
+      if (e) window.focusCameraOn({ x: e.row.x, y: e.row.y, z: e.row.z }, 4);
+    });
+  });
+}
+
+// Animation library UI
+async function uploadBotAnimation(file, name) {
+  if (!isAdmin) return alert("Apenas admin.");
+  const status = document.getElementById("botAnimStatus");
+  if (status) status.textContent = "Subindo " + file.name + "...";
+  const path = `bot-anims/${Date.now()}-${sanitize(file.name)}`;
+  const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
+  if (error) { if (status) status.textContent = "Erro: " + error.message; return; }
+  const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
+  const { error: e2 } = await supabase.from("bot_animations").insert({ name: name || file.name.replace(/\.fbx$/i, ""), url: data.publicUrl, created_by: myId });
+  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return; }
+  if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
+  await reloadBotAnimations();
+}
+
+function renderBotAnimList() {
+  const el = document.getElementById("botAnimList");
+  if (!el) return;
+  if (!botAnimations.length) { el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem animações.</div>`; return; }
+  el.innerHTML = botAnimations.map(a => `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:4px;">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:11px;">${escapeHtml(a.name)}</span>
+      <button data-del-anim="${a.id}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;">✕</button>
+    </div>`).join("");
+  el.querySelectorAll("[data-del-anim]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      if (!confirm("Apagar essa animação da biblioteca?")) return;
+      const { error } = await supabase.from("bot_animations").delete().eq("id", btn.dataset.delAnim);
+      if (error) return alert(error.message);
+      await reloadBotAnimations();
+    });
+  });
+}
+
+document.getElementById("addBotBtn")?.addEventListener("click", createBot);
+document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  const nameInp = document.getElementById("botAnimName");
+  uploadBotAnimation(f, nameInp?.value?.trim());
+  e.target.value = "";
+  if (nameInp) nameInp.value = "";
+});
+
+// ============================================================
+// ===== Floating panels: draggable + minimizable + closable ==
+// ============================================================
+(function setupFloatingPanels() {
+  function makePanel(panel, opts = {}) {
+    if (!panel || panel.dataset.fpReady) return;
+    panel.dataset.fpReady = "1";
+    const head = opts.head || panel.querySelector(".panel-head") || panel.firstElementChild;
+    const body = opts.body || panel.querySelector(".panel-body");
+    const closeBtn = opts.closeBtn || panel.querySelector("[data-panel-close]");
+    const minBtn = opts.minBtn || panel.querySelector("[data-panel-min]");
+
+    // Drag
+    if (head) {
+      head.style.cursor = "move";
+      head.style.userSelect = "none";
+      head.addEventListener("mousedown", (e) => {
+        if (e.target.closest("button,input,select,textarea")) return;
+        const rect = panel.getBoundingClientRect();
+        const parent = panel.offsetParent?.getBoundingClientRect() || { left: 0, top: 0 };
+        const offX = e.clientX - rect.left;
+        const offY = e.clientY - rect.top;
+        function onMove(ev) {
+          const x = ev.clientX - parent.left - offX;
+          const y = ev.clientY - parent.top - offY;
+          panel.style.left = Math.max(0, x) + "px";
+          panel.style.top = Math.max(0, y) + "px";
+          panel.style.right = "auto"; panel.style.bottom = "auto";
+        }
+        function onUp() { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); }
+        document.addEventListener("mousemove", onMove);
+        document.addEventListener("mouseup", onUp);
+        e.preventDefault();
+      });
+    }
+
+    // Minimize
+    if (minBtn && body) {
+      minBtn.addEventListener("click", () => {
+        const min = body.style.display === "none";
+        body.style.display = min ? "" : "none";
+        minBtn.textContent = min ? "−" : "+";
+      });
+    }
+
+    // Close
+    if (closeBtn) {
+      closeBtn.addEventListener("click", () => { panel.hidden = true; });
+    }
+  }
+
+  // Bots panel (already has data attrs)
+  makePanel(document.getElementById("botsAdminPanel"));
+
+  // Wire existing panels by passing custom selectors
+  const mp = document.getElementById("mapAdminPanel");
+  if (mp) makePanel(mp, {
+    head: mp.querySelector("div"),
+    body: document.getElementById("mapAdminBody"),
+    closeBtn: document.getElementById("mapAdminClose"),
+    minBtn: document.getElementById("mapAdminCollapse"),
+  });
+
+  const lp = document.getElementById("lightsAdminPanel");
+  if (lp) makePanel(lp, {
+    head: lp.querySelector("div"),
+    body: document.getElementById("lightsAdminList")?.parentElement,
+    closeBtn: document.getElementById("lightsAdminClose"),
+  });
+  // add minimize button to lights panel
+  const lpHead = lp?.querySelector("div");
+  if (lp && lpHead && !lp.querySelector("[data-panel-min]")) {
+    const m = document.createElement("button");
+    m.type = "button"; m.textContent = "−";
+    m.style.cssText = "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
+    const closeBtn = document.getElementById("lightsAdminClose");
+    closeBtn?.parentElement?.insertBefore(m, closeBtn);
+    const body = lp.querySelector("#lightsAdminList")?.parentElement;
+    m.addEventListener("click", () => {
+      // collapse everything except head row
+      const children = [...lp.children]; let skipFirst = true;
+      for (const ch of children) {
+        if (skipFirst) { skipFirst = false; continue; }
+        ch.style.display = ch.style.display === "none" ? "" : "none";
+      }
+      m.textContent = m.textContent === "−" ? "+" : "−";
+    });
+  }
+
+  const layp = document.getElementById("layersPanel");
+  if (layp) makePanel(layp, {
+    head: layp.querySelector("div"),
+    body: document.getElementById("layersBody"),
+    closeBtn: document.getElementById("layersClose"),
+  });
+  // add minimize for layers
+  const layHead = layp?.querySelector("div");
+  if (layp && layHead && !layp.querySelector("[data-panel-min]")) {
+    const m = document.createElement("button");
+    m.type = "button"; m.textContent = "−";
+    m.style.cssText = "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
+    const closeBtn = document.getElementById("layersClose");
+    closeBtn?.parentElement?.insertBefore(m, closeBtn);
+    m.addEventListener("click", () => {
+      const body = document.getElementById("layersBody");
+      const hint = body?.nextElementSibling;
+      const hidden = body.style.display === "none";
+      if (body) body.style.display = hidden ? "" : "none";
+      if (hint) hint.style.display = hidden ? "" : "none";
+      m.textContent = hidden ? "−" : "+";
+    });
+  }
+
+  // Pose debug
+  const pd = document.getElementById("poseDebug");
+  if (pd) makePanel(pd, {
+    head: pd.querySelector("div"),
+    body: document.getElementById("poseDebugBody"),
+    minBtn: document.getElementById("poseDebugToggle"),
+  });
+})();
+
+// Bots panel toggle
+document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
+  if (!isAdmin) return alert("Apenas admin.");
+  const p = document.getElementById("botsAdminPanel");
+  p.hidden = !p.hidden;
+  if (!p.hidden) renderBotsAdminList();
+});
+
+// Add bots to layers panel
+(function extendLayersWithBots() {
+  const orig = window.renderLayersPanel;
+  if (!orig) return;
+  window.renderLayersPanel = function() {
+    orig();
+    const layersBody = document.getElementById("layersBody");
+    if (!layersBody) return;
+    const bots = [...botEntities.values()].filter(e => e?.row).map(e => e.row);
+    const open = true;
+    const items = bots.map(r => `
+      <div class="layer-item" data-bot-id="${r.id}" data-x="${r.x}" data-y="${r.y}" data-z="${r.z}"
+        style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.04);margin:2px 0;">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">🤖 ${escapeHtml(r.name || "Bot")}</span>
+        <button data-del-bot="${r.id}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
+      </div>`).join("");
+    const html = `
+      <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);user-select:none;">
+          <strong style="font-size:12px;">▾ 🤖 Bots <span style="color:#7a8290;font-weight:normal;">(${bots.length})</span></strong>
+        </div>
+        <div style="padding:4px 6px;">${bots.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Vazio</div>'}</div>
+      </div>`;
+    layersBody.insertAdjacentHTML("beforeend", html);
+    layersBody.querySelectorAll("[data-bot-id]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-del-bot]")) return;
+        const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
+        window.focusCameraOn({ x, y, z }, 4);
+        // Open bots panel and scroll to row
+        const p = document.getElementById("botsAdminPanel");
+        if (p) { p.hidden = false; renderBotsAdminList(); }
+        setTimeout(() => {
+          const card = document.querySelector(`[data-bot-id="${el.dataset.botId}"]`);
+          card?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+      });
+    });
+    layersBody.querySelectorAll("[data-del-bot]").forEach(btn => {
+      btn.addEventListener("click", (e) => { e.stopPropagation(); deleteBot(btn.dataset.delBot); });
+    });
+  };
+})();

@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      bot_animations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          url?: string
+        }
+        Relationships: []
+      }
       characters: {
         Row: {
           base_url: string | null
@@ -176,6 +200,54 @@ export type Database = {
           scale?: number
           updated_at?: string
           url?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: []
+      }
+      map_bots: {
+        Row: {
+          animation_url: string | null
+          character_slug: string
+          created_at: string
+          created_by: string | null
+          id: string
+          map_id: string
+          name: string
+          rotation_y: number
+          scale: number
+          updated_at: string
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          animation_url?: string | null
+          character_slug: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          map_id: string
+          name?: string
+          rotation_y?: number
+          scale?: number
+          updated_at?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Update: {
+          animation_url?: string | null
+          character_slug?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          map_id?: string
+          name?: string
+          rotation_y?: number
+          scale?: number
+          updated_at?: string
           x?: number
           y?: number
           z?: number
