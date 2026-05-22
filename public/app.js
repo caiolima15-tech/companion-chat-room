@@ -1571,18 +1571,24 @@ async function setupGlobalSecondaryChannels() {
         const idx = players.findIndex((p) => p.id === row.id);
         if (idx < 0) return;
         const prev = players[idx];
+        // Se já temos uma versão mais nova de troca (vinda do broadcast),
+        // ignoramos a parte do personagem deste UPDATE de profile — pode ser
+        // uma escrita atrasada que reverteria a troca recém-feita.
+        const localV = characterVersionById.get(row.id) || 0;
+        const dbChanged = row.character_slug !== prev.character_slug;
+        const keepLocalChar = localV > 0 && dbChanged;
         const next = {
           ...prev,
           name: row.nickname ?? prev.name,
           color: row.color ?? prev.color,
-          avatar_url: row.avatar_url ?? prev.avatar_url,
-          character_slug: row.character_slug ?? prev.character_slug,
+          avatar_url: keepLocalChar ? prev.avatar_url : (row.avatar_url ?? prev.avatar_url),
+          character_slug: keepLocalChar ? prev.character_slug : (row.character_slug ?? prev.character_slug),
         };
         players[idx] = next;
         const entity = playerEntities.get(row.id);
         if (entity) {
           entity.player = next;
-          if (next.character_slug && next.character_slug !== prev.character_slug) {
+          if (!keepLocalChar && next.character_slug && next.character_slug !== prev.character_slug) {
             applyCharacter(entity, next.character_slug);
           }
           updateNameplate(next);
