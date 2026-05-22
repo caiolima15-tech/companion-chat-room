@@ -4325,3 +4325,171 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     });
   };
 })();
+
+// ============ Axis Gizmo — setinhas de eixo para arrastar itens ============
+(function setupAxisGizmo() {
+  if (typeof THREE === "undefined" || !scene || !camera || !renderer || !controls) return;
+
+  const group = new THREE.Group();
+  group.name = "__axisGizmo";
+  group.visible = false;
+  scene.add(group);
+
+  const AXES = [
+    { name: "x", dir: new THREE.Vector3(1, 0, 0), color: 0xff3344, rot: ["z", -Math.PI / 2] },
+    { name: "y", dir: new THREE.Vector3(0, 1, 0), color: 0x44ff66, rot: null },
+    { name: "z", dir: new THREE.Vector3(0, 0, 1), color: 0x3388ff, rot: ["x", Math.PI / 2] },
+  ];
+  const arrows = [];
+  const pickMeshes = [];
+  for (const a of AXES) {
+    const arr = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: a.color, depthTest: false, transparent: true, opacity: 0.95 });
+    const shaftGeom = new THREE.CylinderGeometry(0.05, 0.05, 1.0, 10);
+    shaftGeom.translate(0, 0.5, 0);
+    const headGeom = new THREE.ConeGeometry(0.16, 0.36, 14);
+    headGeom.translate(0, 1.18, 0);
+    const shaft = new THREE.Mesh(shaftGeom, mat);
+    const head = new THREE.Mesh(headGeom, mat);
+    // pick volume invisível (mais grosso, fácil de clicar)
+    const pickGeom = new THREE.CylinderGeometry(0.22, 0.22, 1.4, 8);
+    pickGeom.translate(0, 0.7, 0);
+    const pick = new THREE.Mesh(pickGeom, new THREE.MeshBasicMaterial({ visible: false, depthTest: false }));
+    pick.userData.axisName = a.name;
+    arr.add(shaft, head, pick);
+    if (a.rot) arr.rotation[a.rot[0]] = a.rot[1];
+    arr.userData.axis = a.dir.clone();
+    arr.userData.axisName = a.name;
+    arr.userData.mat = mat;
+    arr.traverse((o) => { o.renderOrder = 9999; });
+    group.add(arr);
+    arrows.push(arr);
+    pickMeshes.push(pick);
+  }
+
+  let target = null; // { getPosition, setPosition(v, commit) }
+  let dragging = null;
+
+  function attach(t) {
+    target = t || null;
+    group.visible = !!t;
+  }
+  function detach() {
+    target = null;
+    group.visible = false;
+    if (dragging) { controls.enabled = true; dragging = null; }
+  }
+  window.attachGizmo = attach;
+  window.detachGizmo = detach;
+
+  // Atualização por frame: segue posição do alvo + escala com a distância da câmera
+  function tick() {
+    requestAnimationFrame(tick);
+    if (!target || !group.visible) return;
+    const p = target.getPosition?.();
+    if (!p) { detach(); return; }
+    group.position.copy(p);
+    const dist = camera.position.distanceTo(group.position);
+    const s = Math.max(0.4, dist * 0.10);
+    group.scale.setScalar(s);
+    for (const arr of arrows) {
+      const hi = dragging && dragging.axisName === arr.userData.axisName;
+      arr.userData.mat.opacity = hi ? 1 : 0.9;
+    }
+  }
+  tick();
+
+  const ray = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  function setNdc(ev) {
+    const rect = renderer.domElement.getBoundingClientRect();
+    ndc.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    ndc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  }
+
+  renderer.domElement.addEventListener("pointerdown", (ev) => {
+    if (!target || !group.visible) return;
+    setNdc(ev);
+    ray.setFromCamera(ndc, camera);
+    const hits = ray.intersectObjects(pickMeshes, false);
+    if (!hits.length) return;
+    const axisName = hits[0].object.userData.axisName;
+    const axisDef = AXES.find((a) => a.name === axisName);
+    if (!axisDef) return;
+    ev.stopPropagation();
+    ev.preventDefault();
+    controls.enabled = false;
+    if (pointerDown) pointerDown = null; // evita que o handler de clique do mapa dispare
+    const axisWorld = axisDef.dir.clone();
+    const startPos = target.getPosition().clone();
+    const camDir = new THREE.Vector3().subVectors(camera.position, startPos).normalize();
+    const n = new THREE.Vector3().crossVectors(axisWorld, new THREE.Vector3().crossVectors(camDir, axisWorld));
+    if (n.lengthSq() < 1e-6) n.copy(camDir);
+    n.normalize();
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, startPos);
+    const hit0 = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, hit0)) { controls.enabled = true; return; }
+    dragging = { axisName, axis: axisWorld, startPos, plane, hit0 };
+  }, true);
+
+  window.addEventListener("pointermove", (ev) => {
+    if (!dragging || !target) return;
+    setNdc(ev);
+    ray.setFromCamera(ndc, camera);
+    const hit = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(dragging.plane, hit)) return;
+    const d = new THREE.Vector3().subVectors(hit, dragging.hit0).dot(dragging.axis);
+    const newPos = new THREE.Vector3().copy(dragging.startPos).addScaledVector(dragging.axis, d);
+    target.setPosition(newPos, false);
+  });
+
+  window.addEventListener("pointerup", () => {
+    if (!dragging) return;
+    dragging = null;
+    controls.enabled = true;
+    if (target) {
+      const p = target.getPosition();
+      target.setPosition(p, true); // commit final
+    }
+  });
+
+  // Helper que liga o gizmo a um item das camadas (GLB, spot, sun, bot)
+  window.attachGizmoForLayer = function (kind, id) {
+    if (!isAdmin) return;
+    if (kind === "glb") {
+      const obj = assetObjects.get(id);
+      const a = currentAssets.find((x) => x.id === id);
+      if (!obj || !a) return;
+      attach({
+        getPosition: () => obj.position.clone(),
+        setPosition: (v, commit) => {
+          obj.position.copy(v);
+          a.x = v.x; a.y = v.y; a.z = v.z;
+          if (commit) updateAsset(id, { x: v.x, y: v.y, z: v.z });
+        },
+      });
+    } else if (kind === "spot" || kind === "sun") {
+      const e = customLightsMap.get(id);
+      if (!e) return;
+      attach({
+        getPosition: () => new THREE.Vector3(e.row.pos_x || 0, e.row.pos_y || 0, e.row.pos_z || 0),
+        setPosition: (v, commit) => {
+          e.row.pos_x = v.x; e.row.pos_y = v.y; e.row.pos_z = v.z;
+          try { rebuildCustomLight(e.row); } catch {}
+          if (commit) scheduleLightSave(id, { pos_x: v.x, pos_y: v.y, pos_z: v.z });
+        },
+      });
+    } else if (kind === "bot") {
+      const e = botEntities.get(id);
+      if (!e) return;
+      attach({
+        getPosition: () => new THREE.Vector3(e.row.x || 0, e.row.y || 0, e.row.z || 0),
+        setPosition: (v, commit) => {
+          e.row.x = v.x; e.row.y = v.y; e.row.z = v.z;
+          try { applyBotTransform(e, e.row); } catch {}
+          if (commit) scheduleBotSave(id, { x: v.x, y: v.y, z: v.z });
+        },
+      });
+    }
+  };
+})();
