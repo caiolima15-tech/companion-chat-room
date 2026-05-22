@@ -246,6 +246,7 @@ const MAPS = [
   { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
   { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
   { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
+  { id: "maikai",   name: "Maikai",     url: "/assets/maps/maikai.glb",   mood: "day",   bg: "#1b2a3a", thumb: "🌺" },
 ];
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
 let selectedMapId = currentMapId;
