@@ -3597,14 +3597,18 @@ lightsAdminClose?.addEventListener("click", () => { lightsAdminPanel.hidden = tr
 
 async function createLight(kind) {
   if (!isAdmin) return;
+  // Spawn at the camera focus point (center of view)
+  const c = controls.target;
+  const cx = c.x, cy = c.y, cz = c.z;
   const defaults = kind === "sun"
-    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: 6, pos_y: 12, pos_z: 6, target_x: 0, target_y: 0, target_z: 0, radius: 2.0, cast_shadow: true }
-    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: 0, pos_y: 6, pos_z: 0, target_x: 0, target_y: 0, target_z: 0, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
+    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: cx, pos_y: cy + 8, pos_z: cz + 2, target_x: cx, target_y: cy, target_z: cz, radius: 2.0, cast_shadow: true }
+    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: cx, pos_y: cy + 5, pos_z: cz, target_x: cx, target_y: cy, target_z: cz, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
   const payload = { map_id: currentMapId, enabled: true, created_by: myId, ...defaults };
   const { error, data } = await supabase.from("map_lights").insert(payload).select().single();
   if (error) { alert("Erro: " + error.message); return; }
   if (data) rebuildCustomLight(data);
   renderLightsAdminList();
+  renderLayersPanel?.();
 }
 addSpotLightBtn?.addEventListener("click", () => createLight("spot"));
 addSunLightBtn?.addEventListener("click", () => createLight("sun"));
