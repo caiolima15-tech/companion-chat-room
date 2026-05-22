@@ -4310,6 +4310,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         if (e.target.closest("[data-del-bot]")) return;
         const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
         window.focusCameraOn({ x, y, z }, 4);
+        window.attachGizmoForLayer?.("bot", el.dataset.botId);
         // Open bots panel and scroll to row
         const p = document.getElementById("botsAdminPanel");
         if (p) { p.hidden = false; renderBotsAdminList(); }
