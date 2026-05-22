@@ -1969,7 +1969,7 @@ function clearEnvironment() {
 
 let currentEnvRoot = null;       // o gltf.scene atualmente carregado
 let currentEnvBaseScale = 1;     // escala "auto-fit" base, antes do multiplicador admin
-let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+
 
 async function fetchMapTransform(mapId) {
   try {
