@@ -140,6 +140,22 @@ let currentRoomChannelsMapId = null; // qual mapId os canais por-sala estão usa
 let lastSpeechClear = 0;
 let charactersCatalog = []; // [{slug, name, ...urls, thumbnail_url}] — admin catalog
 let userAvatars = []; // user-created avatars (Avaturn), shape: { id, user_id, name, base_url, thumbnail_url }
+// Versão da última troca de personagem por jogador (id -> timestamp ms).
+// Usada para ignorar eventos atrasados (presence/profiles) que tentariam reverter a troca.
+const characterVersionById = new Map();
+let myCharacterVersion = 0;
+function bumpCharacterVersion(id, v) {
+  const prev = characterVersionById.get(id) || 0;
+  const next = v || Date.now();
+  if (next < prev) return prev;
+  characterVersionById.set(id, next);
+  return next;
+}
+function isStaleCharacterEvent(id, v) {
+  if (!v) return false;
+  const prev = characterVersionById.get(id) || 0;
+  return v < prev;
+}
 function userAvatarToCharacter(av) {
   // Normaliza um user_avatar para o mesmo formato dos personagens do admin.
   return {
@@ -464,6 +480,9 @@ async function bootstrapSession(user) {
     isAdmin,
   };
 
+  if (characterSlug) {
+    myCharacterVersion = bumpCharacterVersion(user.id, Date.now());
+  }
   renderPermissions();
   await Promise.all([loadCharactersCatalog(), loadUserAvatars()]);
   // Sempre mostra a tela de seleção de personagem antes de entrar
@@ -626,9 +645,13 @@ enterRoomButton?.addEventListener("click", async () => {
   // Se já estávamos na sala, atualiza meu próprio entity
   const myEntity = playerEntities.get(myId);
   if (myEntity) {
+    // Marca a versão da troca ANTES de qualquer await — assim, qualquer evento
+    // antigo (presence/profiles) que chegar depois é descartado.
+    myCharacterVersion = bumpCharacterVersion(myId, Date.now());
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
-    // Broadcast imediato pra todos verem a troca sem esperar presence sync
+    // Broadcast imediato pra todos verem a troca sem esperar presence sync.
+    // Inclui posição atual para que ninguém "snap" o personagem pro ponto de origem.
     try {
       await movementChannel?.send({
         type: "broadcast",
@@ -639,6 +662,10 @@ enterRoomButton?.addEventListener("click", async () => {
           avatar_url: me.avatar_url || null,
           name: me.name,
           color: me.color,
+          x: me.x,
+          y: me.y,
+          facing: me.facing,
+          v: myCharacterVersion,
         },
       });
     } catch {}
@@ -1363,16 +1390,32 @@ async function setupRoomChannels(mapId) {
       const prev = new Map(players.map((p) => [p.id, p]));
       const merged = list.map((p) => {
         const old = prev.get(p.id);
-        if (old) {
-          return { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false };
+        // Se temos uma versão local de troca de personagem MAIS NOVA do que
+        // o que veio no presence, preservamos os dados locais (slug/avatar).
+        // Isso evita reverter para o personagem antigo quando o presence
+        // chega atrasado.
+        const localV = characterVersionById.get(p.id) || 0;
+        const presenceV = p.character_v || 0;
+        const keepLocalChar = old && localV > presenceV;
+        const base = old
+          ? { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false }
+          : p;
+        if (keepLocalChar) {
+          base.character_slug = old.character_slug ?? base.character_slug;
+          base.avatar_url = old.avatar_url ?? base.avatar_url;
+          base.name = old.name ?? base.name;
+          base.color = old.color ?? base.color;
+        } else if (presenceV) {
+          bumpCharacterVersion(p.id, presenceV);
         }
-        return p;
+        return base;
       });
       renderPlayers(merged);
     })
     .on("presence", { event: "join" }, ({ newPresences }) => {
-      // Quando alguém novo entra, reenvio minha posição atual via broadcast
-      // para que ele veja onde estou de verdade (não no ponto de origem).
+      // Quando alguém novo entra, reenvio meu estado completo (posição + personagem)
+      // para que ele me veja exatamente como estou — não no ponto de origem nem
+      // no personagem antigo.
       if (!newPresences || !newPresences.length) return;
       const hasNewcomer = newPresences.some((p) => (p.id || p.presence_ref) !== myId);
       if (!hasNewcomer) return;
@@ -1382,6 +1425,23 @@ async function setupRoomChannels(mapId) {
           event: "pos",
           payload: { id: myId, x: me.x, y: me.y, facing: me.facing, running: !!me.running },
         });
+        if (me?.character_slug) {
+          movementChannel?.send({
+            type: "broadcast",
+            event: "character",
+            payload: {
+              id: myId,
+              character_slug: me.character_slug,
+              avatar_url: me.avatar_url || null,
+              name: me.name,
+              color: me.color,
+              x: me.x,
+              y: me.y,
+              facing: me.facing,
+              v: myCharacterVersion || characterVersionById.get(myId) || 0,
+            },
+          });
+        }
       } catch {}
     })
     .subscribe(async (status) => {
@@ -1416,25 +1476,51 @@ async function setupRoomChannels(mapId) {
     })
     .on("broadcast", { event: "character" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
-      const idx = players.findIndex((p) => p.id === payload.id);
-      if (idx >= 0) {
+      // Descarta eventos antigos (chegou após uma troca mais nova).
+      if (isStaleCharacterEvent(payload.id, payload.v)) return;
+      bumpCharacterVersion(payload.id, payload.v);
+      let idx = players.findIndex((p) => p.id === payload.id);
+      if (idx < 0) {
+        // Pode acontecer se o broadcast chegar antes do presence sync.
+        players.push({
+          id: payload.id,
+          name: payload.name || "Visitante",
+          color: payload.color || "#29d3bd",
+          x: payload.x ?? 50,
+          y: payload.y ?? 50,
+          facing: payload.facing || "down",
+          character_slug: payload.character_slug || null,
+          avatar_url: payload.avatar_url || null,
+        });
+        idx = players.length - 1;
+      } else {
         players[idx] = {
           ...players[idx],
           character_slug: payload.character_slug ?? players[idx].character_slug,
           avatar_url: payload.avatar_url ?? players[idx].avatar_url,
           name: payload.name ?? players[idx].name,
           color: payload.color ?? players[idx].color,
+          // Posição: usa a do payload se vier, senão mantém atual (não volta pro origin).
+          x: payload.x ?? players[idx].x,
+          y: payload.y ?? players[idx].y,
+          facing: payload.facing ?? players[idx].facing,
         };
-        const entity = playerEntities.get(payload.id);
-        if (entity) {
-          entity.player = players[idx];
-          if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
-            applyCharacter(entity, payload.character_slug);
-          } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
-            applyAvatar(entity, payload.avatar_url);
-          }
-          updateNameplate(players[idx]);
+      }
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        entity.player = players[idx];
+        if (payload.x != null && payload.y != null) {
+          entity.target.copy(worldFromPercent(players[idx].x, players[idx].y));
         }
+        if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
+          applyCharacter(entity, payload.character_slug);
+        } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
+          applyAvatar(entity, payload.avatar_url);
+        }
+        updateNameplate(players[idx]);
+      } else {
+        // Cria a entidade na hora caso ainda não exista (broadcast antes do presence)
+        renderPlayers(players);
       }
     })
     .on("broadcast", { event: "leave" }, ({ payload }) => {
@@ -1488,18 +1574,24 @@ async function setupGlobalSecondaryChannels() {
         const idx = players.findIndex((p) => p.id === row.id);
         if (idx < 0) return;
         const prev = players[idx];
+        // Se já temos uma versão mais nova de troca (vinda do broadcast),
+        // ignoramos a parte do personagem deste UPDATE de profile — pode ser
+        // uma escrita atrasada que reverteria a troca recém-feita.
+        const localV = characterVersionById.get(row.id) || 0;
+        const dbChanged = row.character_slug !== prev.character_slug;
+        const keepLocalChar = localV > 0 && dbChanged;
         const next = {
           ...prev,
           name: row.nickname ?? prev.name,
           color: row.color ?? prev.color,
-          avatar_url: row.avatar_url ?? prev.avatar_url,
-          character_slug: row.character_slug ?? prev.character_slug,
+          avatar_url: keepLocalChar ? prev.avatar_url : (row.avatar_url ?? prev.avatar_url),
+          character_slug: keepLocalChar ? prev.character_slug : (row.character_slug ?? prev.character_slug),
         };
         players[idx] = next;
         const entity = playerEntities.get(row.id);
         if (entity) {
           entity.player = next;
-          if (next.character_slug && next.character_slug !== prev.character_slug) {
+          if (!keepLocalChar && next.character_slug && next.character_slug !== prev.character_slug) {
             applyCharacter(entity, next.character_slug);
           }
           updateNameplate(next);
@@ -1587,6 +1679,7 @@ function presencePayload() {
     color: me.color,
     avatar_url: me.avatar_url,
     character_slug: me.character_slug || null,
+    character_v: myCharacterVersion || characterVersionById.get(myId) || 0,
     x: me.x,
     y: me.y,
     facing: me.facing,
@@ -2297,7 +2390,20 @@ function renderPlayers(nextPlayers) {
   players = nextPlayers;
   const mine = players.find((p) => p.id === myId);
   if (mine) {
+    // Preserva escolhas locais (personagem/posição) — o presence pode trazer
+    // valores antigos e reverter a troca de personagem ou teleportar o jogador.
+    const localChar = me?.character_slug || null;
+    const localAvatar = me?.avatar_url || null;
+    const localX = me?.x; const localY = me?.y; const localFacing = me?.facing;
     me = { ...me, ...mine };
+    if (localChar) me.character_slug = localChar;
+    if (localAvatar) me.avatar_url = localAvatar;
+    if (localX != null) me.x = localX;
+    if (localY != null) me.y = localY;
+    if (localFacing) me.facing = localFacing;
+    // Reflete de volta no array `players` para manter consistência
+    const idx = players.findIndex((p) => p.id === myId);
+    if (idx >= 0) players[idx] = { ...players[idx], ...me };
     isAdmin = !!mine.isAdmin;
   }
   onlineCount.textContent = `${players.length} online`;

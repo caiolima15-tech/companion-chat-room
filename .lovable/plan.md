@@ -1,46 +1,33 @@
-# Migrar para GLB + biblioteca de animações compartilhada
+Plano para estabilizar a troca de personagem em tempo real:
 
-## Objetivo
+1. Centralizar a troca de personagem em uma única rotina
+- Criar uma função única para aplicar a troca local, salvar no perfil, atualizar presença e enviar broadcast.
+- Evitar que partes diferentes do código façam a mesma atualização em ordens diferentes.
 
-- Trocar todos os personagens de FBX para GLB (arquivos bem menores).
-- Usar **uma única biblioteca de animações em GLB sem skin** (só esqueleto + clips), compartilhada por todos os personagens.
-- Cada personagem carrega apenas o próprio mesh; as animações vêm da biblioteca comum.
+2. Enviar estado completo no broadcast de troca
+- Além de `character_slug`, enviar também posição atual (`x`, `y`), direção, nome, cor e um `version/timestamp` da troca.
+- Assim, quem recebe não volta o jogador para dados antigos nem depende só do `presence`.
 
-## Como vai funcionar
+3. Impedir eventos antigos de sobrescreverem o personagem novo
+- Guardar uma versão local da última troca por jogador.
+- Ignorar updates atrasados de `presence` ou `profiles` quando eles trouxerem personagem antigo.
+- Isso resolve o problema “funciona de um lado mas no outro volta/troca errado”.
 
-1. Você sobe os GLBs dos personagens (mesh + rig, sem precisar de animação embutida) e atualiza `base_url` no banco apontando para o `.glb`.
-2. Você sobe um conjunto fixo de GLBs de animação em `public/assets/animations/`:
-   - `idle.glb`
-   - `walk.glb`
-   - `run.glb`
-   - `jump.glb`
-   - `dance.glb`
-   - `wave.glb`
-   
-   Cada arquivo tem só o esqueleto animado (export "skeleton only" do Mixamo/Blender, sem mesh).
-3. Ao carregar um personagem, o app:
-   - Carrega o GLB base.
-   - Para cada slot de animação, usa o GLB da biblioteca compartilhada como fonte.
-   - Se o personagem tiver um `*_url` específico no banco, esse tem prioridade (override).
-   - Se o GLB base já tiver animação embutida com o nome do slot, também tem prioridade.
+4. Melhorar o carregamento assíncrono do modelo 3D
+- `applyCharacter` já tem `pendingCharacterSlug`, mas vou reforçar para limpar loading/spinner quando uma troca é abortada ou falha.
+- Manter o personagem anterior até o novo estar pronto quando possível, evitando boneco sumir ou ficar preso em loading.
 
-## Mudanças técnicas
+5. Reenviar estado real ao entrar na sala
+- Quando alguém novo entra, além da posição, reenviar também o personagem atual completo.
+- Isso evita que usuários recém-chegados vejam personagem antigo ou padrão.
 
-Arquivo: `public/app.js`
+6. Revisar pontos de conflito encontrados
+- `presence sync` hoje mescla posição antiga, mas pode trazer `character_slug` antigo.
+- `profiles` update e broadcast `character` podem chegar fora de ordem.
+- `renderPlayers` atualiza `me` com dados vindos do presence, o que pode reverter a escolha local se a presença antiga chegar depois.
 
-- **Nova constante** `SHARED_ANIM_LIBRARY` com os slots → `/assets/animations/<slot>.glb`.
-- **`loadCharacterAssets()`**: depois de carregar o `base`, para cada slot em `["idle","walk","run","jump","dance","wave"]`:
-  1. Se `base.animations` já tem clip com o nome do slot → usa.
-  2. Senão, se `character[slot+"_url"]` está definido → carrega esse.
-  3. Senão → carrega `SHARED_ANIM_LIBRARY[slot]` (cacheado entre personagens).
-- **Cache de clips compartilhados**: um `Map<url, Promise<AnimationClip>>` para que cada GLB de animação seja baixado uma única vez por sessão, independente de quantos personagens entrarem na cena.
-- **Retargeting mais robusto**: trocar o atual `retargetClipToBones` (rename só) por `SkeletonUtils.retargetClip` (já existe em `public/vendor/utils/SkeletonUtils.js`), que faz bake de pose por frame e resolve diferenças de bind pose / escala entre esqueletos. Mantém o rename de `mixamorig:` como pré-passo.
-- **Remover** o caminho `borrow_animations` (catálogo emprestando de outros personagens) e a entrada hardcoded `test-glb` em `loadCharactersCatalog`, já que a biblioteca compartilhada cobre o caso.
-- **Manter** o suporte a FBX como fallback para `*_url` legados (mas o caminho principal será GLB).
-
-## O que você precisa subir
-
-- GLBs novos dos personagens em `public/assets/characters/` (ou via Cloud Storage, atualizando `base_url`).
-- 6 GLBs de animação em `public/assets/animations/` com os nomes acima. Pode ser o mesmo rig Mixamo exportado como GLB "skeleton only".
-
-Depois disso, posso atualizar as linhas do banco para apontar `base_url` para os novos `.glb` e limpar os `*_url` antigos (deixando a biblioteca compartilhada cuidar).
+Resultado esperado:
+- Troca de personagem aparece para todos imediatamente.
+- O próprio usuário não volta para personagem antigo.
+- Usuários novos entram vendo o personagem e posição reais de todos.
+- Eventos atrasados deixam de quebrar a sincronização.
