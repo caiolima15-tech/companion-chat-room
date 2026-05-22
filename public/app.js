@@ -1768,17 +1768,23 @@ function escapeHtml(value) {
   );
 }
 
+function getMapScale() {
+  const s = currentMapTransform?.scale_mul || 1;
+  return Math.max(0.1, s);
+}
 function worldFromPercent(x, y) {
+  const s = getMapScale();
   return new THREE.Vector3(
-    (x / 100 - 0.5) * MAP_WIDTH,
+    (x / 100 - 0.5) * MAP_WIDTH * s,
     0,
-    (y / 100 - 0.5) * MAP_DEPTH,
+    (y / 100 - 0.5) * MAP_DEPTH * s,
   );
 }
 function percentFromWorld(x, z) {
+  const s = getMapScale();
   return {
-    x: Math.max(5, Math.min(95, (x / MAP_WIDTH + 0.5) * 100)),
-    y: Math.max(8, Math.min(92, (z / MAP_DEPTH + 0.5) * 100)),
+    x: Math.max(5, Math.min(95, (x / (MAP_WIDTH * s) + 0.5) * 100)),
+    y: Math.max(8, Math.min(92, (z / (MAP_DEPTH * s) + 0.5) * 100)),
   };
 }
 
@@ -1818,6 +1824,35 @@ scene.add(lightingGroup);
 // Environment GLB group (cleared/replaced on map switch)
 const envGroup = new THREE.Group();
 let envBaseFloor = null;
+
+// Boundary visualizer (toggle): shows the invisible walkable area
+const boundaryHelper = (() => {
+  const geom = new THREE.BoxGeometry(1, 1, 1);
+  const edges = new THREE.EdgesGeometry(geom);
+  const mat = new THREE.LineBasicMaterial({ color: 0x29d3bd, transparent: true, opacity: 0.85 });
+  const mesh = new THREE.LineSegments(edges, mat);
+  mesh.visible = localStorage.getItem("neon-show-bounds") === "1";
+  mesh.position.y = 0.6;
+  scene.add(mesh);
+  return mesh;
+})();
+function updateBoundaryHelper() {
+  const s = (typeof getMapScale === "function") ? getMapScale() : 1;
+  // Walkable region matches percent clamps (5..95 on X, 8..92 on Z) scaled by mapScale
+  const w = MAP_WIDTH * s * 0.90;
+  const d = MAP_DEPTH * s * 0.84;
+  boundaryHelper.scale.set(w, 1.2, d);
+}
+function setBoundaryVisible(v) {
+  boundaryHelper.visible = !!v;
+  localStorage.setItem("neon-show-bounds", v ? "1" : "0");
+  const btn = document.querySelector("#boundsToggleBtn");
+  if (btn) {
+    btn.dataset.on = v ? "1" : "0";
+    btn.textContent = v ? "📐 Limites: ON" : "📐 Limites: OFF";
+  }
+}
+updateBoundaryHelper();
 
 function applyLightingForMood(mood) {
   // Clear previous lights
@@ -1969,6 +2004,7 @@ function applyEnvTransform() {
   );
   currentEnvRoot.rotation.y = t.rotation_y || 0;
   currentEnvRoot.updateMatrixWorld(true);
+  updateBoundaryHelper();
 }
 
 async function loadEnvironment(mapId) {
@@ -2454,6 +2490,16 @@ if (cinematicToggleBtn) {
   });
 }
 
+// Boundary visibility toggle
+const boundsToggleBtn = document.getElementById("boundsToggleBtn");
+setBoundaryVisible(boundaryHelper.visible);
+if (boundsToggleBtn) {
+  boundsToggleBtn.addEventListener("click", () => {
+    setBoundaryVisible(!boundaryHelper.visible);
+    updateBoundaryHelper();
+  });
+}
+
 function updateNameplate(player) {
   const entity = playerEntities.get(player.id);
   if (!entity) return;
@@ -2844,9 +2890,9 @@ async function placeSelectedAsset(point) {
   const { error } = await supabase.from("map_assets").insert({
     name: selectedAsset.name,
     url: selectedAsset.url,
-    x: Math.max(-8.5, Math.min(8.5, point.x)),
+    x: Math.max(-8.5 * getMapScale(), Math.min(8.5 * getMapScale(), point.x)),
     y: 0,
-    z: Math.max(-6.5, Math.min(6.5, point.z)),
+    z: Math.max(-6.5 * getMapScale(), Math.min(6.5 * getMapScale(), point.z)),
     rotation_x: 0,
     rotation_y: 0,
     rotation_z: 0,
@@ -2980,8 +3026,8 @@ function handleSceneClick(event) {
   if (!point) return;
   if (isAdmin && movingAssetId) {
     updateAsset(movingAssetId, {
-      x: Math.max(-8.5, Math.min(8.5, point.x)),
-      z: Math.max(-6.5, Math.min(6.5, point.z)),
+      x: Math.max(-8.5 * getMapScale(), Math.min(8.5 * getMapScale(), point.x)),
+      z: Math.max(-6.5 * getMapScale(), Math.min(6.5 * getMapScale(), point.z)),
     })
       .then(() => {
         movingAssetId = "";
