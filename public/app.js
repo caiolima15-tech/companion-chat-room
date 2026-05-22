@@ -1530,6 +1530,14 @@ async function trackLobby() {
 async function switchRoom(newMapId) {
   if (newMapId === currentRoomChannelsMapId) return;
   // Tira do canal antigo: derruba presence/movement/chat
+  // Avisa imediatamente os outros que estamos saindo (sem esperar heartbeat)
+  try {
+    await movementChannel?.send({
+      type: "broadcast",
+      event: "leave",
+      payload: { id: myId },
+    });
+  } catch {}
   if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
   if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
   if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
