@@ -1768,17 +1768,23 @@ function escapeHtml(value) {
   );
 }
 
+function getMapScale() {
+  const s = currentMapTransform?.scale_mul || 1;
+  return Math.max(0.1, s);
+}
 function worldFromPercent(x, y) {
+  const s = getMapScale();
   return new THREE.Vector3(
-    (x / 100 - 0.5) * MAP_WIDTH,
+    (x / 100 - 0.5) * MAP_WIDTH * s,
     0,
-    (y / 100 - 0.5) * MAP_DEPTH,
+    (y / 100 - 0.5) * MAP_DEPTH * s,
   );
 }
 function percentFromWorld(x, z) {
+  const s = getMapScale();
   return {
-    x: Math.max(5, Math.min(95, (x / MAP_WIDTH + 0.5) * 100)),
-    y: Math.max(8, Math.min(92, (z / MAP_DEPTH + 0.5) * 100)),
+    x: Math.max(5, Math.min(95, (x / (MAP_WIDTH * s) + 0.5) * 100)),
+    y: Math.max(8, Math.min(92, (z / (MAP_DEPTH * s) + 0.5) * 100)),
   };
 }
 
