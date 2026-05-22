@@ -3797,6 +3797,7 @@ function renderLightsAdminList() {
         if (e.target.closest("[data-del]")) return;
         const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
         window.focusCameraOn({ x, y, z }, 5);
+        window.attachGizmoForLayer?.(el.dataset.key, el.dataset.id);
       });
     });
     layersBody.querySelectorAll("[data-del]").forEach(btn => {
