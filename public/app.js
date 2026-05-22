@@ -3710,3 +3710,131 @@ function renderLightsAdminList() {
     card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteLight(id));
   });
 }
+
+// ============================================================
+// ===== Free camera + Layers panel (admin) ===================
+// ============================================================
+(function setupFreeCamAndLayers() {
+  const freeBtn = document.getElementById("freeCamToggleBtn");
+  const layersBtn = document.getElementById("layersToggleBtn");
+  const layersPanel = document.getElementById("layersPanel");
+  const layersClose = document.getElementById("layersClose");
+  const layersBody = document.getElementById("layersBody");
+
+  // --- Free camera ---
+  function setFreeCam(on) {
+    window.__freeCameraMode = !!on;
+    if (on) {
+      controls.maxPolarAngle = Math.PI; // permite olhar pra cima/baixo
+      controls.minDistance = 0.5;
+      controls.maxDistance = 200;
+    } else {
+      controls.maxPolarAngle = Math.PI * 0.47;
+      controls.minDistance = 2.5;
+      controls.maxDistance = 11;
+    }
+    if (freeBtn) freeBtn.innerHTML = `🎥 Câmera Livre: ${on ? "ON" : "OFF"}`;
+    if (freeBtn) freeBtn.style.background = on ? "rgba(41,211,189,0.85)" : "rgba(15,23,42,0.85)";
+  }
+  freeBtn?.addEventListener("click", () => setFreeCam(!window.__freeCameraMode));
+
+  // --- Focus camera on a world position ---
+  window.focusCameraOn = function(pos, distance = 5) {
+    const target = new THREE.Vector3(pos.x, (pos.y || 0) + 1, pos.z);
+    // Manter direção atual da câmera, só recolocar a uma distância confortável
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+    if (dir.lengthSq() < 0.01) dir.set(0, 2, 5);
+    dir.normalize().multiplyScalar(distance);
+    const camPos = new THREE.Vector3().copy(target).add(dir);
+    window.__focusLerp = { target, camera: camPos };
+    if (!window.__freeCameraMode) setFreeCam(true); // entra em livre pra não voltar pro player
+  };
+
+  // --- Layers list ---
+  const layerGroupsOpen = { glb: true, spot: true, sun: true };
+
+  function renderLayersPanel() {
+    if (!layersBody) return;
+    const assets = (typeof currentAssets !== "undefined" ? currentAssets : []) || [];
+    const lights = [...(customLightsMap?.values() || [])].map(e => e.row);
+    const spots = lights.filter(l => l.kind !== "sun");
+    const suns = lights.filter(l => l.kind === "sun");
+
+    const group = (key, icon, title, rows, posOf, onDel) => {
+      const open = layerGroupsOpen[key];
+      const arrow = open ? "▾" : "▸";
+      const items = open ? rows.map(r => {
+        const p = posOf(r);
+        return `<div class="layer-item" data-key="${key}" data-id="${r.id}" data-x="${p.x}" data-y="${p.y}" data-z="${p.z}"
+          style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.04);margin:2px 0;">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${escapeHtml(r.name || "(sem nome)")}</span>
+          <button data-del="${r.id}" data-key="${key}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
+        </div>`;
+      }).join("") : "";
+      return `
+        <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
+          <div data-toggle="${key}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);cursor:pointer;user-select:none;">
+            <strong style="font-size:12px;">${arrow} ${icon} ${title} <span style="color:#7a8290;font-weight:normal;">(${rows.length})</span></strong>
+          </div>
+          ${open ? `<div style="padding:4px 6px;">${rows.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Vazio</div>'}</div>` : ""}
+        </div>`;
+    };
+
+    layersBody.innerHTML =
+      group("glb", "📦", "GLBs", assets, (a) => ({ x: a.x, y: a.y, z: a.z })) +
+      group("spot", "🔦", "Spots", spots, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z })) +
+      group("sun", "☀️", "Sóis", suns, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z }));
+
+    layersBody.querySelectorAll("[data-toggle]").forEach(el => {
+      el.addEventListener("click", () => {
+        const k = el.dataset.toggle;
+        layerGroupsOpen[k] = !layerGroupsOpen[k];
+        renderLayersPanel();
+      });
+    });
+    layersBody.querySelectorAll(".layer-item").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-del]")) return;
+        const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
+        window.focusCameraOn({ x, y, z }, 5);
+      });
+    });
+    layersBody.querySelectorAll("[data-del]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.del;
+        const key = btn.dataset.key;
+        if (!confirm("Apagar esse item?")) return;
+        if (key === "glb") {
+          await deleteAsset(id);
+        } else {
+          await deleteLight(id);
+        }
+        renderLayersPanel();
+      });
+    });
+  }
+  window.renderLayersPanel = renderLayersPanel;
+
+  layersBtn?.addEventListener("click", () => {
+    if (!isAdmin) { alert("Apenas admin."); return; }
+    layersPanel.hidden = !layersPanel.hidden;
+    if (!layersPanel.hidden) renderLayersPanel();
+  });
+  layersClose?.addEventListener("click", () => { layersPanel.hidden = true; });
+
+  // Re-render quando assets/luzes mudam
+  const _origRenderAssets = window.renderAssets || renderAssets;
+  const _origRenderLights = renderLightsAdminList;
+  // Hook via MutationObserver-free approach: wrap functions
+  const _oldUpdateAssetList = updateAssetList;
+  window.updateAssetList = function(a) { _oldUpdateAssetList(a); renderLayersPanel(); };
+  // Wrap renderLightsAdminList — re-export by reassigning the binding via setTimeout poll
+  const _origFn = renderLightsAdminList;
+  // We can't reassign a const, so just hook periodic refresh on changes via realtime listeners already firing renderLightsAdminList.
+  // Instead, observe the lights list container:
+  const lightsList = document.getElementById("lightsAdminList");
+  if (lightsList) {
+    new MutationObserver(() => renderLayersPanel()).observe(lightsList, { childList: true, subtree: false });
+  }
+})();
