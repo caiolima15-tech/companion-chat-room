@@ -628,6 +628,20 @@ enterRoomButton?.addEventListener("click", async () => {
   if (myEntity) {
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
+    // Broadcast imediato pra todos verem a troca sem esperar presence sync
+    try {
+      await movementChannel?.send({
+        type: "broadcast",
+        event: "character",
+        payload: {
+          id: myId,
+          character_slug: selectedCharacterSlug,
+          avatar_url: me.avatar_url || null,
+          name: me.name,
+          color: me.color,
+        },
+      });
+    } catch {}
   } else {
     // Primeira vez entrando: pede pra escolher o local antes de spawnar
     openMapSelect();
@@ -1386,6 +1400,41 @@ async function setupRoomChannels(mapId) {
       const entity = playerEntities.get(payload.id);
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
+    .on("broadcast", { event: "character" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const idx = players.findIndex((p) => p.id === payload.id);
+      if (idx >= 0) {
+        players[idx] = {
+          ...players[idx],
+          character_slug: payload.character_slug ?? players[idx].character_slug,
+          avatar_url: payload.avatar_url ?? players[idx].avatar_url,
+          name: payload.name ?? players[idx].name,
+          color: payload.color ?? players[idx].color,
+        };
+        const entity = playerEntities.get(payload.id);
+        if (entity) {
+          entity.player = players[idx];
+          if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
+            applyCharacter(entity, payload.character_slug);
+          } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
+            applyAvatar(entity, payload.avatar_url);
+          }
+          updateNameplate(players[idx]);
+        }
+      }
+    })
+    .on("broadcast", { event: "leave" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        scene.remove(entity.group);
+        entity.plate?.remove();
+        if (entity.loadingSpinner) entity.loadingSpinner.remove();
+        playerEntities.delete(payload.id);
+      }
+      players = players.filter((p) => p.id !== payload.id);
+      onlineCount.textContent = `${players.length} online`;
+    })
     .subscribe();
 
   // Catálogo, user_avatars e profiles permanecem globais — definidos abaixo (uma vez).
@@ -1481,6 +1530,14 @@ async function trackLobby() {
 async function switchRoom(newMapId) {
   if (newMapId === currentRoomChannelsMapId) return;
   // Tira do canal antigo: derruba presence/movement/chat
+  // Avisa imediatamente os outros que estamos saindo (sem esperar heartbeat)
+  try {
+    await movementChannel?.send({
+      type: "broadcast",
+      event: "leave",
+      payload: { id: myId },
+    });
+  } catch {}
   if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
   if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
   if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
@@ -1539,6 +1596,27 @@ async function trackMe(updateRoster = true) {
     });
   } catch {}
 }
+
+// Quando o usuário fecha a aba / muda de navegador, avisa todo mundo na hora
+// (sem esperar o heartbeat de 30s do presence).
+function notifyLeaveAndUntrack() {
+  try {
+    movementChannel?.send({
+      type: "broadcast",
+      event: "leave",
+      payload: { id: myId },
+    });
+  } catch {}
+  try { presenceChannel?.untrack(); } catch {}
+  try { lobbyChannel?.untrack(); } catch {}
+}
+window.addEventListener("pagehide", notifyLeaveAndUntrack);
+window.addEventListener("beforeunload", notifyLeaveAndUntrack);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") notifyLeaveAndUntrack();
+});
+
+
 
 // ============ HUD permissions ============
 function renderPermissions() {
