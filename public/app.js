@@ -1890,18 +1890,18 @@ function clearEnvironment() {
 
 let currentEnvRoot = null;       // o gltf.scene atualmente carregado
 let currentEnvBaseScale = 1;     // escala "auto-fit" base, antes do multiplicador admin
-let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
 
 async function fetchMapTransform(mapId) {
   try {
     const { data } = await supabase
       .from("map_transforms")
-      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul")
+      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul, mood")
       .eq("map_id", mapId)
       .maybeSingle();
-    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
   } catch {
-    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
   }
 }
 
