@@ -1814,6 +1814,19 @@ function applyLightingForMood(mood) {
     sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
     sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
     lightingGroup.add(sun);
+  } else if (mood === "sunset") {
+    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
+    const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
+    sun.position.set(-10, 6, 4);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+    sun.shadow.camera.left = -18; sun.shadow.camera.right = 18;
+    sun.shadow.camera.top = 18; sun.shadow.camera.bottom = -18;
+    lightingGroup.add(sun);
+    const fill = new THREE.PointLight("#ff6b88", 1.4, 18);
+    fill.position.set(4, 3, -4);
+    lightingGroup.add(fill);
   } else {
     lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
     const key = new THREE.DirectionalLight("#ffffff", 1.0);
