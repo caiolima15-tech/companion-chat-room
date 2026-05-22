@@ -480,6 +480,9 @@ async function bootstrapSession(user) {
     isAdmin,
   };
 
+  if (characterSlug) {
+    myCharacterVersion = bumpCharacterVersion(user.id, Date.now());
+  }
   renderPermissions();
   await Promise.all([loadCharactersCatalog(), loadUserAvatars()]);
   // Sempre mostra a tela de seleção de personagem antes de entrar
