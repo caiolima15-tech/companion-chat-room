@@ -2908,6 +2908,32 @@ mapAdminToggle?.addEventListener("click", () => {
 });
 mapAdminClose?.addEventListener("click", () => { if (mapAdminPanel) mapAdminPanel.hidden = true; });
 
+// Collapse/expand do painel Editar mapa (igual ao Pose Debug)
+(() => {
+  const collapseBtn = document.getElementById("mapAdminCollapse");
+  const body = document.getElementById("mapAdminBody");
+  if (collapseBtn && body) {
+    collapseBtn.addEventListener("click", () => {
+      const hidden = body.style.display === "none";
+      body.style.display = hidden ? "" : "none";
+      collapseBtn.textContent = hidden ? "−" : "+";
+    });
+  }
+})();
+
+// Botão escudo: oculta/mostra toda a interface admin
+(() => {
+  const btn = document.getElementById("adminHideToggle");
+  if (!btn) return;
+  let hidden = false;
+  btn.addEventListener("click", () => {
+    hidden = !hidden;
+    document.body.classList.toggle("admin-ui-hidden", hidden);
+    btn.style.opacity = hidden ? "0.55" : "1";
+    btn.title = hidden ? "Mostrar interface admin" : "Ocultar interface admin";
+  });
+})();
+
 function onMapAdminInput() {
   const scale = parseFloat(mapScaleInput.value) || 1;
   const rotDeg = parseFloat(mapRotYInput.value) || 0;
