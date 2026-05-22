@@ -3823,18 +3823,9 @@ function renderLightsAdminList() {
   });
   layersClose?.addEventListener("click", () => { layersPanel.hidden = true; });
 
-  // Re-render quando assets/luzes mudam
-  const _origRenderAssets = window.renderAssets || renderAssets;
-  const _origRenderLights = renderLightsAdminList;
-  // Hook via MutationObserver-free approach: wrap functions
-  const _oldUpdateAssetList = updateAssetList;
-  window.updateAssetList = function(a) { _oldUpdateAssetList(a); renderLayersPanel(); };
-  // Wrap renderLightsAdminList — re-export by reassigning the binding via setTimeout poll
-  const _origFn = renderLightsAdminList;
-  // We can't reassign a const, so just hook periodic refresh on changes via realtime listeners already firing renderLightsAdminList.
-  // Instead, observe the lights list container:
+  // Re-render quando a lista de GLBs ou luzes muda no DOM
+  const assetListEl = document.getElementById("assetList");
+  if (assetListEl) new MutationObserver(() => renderLayersPanel()).observe(assetListEl, { childList: true });
   const lightsList = document.getElementById("lightsAdminList");
-  if (lightsList) {
-    new MutationObserver(() => renderLayersPanel()).observe(lightsList, { childList: true, subtree: false });
-  }
+  if (lightsList) new MutationObserver(() => renderLayersPanel()).observe(lightsList, { childList: true });
 })();
