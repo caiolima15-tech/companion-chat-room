@@ -2900,17 +2900,13 @@ function syncMapAdminPanel() {
   }
 }
 
-function setMapAdminOpen(open) {
-  if (mapAdminPanel) mapAdminPanel.hidden = !open;
-  if (mapAdminToggle) mapAdminToggle.hidden = open;
-  if (open) syncMapAdminPanel();
-}
-
 mapAdminToggle?.addEventListener("click", () => {
   if (!isAdmin) { alert("Apenas admin."); return; }
-  setMapAdminOpen(true);
+  if (!mapAdminPanel) return;
+  mapAdminPanel.hidden = !mapAdminPanel.hidden;
+  if (!mapAdminPanel.hidden) syncMapAdminPanel();
 });
-mapAdminClose?.addEventListener("click", () => setMapAdminOpen(false));
+mapAdminClose?.addEventListener("click", () => { if (mapAdminPanel) mapAdminPanel.hidden = true; });
 
 function onMapAdminInput() {
   const scale = parseFloat(mapScaleInput.value) || 1;
