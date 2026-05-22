@@ -285,21 +285,13 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-// ============ Cinematic mode (Blender-like deep shadows) ============
-let CINEMATIC = localStorage.getItem("neon-cinematic") === "1";
-function applyRendererForCinematic() {
-  if (CINEMATIC) {
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
-    renderer.shadowMap.type = THREE.VSMShadowMap;
-  } else {
-    renderer.toneMapping = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  }
-  renderer.shadowMap.needsUpdate = true;
-}
-applyRendererForCinematic();
+// ============ Dark / lights-only mode (admin) ============
+// Quando ON: hemi/sol do mood são apagados e o mapa fica escuro;
+// só as luzes custom (spots + sol custom) iluminam a cena.
+let DARK_MODE = false; // controlado por currentMapTransform.dark_mode
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -1858,80 +1850,82 @@ function applyLightingForMood(mood) {
   // Clear previous lights
   while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
 
-  // Cinematic = deeper contrast (Blender-like): lower ambient, stronger directional, darker fog
-  const cine = CINEMATIC;
-  const hemiMul = cine ? 0.35 : 1.0;
-  const dirMul = cine ? 1.6 : 1.0;
-  const shadowMapSize = cine ? 4096 : 2048;
-  const shadowBias = cine ? -0.0004 : -0.0001;
-  const shadowRadius = cine ? 6 : 3;
+  // Modo escuro: nenhuma luz ambiente / mood. Só as luzes custom iluminam.
+  if (DARK_MODE) {
+    scene.background = new THREE.Color("#020308");
+    scene.fog = null;
+    // Pequenísssima ambient pra não ficar 100% preto onde não chega luz
+    lightingGroup.add(new THREE.AmbientLight("#0a0d18", 0.05));
+    return;
+  }
 
   function configSun(light) {
     light.castShadow = true;
-    light.shadow.mapSize.set(shadowMapSize, shadowMapSize);
+    light.shadow.mapSize.set(2048, 2048);
     light.shadow.camera.near = 1; light.shadow.camera.far = 50;
     light.shadow.camera.left = -18; light.shadow.camera.right = 18;
     light.shadow.camera.top = 18; light.shadow.camera.bottom = -18;
-    light.shadow.bias = shadowBias;
-    light.shadow.radius = shadowRadius;
-    light.shadow.normalBias = cine ? 0.03 : 0.02;
+    light.shadow.bias = -0.0001;
+    light.shadow.radius = 3;
+    light.shadow.normalBias = 0.02;
   }
 
   if (mood === "day") {
-    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5 * hemiMul));
-    const sun = new THREE.DirectionalLight("#fff7e0", 1.6 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5));
+    const sun = new THREE.DirectionalLight("#fff7e0", 1.6);
     sun.position.set(8, 14, 6);
     configSun(sun);
     lightingGroup.add(sun);
-    scene.background = new THREE.Color(cine ? "#1a2230" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#1a2230", 18, 60) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   } else if (mood === "sunset") {
-    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2 * hemiMul));
-    const sun = new THREE.DirectionalLight("#ff9a55", 1.5 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
+    const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
     sun.position.set(-10, 6, 4);
     configSun(sun);
     lightingGroup.add(sun);
-    const fill = new THREE.PointLight("#ff6b88", 1.4 * (cine ? 0.6 : 1), 18);
+    const fill = new THREE.PointLight("#ff6b88", 1.4, 18);
     fill.position.set(4, 3, -4);
     lightingGroup.add(fill);
-    scene.background = new THREE.Color(cine ? "#2a1820" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#2a1820", 16, 55) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   } else {
-    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1 * hemiMul));
-    const key = new THREE.DirectionalLight("#ffffff", 1.0 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
+    const key = new THREE.DirectionalLight("#ffffff", 1.0);
     key.position.set(6, 10, 3);
     configSun(key);
     lightingGroup.add(key);
 
-    const red = new THREE.PointLight("#f26868", 2.4 * (cine ? 0.7 : 1), 12);
+    const red = new THREE.PointLight("#f26868", 2.4, 12);
     red.position.set(-6.7, 3.2, -6.2);
     lightingGroup.add(red);
 
-    const teal = new THREE.PointLight("#29d3bd", 1.8 * (cine ? 0.7 : 1), 14);
+    const teal = new THREE.PointLight("#29d3bd", 1.8, 14);
     teal.position.set(5.7, 3.4, 3.6);
     lightingGroup.add(teal);
-    scene.background = new THREE.Color(cine ? "#070a12" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#070a12", 14, 50) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   }
 }
 
-// Re-apply shadow flags on environment meshes based on cinematic mode
+// Re-apply shadow flags on environment meshes — sempre castShadow=true
+// pra qualquer luz (mood ou custom) projetar sombras nos objetos.
 function refreshEnvShadows() {
   envGroup.traverse((node) => {
     if (!node.isMesh) return;
-    node.castShadow = CINEMATIC;
+    node.castShadow = true;
     node.receiveShadow = true;
   });
 }
 
-function setCinematic(on) {
-  CINEMATIC = !!on;
-  localStorage.setItem("neon-cinematic", CINEMATIC ? "1" : "0");
-  applyRendererForCinematic();
+function setDarkMode(on, { persistLocal = false } = {}) {
+  DARK_MODE = !!on;
   applyLightingForMood(currentMapTransform?.mood || "day");
   refreshEnvShadows();
-  const stateEl = document.getElementById("cinematicState");
-  if (stateEl) stateEl.textContent = CINEMATIC ? "ON" : "OFF";
+  const stateEl = document.getElementById("darkModeState");
+  if (stateEl) stateEl.textContent = DARK_MODE ? "ON" : "OFF";
+  const btn = document.getElementById("darkModeToggle");
+  if (btn) btn.style.borderColor = DARK_MODE ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
 }
 
 function buildMap() {
@@ -1981,12 +1975,12 @@ async function fetchMapTransform(mapId) {
   try {
     const { data } = await supabase
       .from("map_transforms")
-      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul, mood")
+      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul, mood, dark_mode")
       .eq("map_id", mapId)
       .maybeSingle();
-    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
   } catch {
-    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
   }
 }
 
@@ -2034,7 +2028,10 @@ async function loadEnvironment(mapId) {
       env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
       currentMapTransform = await transformPromise;
-      if (currentMapTransform?.mood) applyLightingForMood(currentMapTransform.mood);
+      setDarkMode(!!currentMapTransform?.dark_mode);
+      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+      // Recarrega luzes custom desse mapa
+      reloadMapLights(currentMapId);
       currentEnvRoot = env;
       applyEnvTransform();
 
@@ -2046,7 +2043,7 @@ async function loadEnvironment(mapId) {
         const meshBox = new THREE.Box3().setFromObject(node);
         const height = meshBox.max.y - meshBox.min.y;
         if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
-        node.castShadow = CINEMATIC;
+        node.castShadow = true;
         node.receiveShadow = true;
         occluderMeshes.push(node);
 
@@ -2478,15 +2475,29 @@ function triggerLocalEmote(slot) {
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
-// Cinematic mode toggle
-const cinematicToggleBtn = document.getElementById("cinematicToggle");
-const cinematicStateEl = document.getElementById("cinematicState");
-if (cinematicStateEl) cinematicStateEl.textContent = CINEMATIC ? "ON" : "OFF";
-if (cinematicToggleBtn) {
-  cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
-  cinematicToggleBtn.addEventListener("click", () => {
-    setCinematic(!CINEMATIC);
-    cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
+// Dark mode toggle (admin) — apaga as luzes ambientes do mood
+const darkModeToggleBtn = document.getElementById("darkModeToggle");
+if (darkModeToggleBtn) {
+  darkModeToggleBtn.addEventListener("click", async () => {
+    if (!isAdmin) { alert("Apenas admin."); return; }
+    const next = !DARK_MODE;
+    setDarkMode(next);
+    currentMapTransform = { ...currentMapTransform, dark_mode: next };
+    // Persiste pra todo mundo (igual mood)
+    try {
+      await supabase.from("map_transforms").upsert({
+        map_id: currentMapId,
+        offset_x: currentMapTransform.offset_x || 0,
+        offset_y: currentMapTransform.offset_y || 0,
+        offset_z: currentMapTransform.offset_z || 0,
+        rotation_y: currentMapTransform.rotation_y || 0,
+        scale_mul: currentMapTransform.scale_mul || 1,
+        mood: currentMapTransform.mood || null,
+        dark_mode: next,
+        updated_by: myId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "map_id" });
+    } catch (e) { console.warn("dark_mode save", e); }
   });
 }
 
@@ -3310,6 +3321,7 @@ mapAdminSave?.addEventListener("click", async () => {
     rotation_y: currentMapTransform.rotation_y || 0,
     scale_mul: currentMapTransform.scale_mul || 1,
     mood: currentMapTransform.mood || null,
+    dark_mode: !!currentMapTransform.dark_mode,
     updated_by: myId,
     updated_at: new Date().toISOString(),
   };
@@ -3325,15 +3337,18 @@ supabase
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") {
-      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
+      setDarkMode(false);
       const m = MAPS.find((x) => x.id === currentMapId);
       applyLightingForMood(m?.mood || "day");
     } else {
       currentMapTransform = {
         offset_x: row.offset_x, offset_y: row.offset_y, offset_z: row.offset_z,
         rotation_y: row.rotation_y, scale_mul: row.scale_mul, mood: row.mood || null,
+        dark_mode: !!row.dark_mode,
       };
-      if (row.mood) applyLightingForMood(row.mood);
+      setDarkMode(!!row.dark_mode);
+      applyLightingForMood(row.mood || (MAPS.find((x) => x.id === currentMapId)?.mood) || "day");
     }
     applyEnvTransform();
     if (mapAdminPanel && !mapAdminPanel.hidden) syncMapAdminPanel();
@@ -3414,3 +3429,248 @@ newMapCreate?.addEventListener("click", async () => {
     setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
   }
 });
+
+// ============================================================
+// ===== Custom map lights (admin spotlights + sun globe) =====
+// ============================================================
+const customLightsGroup = new THREE.Group();
+scene.add(customLightsGroup);
+// id -> { row, light, target?, sunMesh?, helper? }
+const customLightsMap = new Map();
+
+function disposeCustomLight(entry) {
+  if (!entry) return;
+  if (entry.light) customLightsGroup.remove(entry.light);
+  if (entry.target) customLightsGroup.remove(entry.target);
+  if (entry.sunMesh) {
+    customLightsGroup.remove(entry.sunMesh);
+    entry.sunMesh.geometry?.dispose?.();
+    entry.sunMesh.material?.dispose?.();
+  }
+}
+
+function clearAllCustomLights() {
+  for (const [, e] of customLightsMap) disposeCustomLight(e);
+  customLightsMap.clear();
+  while (customLightsGroup.children.length) customLightsGroup.remove(customLightsGroup.children[0]);
+}
+
+function rebuildCustomLight(row) {
+  // Remove existing if any
+  const existing = customLightsMap.get(row.id);
+  if (existing) disposeCustomLight(existing);
+
+  const entry = { row };
+  const color = new THREE.Color(row.color || "#ffffff");
+  const intensity = row.enabled === false ? 0 : (row.intensity ?? 5);
+
+  if (row.kind === "sun") {
+    // DirectionalLight + visible sphere "sun globe"
+    const sun = new THREE.DirectionalLight(color, intensity);
+    sun.position.set(row.pos_x, row.pos_y, row.pos_z);
+    sun.castShadow = row.cast_shadow !== false;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 80;
+    const halfBox = 24;
+    sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
+    sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
+    sun.shadow.bias = -0.0002;
+    sun.shadow.normalBias = 0.03;
+    const tgt = new THREE.Object3D();
+    tgt.position.set(row.target_x, row.target_y, row.target_z);
+    customLightsGroup.add(tgt);
+    sun.target = tgt;
+    customLightsGroup.add(sun);
+
+    // Visible globe (the "sun") — emissive sphere
+    const radius = Math.max(0.1, row.radius ?? 1.5);
+    const geo = new THREE.SphereGeometry(radius, 32, 16);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(sun.position);
+    customLightsGroup.add(mesh);
+
+    entry.light = sun;
+    entry.target = tgt;
+    entry.sunMesh = mesh;
+  } else {
+    // SpotLight
+    const spot = new THREE.SpotLight(
+      color,
+      intensity,
+      Math.max(1, row.distance ?? 30),
+      THREE.MathUtils.degToRad(Math.max(1, Math.min(89, row.angle_deg ?? 35))),
+      Math.max(0, Math.min(1, row.penumbra ?? 0.4)),
+      1.2,
+    );
+    spot.position.set(row.pos_x, row.pos_y, row.pos_z);
+    spot.castShadow = row.cast_shadow !== false;
+    spot.shadow.mapSize.set(1024, 1024);
+    spot.shadow.camera.near = 0.5;
+    spot.shadow.camera.far = Math.max(8, (row.distance ?? 30) + 4);
+    spot.shadow.bias = -0.0003;
+    spot.shadow.normalBias = 0.02;
+    const tgt = new THREE.Object3D();
+    tgt.position.set(row.target_x, row.target_y, row.target_z);
+    customLightsGroup.add(tgt);
+    spot.target = tgt;
+    customLightsGroup.add(spot);
+    entry.light = spot;
+    entry.target = tgt;
+  }
+  customLightsMap.set(row.id, entry);
+}
+
+async function reloadMapLights(mapId) {
+  clearAllCustomLights();
+  try {
+    const { data, error } = await supabase
+      .from("map_lights")
+      .select("*")
+      .eq("map_id", mapId);
+    if (error) { console.warn("map_lights load", error.message); return; }
+    for (const row of data || []) rebuildCustomLight(row);
+    renderLightsAdminList();
+  } catch (e) { console.warn("map_lights load", e); }
+}
+
+// Realtime
+supabase.channel("map-lights")
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_lights" }, (payload) => {
+    const row = payload.new || payload.old;
+    if (!row || row.map_id !== currentMapId) return;
+    if (payload.eventType === "DELETE") {
+      const e = customLightsMap.get(row.id);
+      if (e) { disposeCustomLight(e); customLightsMap.delete(row.id); }
+    } else {
+      rebuildCustomLight(payload.new);
+    }
+    renderLightsAdminList();
+  })
+  .subscribe();
+
+// ---------- Admin UI ----------
+const lightsAdminPanel = document.getElementById("lightsAdminPanel");
+const lightsAdminList = document.getElementById("lightsAdminList");
+const lightsAdminToggle = document.getElementById("lightsAdminToggle");
+const lightsAdminClose = document.getElementById("lightsAdminClose");
+const addSpotLightBtn = document.getElementById("addSpotLightBtn");
+const addSunLightBtn = document.getElementById("addSunLightBtn");
+
+lightsAdminToggle?.addEventListener("click", () => {
+  if (!isAdmin) { alert("Apenas admin."); return; }
+  lightsAdminPanel.hidden = !lightsAdminPanel.hidden;
+  if (!lightsAdminPanel.hidden) renderLightsAdminList();
+});
+lightsAdminClose?.addEventListener("click", () => { lightsAdminPanel.hidden = true; });
+
+async function createLight(kind) {
+  if (!isAdmin) return;
+  const defaults = kind === "sun"
+    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: 6, pos_y: 12, pos_z: 6, target_x: 0, target_y: 0, target_z: 0, radius: 2.0, cast_shadow: true }
+    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: 0, pos_y: 6, pos_z: 0, target_x: 0, target_y: 0, target_z: 0, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
+  const payload = { map_id: currentMapId, enabled: true, created_by: myId, ...defaults };
+  const { error, data } = await supabase.from("map_lights").insert(payload).select().single();
+  if (error) { alert("Erro: " + error.message); return; }
+  if (data) rebuildCustomLight(data);
+  renderLightsAdminList();
+}
+addSpotLightBtn?.addEventListener("click", () => createLight("spot"));
+addSunLightBtn?.addEventListener("click", () => createLight("sun"));
+
+// Debounced per-light save
+const _lightSaveTimers = new Map();
+function scheduleLightSave(id, patch) {
+  // Apply locally immediately
+  const entry = customLightsMap.get(id);
+  if (entry) {
+    entry.row = { ...entry.row, ...patch };
+    rebuildCustomLight(entry.row);
+  }
+  clearTimeout(_lightSaveTimers.get(id));
+  _lightSaveTimers.set(id, setTimeout(async () => {
+    const { error } = await supabase.from("map_lights").update(patch).eq("id", id);
+    if (error) console.warn("light save", error.message);
+  }, 250));
+}
+
+async function deleteLight(id) {
+  if (!confirm("Apagar essa luz?")) return;
+  const { error } = await supabase.from("map_lights").delete().eq("id", id);
+  if (error) { alert("Erro: " + error.message); return; }
+  const e = customLightsMap.get(id);
+  if (e) { disposeCustomLight(e); customLightsMap.delete(id); }
+  renderLightsAdminList();
+}
+
+function lightControlRow(row) {
+  const isSun = row.kind === "sun";
+  const icon = isSun ? "☀️" : "🔦";
+  const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
+    <label style="display:block;margin:2px 0;font-size:11px;">
+      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
+    </label>`;
+  return `
+    <div data-light-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">
+        <strong style="font-size:12px;">${icon} ${row.name || (isSun ? "Sol" : "Spot")}</strong>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+            <input type="checkbox" data-key="enabled" ${row.enabled !== false ? "checked" : ""}> on
+          </label>
+          <input type="color" data-key="color" value="${row.color || "#ffffff"}" style="width:28px;height:24px;border:none;background:transparent;cursor:pointer;padding:0;">
+          <button data-action="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+      ${slider("Força", "intensity", 0, 50, 0.1, row.intensity ?? 5, (v) => Number(v).toFixed(1))}
+      ${slider("Pos X", "pos_x", -30, 30, 0.1, row.pos_x ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Pos Y", "pos_y", 0, 30, 0.1, row.pos_y ?? 6, (v) => Number(v).toFixed(1))}
+      ${slider("Pos Z", "pos_z", -30, 30, 0.1, row.pos_z ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo X", "target_x", -30, 30, 0.1, row.target_x ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo Y", "target_y", -5, 20, 0.1, row.target_y ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo Z", "target_z", -30, 30, 0.1, row.target_z ?? 0, (v) => Number(v).toFixed(1))}
+      ${isSun
+        ? slider("Tamanho do globo", "radius", 0.2, 15, 0.1, row.radius ?? 1.5, (v) => Number(v).toFixed(1) + "m")
+        : `
+          ${slider("Abertura", "angle_deg", 5, 89, 1, row.angle_deg ?? 35, (v) => v + "°")}
+          ${slider("Penumbra", "penumbra", 0, 1, 0.05, row.penumbra ?? 0.4, (v) => Number(v).toFixed(2))}
+          ${slider("Alcance", "distance", 1, 100, 0.5, row.distance ?? 30, (v) => Number(v).toFixed(0) + "m")}
+        `}
+      <label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;cursor:pointer;">
+        <input type="checkbox" data-key="cast_shadow" ${row.cast_shadow !== false ? "checked" : ""}>
+        Projetar sombras
+      </label>
+    </div>`;
+}
+
+function renderLightsAdminList() {
+  if (!lightsAdminList) return;
+  const rows = [...customLightsMap.values()].map((e) => e.row);
+  if (!rows.length) {
+    lightsAdminList.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    return;
+  }
+  lightsAdminList.innerHTML = rows.map(lightControlRow).join("");
+  // Wire each control
+  lightsAdminList.querySelectorAll("[data-light-id]").forEach((card) => {
+    const id = card.dataset.lightId;
+    card.querySelectorAll("input[type=range]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const key = inp.dataset.key;
+        const num = parseFloat(inp.value);
+        const labelSpan = card.querySelector(`[data-val="${key}"]`);
+        if (labelSpan) labelSpan.textContent = inp.value;
+        scheduleLightSave(id, { [key]: num });
+      });
+    });
+    card.querySelectorAll("input[type=color]").forEach((inp) => {
+      inp.addEventListener("input", () => scheduleLightSave(id, { color: inp.value }));
+    });
+    card.querySelectorAll("input[type=checkbox]").forEach((inp) => {
+      inp.addEventListener("change", () => scheduleLightSave(id, { [inp.dataset.key]: inp.checked }));
+    });
+    card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteLight(id));
+  });
+}
