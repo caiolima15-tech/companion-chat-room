@@ -3429,3 +3429,248 @@ newMapCreate?.addEventListener("click", async () => {
     setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
   }
 });
+
+// ============================================================
+// ===== Custom map lights (admin spotlights + sun globe) =====
+// ============================================================
+const customLightsGroup = new THREE.Group();
+scene.add(customLightsGroup);
+// id -> { row, light, target?, sunMesh?, helper? }
+const customLightsMap = new Map();
+
+function disposeCustomLight(entry) {
+  if (!entry) return;
+  if (entry.light) customLightsGroup.remove(entry.light);
+  if (entry.target) customLightsGroup.remove(entry.target);
+  if (entry.sunMesh) {
+    customLightsGroup.remove(entry.sunMesh);
+    entry.sunMesh.geometry?.dispose?.();
+    entry.sunMesh.material?.dispose?.();
+  }
+}
+
+function clearAllCustomLights() {
+  for (const [, e] of customLightsMap) disposeCustomLight(e);
+  customLightsMap.clear();
+  while (customLightsGroup.children.length) customLightsGroup.remove(customLightsGroup.children[0]);
+}
+
+function rebuildCustomLight(row) {
+  // Remove existing if any
+  const existing = customLightsMap.get(row.id);
+  if (existing) disposeCustomLight(existing);
+
+  const entry = { row };
+  const color = new THREE.Color(row.color || "#ffffff");
+  const intensity = row.enabled === false ? 0 : (row.intensity ?? 5);
+
+  if (row.kind === "sun") {
+    // DirectionalLight + visible sphere "sun globe"
+    const sun = new THREE.DirectionalLight(color, intensity);
+    sun.position.set(row.pos_x, row.pos_y, row.pos_z);
+    sun.castShadow = row.cast_shadow !== false;
+    sun.shadow.mapSize.set(2048, 2048);
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 80;
+    const halfBox = 24;
+    sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
+    sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
+    sun.shadow.bias = -0.0002;
+    sun.shadow.normalBias = 0.03;
+    const tgt = new THREE.Object3D();
+    tgt.position.set(row.target_x, row.target_y, row.target_z);
+    customLightsGroup.add(tgt);
+    sun.target = tgt;
+    customLightsGroup.add(sun);
+
+    // Visible globe (the "sun") — emissive sphere
+    const radius = Math.max(0.1, row.radius ?? 1.5);
+    const geo = new THREE.SphereGeometry(radius, 32, 16);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(sun.position);
+    customLightsGroup.add(mesh);
+
+    entry.light = sun;
+    entry.target = tgt;
+    entry.sunMesh = mesh;
+  } else {
+    // SpotLight
+    const spot = new THREE.SpotLight(
+      color,
+      intensity,
+      Math.max(1, row.distance ?? 30),
+      THREE.MathUtils.degToRad(Math.max(1, Math.min(89, row.angle_deg ?? 35))),
+      Math.max(0, Math.min(1, row.penumbra ?? 0.4)),
+      1.2,
+    );
+    spot.position.set(row.pos_x, row.pos_y, row.pos_z);
+    spot.castShadow = row.cast_shadow !== false;
+    spot.shadow.mapSize.set(1024, 1024);
+    spot.shadow.camera.near = 0.5;
+    spot.shadow.camera.far = Math.max(8, (row.distance ?? 30) + 4);
+    spot.shadow.bias = -0.0003;
+    spot.shadow.normalBias = 0.02;
+    const tgt = new THREE.Object3D();
+    tgt.position.set(row.target_x, row.target_y, row.target_z);
+    customLightsGroup.add(tgt);
+    spot.target = tgt;
+    customLightsGroup.add(spot);
+    entry.light = spot;
+    entry.target = tgt;
+  }
+  customLightsMap.set(row.id, entry);
+}
+
+async function reloadMapLights(mapId) {
+  clearAllCustomLights();
+  try {
+    const { data, error } = await supabase
+      .from("map_lights")
+      .select("*")
+      .eq("map_id", mapId);
+    if (error) { console.warn("map_lights load", error.message); return; }
+    for (const row of data || []) rebuildCustomLight(row);
+    renderLightsAdminList();
+  } catch (e) { console.warn("map_lights load", e); }
+}
+
+// Realtime
+supabase.channel("map-lights")
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_lights" }, (payload) => {
+    const row = payload.new || payload.old;
+    if (!row || row.map_id !== currentMapId) return;
+    if (payload.eventType === "DELETE") {
+      const e = customLightsMap.get(row.id);
+      if (e) { disposeCustomLight(e); customLightsMap.delete(row.id); }
+    } else {
+      rebuildCustomLight(payload.new);
+    }
+    renderLightsAdminList();
+  })
+  .subscribe();
+
+// ---------- Admin UI ----------
+const lightsAdminPanel = document.getElementById("lightsAdminPanel");
+const lightsAdminList = document.getElementById("lightsAdminList");
+const lightsAdminToggle = document.getElementById("lightsAdminToggle");
+const lightsAdminClose = document.getElementById("lightsAdminClose");
+const addSpotLightBtn = document.getElementById("addSpotLightBtn");
+const addSunLightBtn = document.getElementById("addSunLightBtn");
+
+lightsAdminToggle?.addEventListener("click", () => {
+  if (!isAdmin) { alert("Apenas admin."); return; }
+  lightsAdminPanel.hidden = !lightsAdminPanel.hidden;
+  if (!lightsAdminPanel.hidden) renderLightsAdminList();
+});
+lightsAdminClose?.addEventListener("click", () => { lightsAdminPanel.hidden = true; });
+
+async function createLight(kind) {
+  if (!isAdmin) return;
+  const defaults = kind === "sun"
+    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: 6, pos_y: 12, pos_z: 6, target_x: 0, target_y: 0, target_z: 0, radius: 2.0, cast_shadow: true }
+    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: 0, pos_y: 6, pos_z: 0, target_x: 0, target_y: 0, target_z: 0, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
+  const payload = { map_id: currentMapId, enabled: true, created_by: myId, ...defaults };
+  const { error, data } = await supabase.from("map_lights").insert(payload).select().single();
+  if (error) { alert("Erro: " + error.message); return; }
+  if (data) rebuildCustomLight(data);
+  renderLightsAdminList();
+}
+addSpotLightBtn?.addEventListener("click", () => createLight("spot"));
+addSunLightBtn?.addEventListener("click", () => createLight("sun"));
+
+// Debounced per-light save
+const _lightSaveTimers = new Map();
+function scheduleLightSave(id, patch) {
+  // Apply locally immediately
+  const entry = customLightsMap.get(id);
+  if (entry) {
+    entry.row = { ...entry.row, ...patch };
+    rebuildCustomLight(entry.row);
+  }
+  clearTimeout(_lightSaveTimers.get(id));
+  _lightSaveTimers.set(id, setTimeout(async () => {
+    const { error } = await supabase.from("map_lights").update(patch).eq("id", id);
+    if (error) console.warn("light save", error.message);
+  }, 250));
+}
+
+async function deleteLight(id) {
+  if (!confirm("Apagar essa luz?")) return;
+  const { error } = await supabase.from("map_lights").delete().eq("id", id);
+  if (error) { alert("Erro: " + error.message); return; }
+  const e = customLightsMap.get(id);
+  if (e) { disposeCustomLight(e); customLightsMap.delete(id); }
+  renderLightsAdminList();
+}
+
+function lightControlRow(row) {
+  const isSun = row.kind === "sun";
+  const icon = isSun ? "☀️" : "🔦";
+  const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
+    <label style="display:block;margin:2px 0;font-size:11px;">
+      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
+    </label>`;
+  return `
+    <div data-light-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">
+        <strong style="font-size:12px;">${icon} ${row.name || (isSun ? "Sol" : "Spot")}</strong>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <label style="font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">
+            <input type="checkbox" data-key="enabled" ${row.enabled !== false ? "checked" : ""}> on
+          </label>
+          <input type="color" data-key="color" value="${row.color || "#ffffff"}" style="width:28px;height:24px;border:none;background:transparent;cursor:pointer;padding:0;">
+          <button data-action="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">✕</button>
+        </div>
+      </div>
+      ${slider("Força", "intensity", 0, 50, 0.1, row.intensity ?? 5, (v) => Number(v).toFixed(1))}
+      ${slider("Pos X", "pos_x", -30, 30, 0.1, row.pos_x ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Pos Y", "pos_y", 0, 30, 0.1, row.pos_y ?? 6, (v) => Number(v).toFixed(1))}
+      ${slider("Pos Z", "pos_z", -30, 30, 0.1, row.pos_z ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo X", "target_x", -30, 30, 0.1, row.target_x ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo Y", "target_y", -5, 20, 0.1, row.target_y ?? 0, (v) => Number(v).toFixed(1))}
+      ${slider("Alvo Z", "target_z", -30, 30, 0.1, row.target_z ?? 0, (v) => Number(v).toFixed(1))}
+      ${isSun
+        ? slider("Tamanho do globo", "radius", 0.2, 15, 0.1, row.radius ?? 1.5, (v) => Number(v).toFixed(1) + "m")
+        : `
+          ${slider("Abertura", "angle_deg", 5, 89, 1, row.angle_deg ?? 35, (v) => v + "°")}
+          ${slider("Penumbra", "penumbra", 0, 1, 0.05, row.penumbra ?? 0.4, (v) => Number(v).toFixed(2))}
+          ${slider("Alcance", "distance", 1, 100, 0.5, row.distance ?? 30, (v) => Number(v).toFixed(0) + "m")}
+        `}
+      <label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;cursor:pointer;">
+        <input type="checkbox" data-key="cast_shadow" ${row.cast_shadow !== false ? "checked" : ""}>
+        Projetar sombras
+      </label>
+    </div>`;
+}
+
+function renderLightsAdminList() {
+  if (!lightsAdminList) return;
+  const rows = [...customLightsMap.values()].map((e) => e.row);
+  if (!rows.length) {
+    lightsAdminList.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    return;
+  }
+  lightsAdminList.innerHTML = rows.map(lightControlRow).join("");
+  // Wire each control
+  lightsAdminList.querySelectorAll("[data-light-id]").forEach((card) => {
+    const id = card.dataset.lightId;
+    card.querySelectorAll("input[type=range]").forEach((inp) => {
+      inp.addEventListener("input", () => {
+        const key = inp.dataset.key;
+        const num = parseFloat(inp.value);
+        const labelSpan = card.querySelector(`[data-val="${key}"]`);
+        if (labelSpan) labelSpan.textContent = inp.value;
+        scheduleLightSave(id, { [key]: num });
+      });
+    });
+    card.querySelectorAll("input[type=color]").forEach((inp) => {
+      inp.addEventListener("input", () => scheduleLightSave(id, { color: inp.value }));
+    });
+    card.querySelectorAll("input[type=checkbox]").forEach((inp) => {
+      inp.addEventListener("change", () => scheduleLightSave(id, { [inp.dataset.key]: inp.checked }));
+    });
+    card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteLight(id));
+  });
+}
