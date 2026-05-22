@@ -3095,10 +3095,16 @@ const mapRotYVal = document.querySelector("#mapRotYVal");
 const mapOffXVal = document.querySelector("#mapOffXVal");
 const mapOffYVal = document.querySelector("#mapOffYVal");
 const mapOffZVal = document.querySelector("#mapOffZVal");
+const mapMoodInput = document.querySelector("#mapMood");
+
+function currentMapMoodEffective() {
+  const m = MAPS.find((x) => x.id === currentMapId);
+  return currentMapTransform?.mood || m?.mood || "day";
+}
 
 function syncMapAdminPanel() {
   if (!mapAdminPanel) return;
-  const t = currentMapTransform || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  const t = currentMapTransform || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
   if (mapScaleInput) { mapScaleInput.value = t.scale_mul ?? 1; mapScaleVal.textContent = (t.scale_mul ?? 1).toFixed(2) + "×"; }
   if (mapRotYInput) {
     const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
@@ -3107,6 +3113,7 @@ function syncMapAdminPanel() {
   if (mapOffXInput) { mapOffXInput.value = t.offset_x ?? 0; mapOffXVal.textContent = (t.offset_x ?? 0).toFixed(2); }
   if (mapOffYInput) { mapOffYInput.value = t.offset_y ?? 0; mapOffYVal.textContent = (t.offset_y ?? 0).toFixed(2); }
   if (mapOffZInput) { mapOffZInput.value = t.offset_z ?? 0; mapOffZVal.textContent = (t.offset_z ?? 0).toFixed(2); }
+  if (mapMoodInput) mapMoodInput.value = currentMapMoodEffective();
   if (mapAdminTitle) {
     const m = MAPS.find((x) => x.id === currentMapId);
     mapAdminTitle.textContent = `Editar mapa: ${m?.name || currentMapId}`;
@@ -3159,6 +3166,7 @@ function onMapAdminInput() {
   mapOffYVal.textContent = oy.toFixed(2);
   mapOffZVal.textContent = oz.toFixed(2);
   currentMapTransform = {
+    ...currentMapTransform,
     offset_x: ox, offset_y: oy, offset_z: oz,
     rotation_y: (rotDeg * Math.PI) / 180,
     scale_mul: scale,
@@ -3169,10 +3177,18 @@ function onMapAdminInput() {
   el?.addEventListener("input", onMapAdminInput);
 });
 
+mapMoodInput?.addEventListener("change", () => {
+  const mood = mapMoodInput.value || "day";
+  currentMapTransform = { ...currentMapTransform, mood };
+  applyLightingForMood(mood);
+});
+
 mapAdminReset?.addEventListener("click", () => {
-  currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
   syncMapAdminPanel();
   applyEnvTransform();
+  const m = MAPS.find((x) => x.id === currentMapId);
+  applyLightingForMood(m?.mood || "day");
 });
 
 mapAdminSave?.addEventListener("click", async () => {
@@ -3185,6 +3201,7 @@ mapAdminSave?.addEventListener("click", async () => {
     offset_z: currentMapTransform.offset_z || 0,
     rotation_y: currentMapTransform.rotation_y || 0,
     scale_mul: currentMapTransform.scale_mul || 1,
+    mood: currentMapTransform.mood || null,
     updated_by: myId,
     updated_at: new Date().toISOString(),
   };
@@ -3200,14 +3217,92 @@ supabase
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") {
-      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+      const m = MAPS.find((x) => x.id === currentMapId);
+      applyLightingForMood(m?.mood || "day");
     } else {
       currentMapTransform = {
         offset_x: row.offset_x, offset_y: row.offset_y, offset_z: row.offset_z,
-        rotation_y: row.rotation_y, scale_mul: row.scale_mul,
+        rotation_y: row.rotation_y, scale_mul: row.scale_mul, mood: row.mood || null,
       };
+      if (row.mood) applyLightingForMood(row.mood);
     }
     applyEnvTransform();
     if (mapAdminPanel && !mapAdminPanel.hidden) syncMapAdminPanel();
   })
   .subscribe();
+
+// ===== Custom maps (admin-created) =====
+async function loadCustomMaps() {
+  const { data, error } = await supabase
+    .from("custom_maps")
+    .select("slug, name, url, mood, bg, thumb")
+    .order("created_at", { ascending: true });
+  if (error) { console.warn("custom_maps load:", error.message); return; }
+  const customs = (data || []).map((m) => ({
+    id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+    bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
+  }));
+  // Remove old customs, keep builtins, append customs
+  MAPS = [...BUILTIN_MAPS, ...customs];
+  if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
+}
+loadCustomMaps();
+
+supabase
+  .channel("custom-maps")
+  .on("postgres_changes", { event: "*", schema: "public", table: "custom_maps" }, () => {
+    loadCustomMaps();
+  })
+  .subscribe();
+
+// ===== Admin: criar novo mapa via map select overlay =====
+const newMapName = document.querySelector("#newMapName");
+const newMapThumb = document.querySelector("#newMapThumb");
+const newMapMood = document.querySelector("#newMapMood");
+const newMapBg = document.querySelector("#newMapBg");
+const newMapGlb = document.querySelector("#newMapGlb");
+const newMapCreate = document.querySelector("#newMapCreate");
+const newMapStatus = document.querySelector("#newMapStatus");
+
+function slugifyMap(s) {
+  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+}
+
+newMapCreate?.addEventListener("click", async () => {
+  if (!isAdmin) return;
+  const name = (newMapName?.value || "").trim();
+  const file = newMapGlb?.files?.[0];
+  if (!name || !file) { newMapStatus.textContent = "Informe nome e arquivo .glb"; return; }
+  let slug = slugifyMap(name);
+  if (!slug) { newMapStatus.textContent = "Nome inválido"; return; }
+  // Avoid collision with builtins
+  if (BUILTIN_MAPS.some((m) => m.id === slug)) slug = slug + "-" + Date.now().toString(36).slice(-4);
+  newMapCreate.disabled = true;
+  newMapStatus.textContent = "Enviando arquivo…";
+  try {
+    const path = `maps/${slug}-${Date.now()}.glb`;
+    const { error: upErr } = await supabase.storage.from("map-assets")
+      .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+    newMapStatus.textContent = "Salvando mapa…";
+    const { error: insErr } = await supabase.from("custom_maps").insert({
+      slug, name, url: pub.publicUrl,
+      mood: newMapMood?.value || "day",
+      bg: newMapBg?.value || "#0e1117",
+      thumb: (newMapThumb?.value || "🗺️").trim() || "🗺️",
+      created_by: myId,
+    });
+    if (insErr) throw insErr;
+    newMapStatus.textContent = "Mapa criado ✓";
+    newMapName.value = ""; newMapThumb.value = ""; newMapGlb.value = "";
+    await loadCustomMaps();
+  } catch (e) {
+    newMapStatus.textContent = "Erro: " + (e.message || e);
+  } finally {
+    newMapCreate.disabled = false;
+    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
+  }
+});
