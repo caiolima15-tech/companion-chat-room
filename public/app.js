@@ -289,6 +289,7 @@ renderer.toneMappingExposure = 1.0;
 // Quando ON: hemi/sol do mood são apagados e o mapa fica escuro;
 // só as luzes custom (spots + sol custom) iluminam a cena.
 let DARK_MODE = false; // controlado por currentMapTransform.dark_mode
+let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1969,7 +1970,7 @@ function clearEnvironment() {
 
 let currentEnvRoot = null;       // o gltf.scene atualmente carregado
 let currentEnvBaseScale = 1;     // escala "auto-fit" base, antes do multiplicador admin
-let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
+
 
 async function fetchMapTransform(mapId) {
   try {
