@@ -2010,7 +2010,7 @@ async function loadEnvironment(mapId) {
         const meshBox = new THREE.Box3().setFromObject(node);
         const height = meshBox.max.y - meshBox.min.y;
         if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
-        node.castShadow = false;
+        node.castShadow = CINEMATIC;
         node.receiveShadow = true;
         occluderMeshes.push(node);
 
