@@ -1689,7 +1689,40 @@ function clearEnvironment() {
   _fadedPrev.clear();
 }
 
-function loadEnvironment(mapId) {
+let currentEnvRoot = null;       // o gltf.scene atualmente carregado
+let currentEnvBaseScale = 1;     // escala "auto-fit" base, antes do multiplicador admin
+let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+
+async function fetchMapTransform(mapId) {
+  try {
+    const { data } = await supabase
+      .from("map_transforms")
+      .select("offset_x, offset_y, offset_z, rotation_y, scale_mul")
+      .eq("map_id", mapId)
+      .maybeSingle();
+    return data || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  } catch {
+    return { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1 };
+  }
+}
+
+function applyEnvTransform() {
+  if (!currentEnvRoot) return;
+  const t = currentMapTransform;
+  const s = currentEnvBaseScale * (t.scale_mul || 1);
+  currentEnvRoot.scale.setScalar(s);
+  // posição base já foi armazenada em userData.baseOffset (centralização)
+  const base = currentEnvRoot.userData.baseOffset || { x: 0, y: 0, z: 0 };
+  currentEnvRoot.position.set(
+    base.x * (s / currentEnvBaseScale) + (t.offset_x || 0),
+    base.y * (s / currentEnvBaseScale) + (t.offset_y || 0),
+    base.z * (s / currentEnvBaseScale) + (t.offset_z || 0),
+  );
+  currentEnvRoot.rotation.y = t.rotation_y || 0;
+  currentEnvRoot.updateMatrixWorld(true);
+}
+
+async function loadEnvironment(mapId) {
   const map = MAPS.find((m) => m.id === mapId) || MAPS[0];
   currentMapId = map.id;
   localStorage.setItem("neon-tap-room-map", map.id);
@@ -1697,23 +1730,29 @@ function loadEnvironment(mapId) {
   scene.background = new THREE.Color(map.bg);
   applyLightingForMood(map.mood);
   clearEnvironment();
+  currentEnvRoot = null;
+
+  // Busca o transform salvo pelo admin (não bloqueia o load)
+  const transformPromise = fetchMapTransform(map.id);
 
   loader.load(
     map.url,
-    (gltf) => {
+    async (gltf) => {
       const env = gltf.scene;
       const box = new THREE.Box3().setFromObject(env);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
       const currentSize = Math.max(size.x, size.z);
-      const scale = currentSize > 0 ? targetSize / currentSize : 1;
-      env.scale.setScalar(scale);
-      env.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
-      env.updateMatrixWorld(true);
+      const baseScale = currentSize > 0 ? targetSize / currentSize : 1;
+      currentEnvBaseScale = baseScale;
+      env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
+
+      currentMapTransform = await transformPromise;
+      currentEnvRoot = env;
+      applyEnvTransform();
 
       // Determine "ceiling cutoff" — meshes whose bottom sits above this Y are hidden.
-      // For open/outdoor maps with no roof, this won't hide anything important.
       const ceilingCutoff = 2.8;
 
       env.traverse((node) => {
@@ -1735,6 +1774,8 @@ function loadEnvironment(mapId) {
         }
       });
       envGroup.add(env);
+      // Atualiza painel admin se aberto
+      syncMapAdminPanel();
     },
     undefined,
     (err) => {
