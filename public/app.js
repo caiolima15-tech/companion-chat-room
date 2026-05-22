@@ -1440,25 +1440,51 @@ async function setupRoomChannels(mapId) {
     })
     .on("broadcast", { event: "character" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
-      const idx = players.findIndex((p) => p.id === payload.id);
-      if (idx >= 0) {
+      // Descarta eventos antigos (chegou após uma troca mais nova).
+      if (isStaleCharacterEvent(payload.id, payload.v)) return;
+      bumpCharacterVersion(payload.id, payload.v);
+      let idx = players.findIndex((p) => p.id === payload.id);
+      if (idx < 0) {
+        // Pode acontecer se o broadcast chegar antes do presence sync.
+        players.push({
+          id: payload.id,
+          name: payload.name || "Visitante",
+          color: payload.color || "#29d3bd",
+          x: payload.x ?? 50,
+          y: payload.y ?? 50,
+          facing: payload.facing || "down",
+          character_slug: payload.character_slug || null,
+          avatar_url: payload.avatar_url || null,
+        });
+        idx = players.length - 1;
+      } else {
         players[idx] = {
           ...players[idx],
           character_slug: payload.character_slug ?? players[idx].character_slug,
           avatar_url: payload.avatar_url ?? players[idx].avatar_url,
           name: payload.name ?? players[idx].name,
           color: payload.color ?? players[idx].color,
+          // Posição: usa a do payload se vier, senão mantém atual (não volta pro origin).
+          x: payload.x ?? players[idx].x,
+          y: payload.y ?? players[idx].y,
+          facing: payload.facing ?? players[idx].facing,
         };
-        const entity = playerEntities.get(payload.id);
-        if (entity) {
-          entity.player = players[idx];
-          if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
-            applyCharacter(entity, payload.character_slug);
-          } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
-            applyAvatar(entity, payload.avatar_url);
-          }
-          updateNameplate(players[idx]);
+      }
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        entity.player = players[idx];
+        if (payload.x != null && payload.y != null) {
+          entity.target.copy(worldFromPercent(players[idx].x, players[idx].y));
         }
+        if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
+          applyCharacter(entity, payload.character_slug);
+        } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
+          applyAvatar(entity, payload.avatar_url);
+        }
+        updateNameplate(players[idx]);
+      } else {
+        // Cria a entidade na hora caso ainda não exista (broadcast antes do presence)
+        renderPlayers(players);
       }
     })
     .on("broadcast", { event: "leave" }, ({ payload }) => {
