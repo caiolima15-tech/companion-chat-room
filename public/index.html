@@ -65,7 +65,15 @@
             </div>
             <div id="mapAdminBody">
               <label style="display:block;margin:6px 0;">Escala <span id="mapScaleVal">1.00×</span>
-                <input id="mapScale" type="range" min="0.1" max="5" step="0.01" value="1" style="width:100%">
+                <input id="mapScale" type="range" min="0.1" max="20" step="0.05" value="1" style="width:100%">
+              </label>
+              <label style="display:block;margin:6px 0;">Iluminação
+                <select id="mapMood" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #444;border-radius:4px;padding:4px;">
+                  <option value="day">☀️ Dia</option>
+                  <option value="sunset">🌅 Tarde</option>
+                  <option value="night">🌙 Noite</option>
+                </select>
+              </label>
               </label>
               <label style="display:block;margin:6px 0;">Rotação Y <span id="mapRotYVal">0°</span>
                 <input id="mapRotY" type="range" min="-180" max="180" step="1" value="0" style="width:100%">
@@ -247,6 +255,30 @@
         <p class="char-hint">Cada local tem clima e iluminação próprios.</p>
         <div id="mapGrid" class="char-grid"></div>
         <button id="confirmMapButton" type="button" class="char-enter" disabled>Entrar no local</button>
+
+        <details id="newMapAdmin" class="admin-only" style="margin-top:12px;border:1px dashed #444;border-radius:8px;padding:8px;color:#cfd3dc;">
+          <summary style="cursor:pointer;font-weight:600;">+ Novo mapa (admin)</summary>
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input id="newMapName" type="text" placeholder="Nome" maxlength="40" style="flex:1;min-width:140px;padding:8px;border-radius:6px;background:#1a1f2a;color:#fff;border:1px solid #333;">
+              <input id="newMapThumb" type="text" placeholder="🌴" maxlength="4" style="width:64px;padding:8px;text-align:center;border-radius:6px;background:#1a1f2a;color:#fff;border:1px solid #333;">
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="newMapMood" style="flex:1;min-width:120px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:6px;padding:8px;">
+                <option value="day">☀️ Dia</option>
+                <option value="sunset">🌅 Tarde</option>
+                <option value="night">🌙 Noite</option>
+              </select>
+              <input id="newMapBg" type="color" value="#0e1117" style="width:48px;height:40px;border:none;background:transparent;cursor:pointer;">
+            </div>
+            <label class="file-picker" style="text-align:center;">
+              <input id="newMapGlb" type="file" accept=".glb,model/gltf-binary">
+              Escolher arquivo .glb
+            </label>
+            <div id="newMapStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
+            <button id="newMapCreate" type="button" class="char-enter">Criar mapa</button>
+          </div>
+        </details>
       </div>
     </div>
 
