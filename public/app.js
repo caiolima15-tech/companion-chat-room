@@ -1386,6 +1386,41 @@ async function setupRoomChannels(mapId) {
       const entity = playerEntities.get(payload.id);
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
+    .on("broadcast", { event: "character" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const idx = players.findIndex((p) => p.id === payload.id);
+      if (idx >= 0) {
+        players[idx] = {
+          ...players[idx],
+          character_slug: payload.character_slug ?? players[idx].character_slug,
+          avatar_url: payload.avatar_url ?? players[idx].avatar_url,
+          name: payload.name ?? players[idx].name,
+          color: payload.color ?? players[idx].color,
+        };
+        const entity = playerEntities.get(payload.id);
+        if (entity) {
+          entity.player = players[idx];
+          if (payload.character_slug && entity.characterSlug !== payload.character_slug) {
+            applyCharacter(entity, payload.character_slug);
+          } else if (!payload.character_slug && payload.avatar_url && entity.avatarUrl !== payload.avatar_url) {
+            applyAvatar(entity, payload.avatar_url);
+          }
+          updateNameplate(players[idx]);
+        }
+      }
+    })
+    .on("broadcast", { event: "leave" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        scene.remove(entity.group);
+        entity.plate?.remove();
+        if (entity.loadingSpinner) entity.loadingSpinner.remove();
+        playerEntities.delete(payload.id);
+      }
+      players = players.filter((p) => p.id !== payload.id);
+      onlineCount.textContent = `${players.length} online`;
+    })
     .subscribe();
 
   // Catálogo, user_avatars e profiles permanecem globais — definidos abaixo (uma vez).
