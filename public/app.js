@@ -642,9 +642,13 @@ enterRoomButton?.addEventListener("click", async () => {
   // Se já estávamos na sala, atualiza meu próprio entity
   const myEntity = playerEntities.get(myId);
   if (myEntity) {
+    // Marca a versão da troca ANTES de qualquer await — assim, qualquer evento
+    // antigo (presence/profiles) que chegar depois é descartado.
+    myCharacterVersion = bumpCharacterVersion(myId, Date.now());
     await applyCharacter(myEntity, selectedCharacterSlug);
     await trackMe();
-    // Broadcast imediato pra todos verem a troca sem esperar presence sync
+    // Broadcast imediato pra todos verem a troca sem esperar presence sync.
+    // Inclui posição atual para que ninguém "snap" o personagem pro ponto de origem.
     try {
       await movementChannel?.send({
         type: "broadcast",
@@ -655,6 +659,10 @@ enterRoomButton?.addEventListener("click", async () => {
           avatar_url: me.avatar_url || null,
           name: me.name,
           color: me.color,
+          x: me.x,
+          y: me.y,
+          facing: me.facing,
+          v: myCharacterVersion,
         },
       });
     } catch {}
