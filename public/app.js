@@ -2986,8 +2986,8 @@ function handleSceneClick(event) {
   if (!point) return;
   if (isAdmin && movingAssetId) {
     updateAsset(movingAssetId, {
-      x: Math.max(-8.5, Math.min(8.5, point.x)),
-      z: Math.max(-6.5, Math.min(6.5, point.z)),
+      x: Math.max(-8.5 * getMapScale(), Math.min(8.5 * getMapScale(), point.x)),
+      z: Math.max(-6.5 * getMapScale(), Math.min(6.5 * getMapScale(), point.z)),
     })
       .then(() => {
         movingAssetId = "";
