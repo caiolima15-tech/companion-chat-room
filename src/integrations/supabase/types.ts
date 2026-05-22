@@ -182,6 +182,78 @@ export type Database = {
         }
         Relationships: []
       }
+      map_lights: {
+        Row: {
+          angle_deg: number
+          cast_shadow: boolean
+          color: string
+          created_at: string
+          created_by: string | null
+          distance: number
+          enabled: boolean
+          id: string
+          intensity: number
+          kind: string
+          map_id: string
+          name: string
+          penumbra: number
+          pos_x: number
+          pos_y: number
+          pos_z: number
+          radius: number
+          target_x: number
+          target_y: number
+          target_z: number
+          updated_at: string
+        }
+        Insert: {
+          angle_deg?: number
+          cast_shadow?: boolean
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          distance?: number
+          enabled?: boolean
+          id?: string
+          intensity?: number
+          kind?: string
+          map_id: string
+          name?: string
+          penumbra?: number
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          radius?: number
+          target_x?: number
+          target_y?: number
+          target_z?: number
+          updated_at?: string
+        }
+        Update: {
+          angle_deg?: number
+          cast_shadow?: boolean
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          distance?: number
+          enabled?: boolean
+          id?: string
+          intensity?: number
+          kind?: string
+          map_id?: string
+          name?: string
+          penumbra?: number
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          radius?: number
+          target_x?: number
+          target_y?: number
+          target_z?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       map_thumbnails: {
         Row: {
           created_at: string
@@ -208,6 +280,7 @@ export type Database = {
       }
       map_transforms: {
         Row: {
+          dark_mode: boolean
           map_id: string
           mood: string | null
           offset_x: number
@@ -219,6 +292,7 @@ export type Database = {
           updated_by: string | null
         }
         Insert: {
+          dark_mode?: boolean
           map_id: string
           mood?: string | null
           offset_x?: number
@@ -230,6 +304,7 @@ export type Database = {
           updated_by?: string | null
         }
         Update: {
+          dark_mode?: boolean
           map_id?: string
           mood?: string | null
           offset_x?: number
