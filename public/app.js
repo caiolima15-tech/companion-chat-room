@@ -2490,6 +2490,16 @@ if (cinematicToggleBtn) {
   });
 }
 
+// Boundary visibility toggle
+const boundsToggleBtn = document.getElementById("boundsToggleBtn");
+setBoundaryVisible(boundaryHelper.visible);
+if (boundsToggleBtn) {
+  boundsToggleBtn.addEventListener("click", () => {
+    setBoundaryVisible(!boundaryHelper.visible);
+    updateBoundaryHelper();
+  });
+}
+
 function updateNameplate(player) {
   const entity = playerEntities.get(player.id);
   if (!entity) return;
