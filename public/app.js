@@ -4103,6 +4103,7 @@ function renderBotsAdminList() {
     card.querySelector('[data-action="focus"]')?.addEventListener("click", () => {
       const e = botEntities.get(id);
       if (e) window.focusCameraOn({ x: e.row.x, y: e.row.y, z: e.row.z }, 4);
+      window.attachGizmoForLayer?.("bot", id);
     });
   });
 }
