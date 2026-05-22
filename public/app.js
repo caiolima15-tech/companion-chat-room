@@ -282,6 +282,24 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+// ============ Cinematic mode (Blender-like deep shadows) ============
+let CINEMATIC = localStorage.getItem("neon-cinematic") === "1";
+function applyRendererForCinematic() {
+  if (CINEMATIC) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.95;
+    renderer.shadowMap.type = THREE.VSMShadowMap;
+  } else {
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  }
+  renderer.shadowMap.needsUpdate = true;
+}
+applyRendererForCinematic();
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
