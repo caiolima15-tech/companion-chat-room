@@ -1711,12 +1711,12 @@ function applyEnvTransform() {
   const t = currentMapTransform;
   const s = currentEnvBaseScale * (t.scale_mul || 1);
   currentEnvRoot.scale.setScalar(s);
-  // posição base já foi armazenada em userData.baseOffset (centralização)
+  // baseOffset armazenado em unidades NÃO escaladas; multiplica pela escala final
   const base = currentEnvRoot.userData.baseOffset || { x: 0, y: 0, z: 0 };
   currentEnvRoot.position.set(
-    base.x * (s / currentEnvBaseScale) + (t.offset_x || 0),
-    base.y * (s / currentEnvBaseScale) + (t.offset_y || 0),
-    base.z * (s / currentEnvBaseScale) + (t.offset_z || 0),
+    base.x * s + (t.offset_x || 0),
+    base.y * s + (t.offset_y || 0),
+    base.z * s + (t.offset_z || 0),
   );
   currentEnvRoot.rotation.y = t.rotation_y || 0;
   currentEnvRoot.updateMatrixWorld(true);
