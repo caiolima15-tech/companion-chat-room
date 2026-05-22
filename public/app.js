@@ -1825,6 +1825,35 @@ scene.add(lightingGroup);
 const envGroup = new THREE.Group();
 let envBaseFloor = null;
 
+// Boundary visualizer (toggle): shows the invisible walkable area
+const boundaryHelper = (() => {
+  const geom = new THREE.BoxGeometry(1, 1, 1);
+  const edges = new THREE.EdgesGeometry(geom);
+  const mat = new THREE.LineBasicMaterial({ color: 0x29d3bd, transparent: true, opacity: 0.85 });
+  const mesh = new THREE.LineSegments(edges, mat);
+  mesh.visible = localStorage.getItem("neon-show-bounds") === "1";
+  mesh.position.y = 0.6;
+  scene.add(mesh);
+  return mesh;
+})();
+function updateBoundaryHelper() {
+  const s = (typeof getMapScale === "function") ? getMapScale() : 1;
+  // Walkable region matches percent clamps (5..95 on X, 8..92 on Z) scaled by mapScale
+  const w = MAP_WIDTH * s * 0.90;
+  const d = MAP_DEPTH * s * 0.84;
+  boundaryHelper.scale.set(w, 1.2, d);
+}
+function setBoundaryVisible(v) {
+  boundaryHelper.visible = !!v;
+  localStorage.setItem("neon-show-bounds", v ? "1" : "0");
+  const btn = document.querySelector("#boundsToggleBtn");
+  if (btn) {
+    btn.dataset.on = v ? "1" : "0";
+    btn.textContent = v ? "📐 Limites: ON" : "📐 Limites: OFF";
+  }
+}
+updateBoundaryHelper();
+
 function applyLightingForMood(mood) {
   // Clear previous lights
   while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
