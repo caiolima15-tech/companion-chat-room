@@ -285,21 +285,13 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NoToneMapping;
 renderer.toneMappingExposure = 1.0;
 
-// ============ Cinematic mode (Blender-like deep shadows) ============
-let CINEMATIC = localStorage.getItem("neon-cinematic") === "1";
-function applyRendererForCinematic() {
-  if (CINEMATIC) {
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
-    renderer.shadowMap.type = THREE.VSMShadowMap;
-  } else {
-    renderer.toneMapping = THREE.NoToneMapping;
-    renderer.toneMappingExposure = 1.0;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  }
-  renderer.shadowMap.needsUpdate = true;
-}
-applyRendererForCinematic();
+// ============ Dark / lights-only mode (admin) ============
+// Quando ON: hemi/sol do mood são apagados e o mapa fica escuro;
+// só as luzes custom (spots + sol custom) iluminam a cena.
+let DARK_MODE = false; // controlado por currentMapTransform.dark_mode
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -1858,80 +1850,82 @@ function applyLightingForMood(mood) {
   // Clear previous lights
   while (lightingGroup.children.length) lightingGroup.remove(lightingGroup.children[0]);
 
-  // Cinematic = deeper contrast (Blender-like): lower ambient, stronger directional, darker fog
-  const cine = CINEMATIC;
-  const hemiMul = cine ? 0.35 : 1.0;
-  const dirMul = cine ? 1.6 : 1.0;
-  const shadowMapSize = cine ? 4096 : 2048;
-  const shadowBias = cine ? -0.0004 : -0.0001;
-  const shadowRadius = cine ? 6 : 3;
+  // Modo escuro: nenhuma luz ambiente / mood. Só as luzes custom iluminam.
+  if (DARK_MODE) {
+    scene.background = new THREE.Color("#020308");
+    scene.fog = null;
+    // Pequenísssima ambient pra não ficar 100% preto onde não chega luz
+    lightingGroup.add(new THREE.AmbientLight("#0a0d18", 0.05));
+    return;
+  }
 
   function configSun(light) {
     light.castShadow = true;
-    light.shadow.mapSize.set(shadowMapSize, shadowMapSize);
+    light.shadow.mapSize.set(2048, 2048);
     light.shadow.camera.near = 1; light.shadow.camera.far = 50;
     light.shadow.camera.left = -18; light.shadow.camera.right = 18;
     light.shadow.camera.top = 18; light.shadow.camera.bottom = -18;
-    light.shadow.bias = shadowBias;
-    light.shadow.radius = shadowRadius;
-    light.shadow.normalBias = cine ? 0.03 : 0.02;
+    light.shadow.bias = -0.0001;
+    light.shadow.radius = 3;
+    light.shadow.normalBias = 0.02;
   }
 
   if (mood === "day") {
-    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5 * hemiMul));
-    const sun = new THREE.DirectionalLight("#fff7e0", 1.6 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#fff3d6", "#7a8a9c", 1.5));
+    const sun = new THREE.DirectionalLight("#fff7e0", 1.6);
     sun.position.set(8, 14, 6);
     configSun(sun);
     lightingGroup.add(sun);
-    scene.background = new THREE.Color(cine ? "#1a2230" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#1a2230", 18, 60) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   } else if (mood === "sunset") {
-    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2 * hemiMul));
-    const sun = new THREE.DirectionalLight("#ff9a55", 1.5 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
+    const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
     sun.position.set(-10, 6, 4);
     configSun(sun);
     lightingGroup.add(sun);
-    const fill = new THREE.PointLight("#ff6b88", 1.4 * (cine ? 0.6 : 1), 18);
+    const fill = new THREE.PointLight("#ff6b88", 1.4, 18);
     fill.position.set(4, 3, -4);
     lightingGroup.add(fill);
-    scene.background = new THREE.Color(cine ? "#2a1820" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#2a1820", 16, 55) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   } else {
-    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1 * hemiMul));
-    const key = new THREE.DirectionalLight("#ffffff", 1.0 * dirMul);
+    lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
+    const key = new THREE.DirectionalLight("#ffffff", 1.0);
     key.position.set(6, 10, 3);
     configSun(key);
     lightingGroup.add(key);
 
-    const red = new THREE.PointLight("#f26868", 2.4 * (cine ? 0.7 : 1), 12);
+    const red = new THREE.PointLight("#f26868", 2.4, 12);
     red.position.set(-6.7, 3.2, -6.2);
     lightingGroup.add(red);
 
-    const teal = new THREE.PointLight("#29d3bd", 1.8 * (cine ? 0.7 : 1), 14);
+    const teal = new THREE.PointLight("#29d3bd", 1.8, 14);
     teal.position.set(5.7, 3.4, 3.6);
     lightingGroup.add(teal);
-    scene.background = new THREE.Color(cine ? "#070a12" : (currentMapTransform?.bg_color || "#0e1117"));
-    scene.fog = cine ? new THREE.Fog("#070a12", 14, 50) : null;
+    scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
+    scene.fog = null;
   }
 }
 
-// Re-apply shadow flags on environment meshes based on cinematic mode
+// Re-apply shadow flags on environment meshes — sempre castShadow=true
+// pra qualquer luz (mood ou custom) projetar sombras nos objetos.
 function refreshEnvShadows() {
   envGroup.traverse((node) => {
     if (!node.isMesh) return;
-    node.castShadow = CINEMATIC;
+    node.castShadow = true;
     node.receiveShadow = true;
   });
 }
 
-function setCinematic(on) {
-  CINEMATIC = !!on;
-  localStorage.setItem("neon-cinematic", CINEMATIC ? "1" : "0");
-  applyRendererForCinematic();
+function setDarkMode(on, { persistLocal = false } = {}) {
+  DARK_MODE = !!on;
   applyLightingForMood(currentMapTransform?.mood || "day");
   refreshEnvShadows();
-  const stateEl = document.getElementById("cinematicState");
-  if (stateEl) stateEl.textContent = CINEMATIC ? "ON" : "OFF";
+  const stateEl = document.getElementById("darkModeState");
+  if (stateEl) stateEl.textContent = DARK_MODE ? "ON" : "OFF";
+  const btn = document.getElementById("darkModeToggle");
+  if (btn) btn.style.borderColor = DARK_MODE ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
 }
 
 function buildMap() {
