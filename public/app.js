@@ -2040,7 +2040,7 @@ async function loadEnvironment(mapId) {
         const meshBox = new THREE.Box3().setFromObject(node);
         const height = meshBox.max.y - meshBox.min.y;
         if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
-        node.castShadow = CINEMATIC;
+        node.castShadow = true;
         node.receiveShadow = true;
         occluderMeshes.push(node);
 
@@ -2472,15 +2472,29 @@ function triggerLocalEmote(slot) {
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
-// Cinematic mode toggle
-const cinematicToggleBtn = document.getElementById("cinematicToggle");
-const cinematicStateEl = document.getElementById("cinematicState");
-if (cinematicStateEl) cinematicStateEl.textContent = CINEMATIC ? "ON" : "OFF";
-if (cinematicToggleBtn) {
-  cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
-  cinematicToggleBtn.addEventListener("click", () => {
-    setCinematic(!CINEMATIC);
-    cinematicToggleBtn.style.borderColor = CINEMATIC ? "rgba(255,200,80,0.7)" : "rgba(255,255,255,0.2)";
+// Dark mode toggle (admin) — apaga as luzes ambientes do mood
+const darkModeToggleBtn = document.getElementById("darkModeToggle");
+if (darkModeToggleBtn) {
+  darkModeToggleBtn.addEventListener("click", async () => {
+    if (!isAdmin) { alert("Apenas admin."); return; }
+    const next = !DARK_MODE;
+    setDarkMode(next);
+    currentMapTransform = { ...currentMapTransform, dark_mode: next };
+    // Persiste pra todo mundo (igual mood)
+    try {
+      await supabase.from("map_transforms").upsert({
+        map_id: currentMapId,
+        offset_x: currentMapTransform.offset_x || 0,
+        offset_y: currentMapTransform.offset_y || 0,
+        offset_z: currentMapTransform.offset_z || 0,
+        rotation_y: currentMapTransform.rotation_y || 0,
+        scale_mul: currentMapTransform.scale_mul || 1,
+        mood: currentMapTransform.mood || null,
+        dark_mode: next,
+        updated_by: myId,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "map_id" });
+    } catch (e) { console.warn("dark_mode save", e); }
   });
 }
 
