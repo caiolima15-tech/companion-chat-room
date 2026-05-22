@@ -834,7 +834,7 @@ function renderMapTiles() {
   if (!mapGrid) return;
   mapGrid.innerHTML = MAPS.map((m) => {
     const isSelected = selectedMapId === m.id;
-    const moodLabel = m.mood === "day" ? "☀️ Dia" : "🌙 Noite";
+    const moodLabel = m.mood === "day" ? "☀️ Dia" : m.mood === "sunset" ? "🌅 Tarde" : "🌙 Noite";
     const count = lobbyCounts[m.id] || 0;
     const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
     const isCurrent = currentRoomChannelsMapId === m.id;
