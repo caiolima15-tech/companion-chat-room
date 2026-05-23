@@ -209,47 +209,7 @@ function applyPoseDebugToMe() {
   const myEntity = myId ? playerEntities.get(myId) : null;
   if (myEntity?.character) applyPoseDebugTo(myEntity.character);
 }
-function setupPoseDebugUI() {
-  const ids = ["poseRotX", "poseRotY", "poseRotZ", "poseOffY"];
-  const keys = ["rotX", "rotY", "rotZ", "offY"];
-  const valIds = ["poseRotXVal", "poseRotYVal", "poseRotZVal", "poseOffYVal"];
-  ids.forEach((id, i) => {
-    const el = document.getElementById(id);
-    const val = document.getElementById(valIds[i]);
-    if (!el) return;
-    el.value = String(poseDebug[keys[i]]);
-    const render = () => {
-      val.textContent = keys[i] === "offY" ? Number(el.value).toFixed(2) : `${el.value}°`;
-    };
-    render();
-    el.addEventListener("input", () => {
-      poseDebug[keys[i]] = parseFloat(el.value);
-      render();
-      try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
-      applyPoseDebugToMe();
-    });
-  });
-  document.getElementById("poseReset")?.addEventListener("click", () => {
-    poseDebug.rotX = 0; poseDebug.rotY = 0; poseDebug.rotZ = 0; poseDebug.offY = 0;
-    try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
-    setupPoseDebugUI();
-    applyPoseDebugToMe();
-  });
-  const toggle = document.getElementById("poseDebugToggle");
-  const body = document.getElementById("poseDebugBody");
-  if (toggle && body) {
-    toggle.addEventListener("click", () => {
-      const hidden = body.style.display === "none";
-      body.style.display = hidden ? "" : "none";
-      toggle.textContent = hidden ? "−" : "+";
-    });
-  }
-}
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", setupPoseDebugUI);
-} else {
-  setupPoseDebugUI();
-}
+// Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
 const assetObjects = new Map();
 const keyState = new Set();
@@ -4274,13 +4234,8 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
     });
   }
 
-  // Pose debug
-  const pd = document.getElementById("poseDebug");
-  if (pd) makePanel(pd, {
-    head: pd.querySelector("div"),
-    body: document.getElementById("poseDebugBody"),
-    minBtn: document.getElementById("poseDebugToggle"),
-  });
+  // Pose debug removido
+
 })();
 
 // Bots panel toggle
@@ -4334,6 +4289,115 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       btn.addEventListener("click", (e) => { e.stopPropagation(); deleteBot(btn.dataset.delBot); });
     });
   };
+})();
+
+// ============ Layers: grupo "Mapas" (editar/trocar GLB fonte) ============
+(function extendLayersWithMaps() {
+  const orig = window.renderLayersPanel;
+  if (!orig) return;
+  const mapsGroupOpen = { v: true };
+  let pendingReplaceSlug = null;
+
+  const replaceInput = document.getElementById("replaceMapGlbInput");
+  replaceInput?.addEventListener("change", async () => {
+    const file = replaceInput.files?.[0];
+    const slug = pendingReplaceSlug;
+    pendingReplaceSlug = null;
+    replaceInput.value = "";
+    if (!file || !slug) return;
+    try {
+      addSystemLine?.(`Enviando novo GLB para "${slug}"…`);
+      const path = `maps/${slug}-${Date.now()}.glb`;
+      const { error: upErr } = await supabase.storage.from("map-assets")
+        .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      const { error: updErr } = await supabase.from("custom_maps")
+        .update({ url: pub.publicUrl, updated_at: new Date().toISOString() })
+        .eq("slug", slug);
+      if (updErr) throw updErr;
+      await loadCustomMaps();
+      addSystemLine?.(`Mapa "${slug}" atualizado ✓`);
+      if (currentMapId === slug) {
+        addSystemLine?.("Recarregando mapa…");
+        await loadEnvironment(slug);
+      }
+      window.renderLayersPanel?.();
+    } catch (e) {
+      addSystemLine?.("Erro ao trocar GLB: " + (e?.message || e));
+    }
+  });
+
+  window.renderLayersPanel = function() {
+    orig();
+    const layersBody = document.getElementById("layersBody");
+    if (!layersBody) return;
+    const customs = (typeof MAPS !== "undefined" ? MAPS : []).filter(m => m.custom);
+    const open = mapsGroupOpen.v;
+    const arrow = open ? "▾" : "▸";
+    const items = open ? customs.map(m => {
+      const isCur = m.id === currentMapId;
+      return `
+        <div class="layer-item map-row" data-map-slug="${escapeHtml(m.id)}"
+          style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:${isCur ? "rgba(41,211,189,0.15)" : "rgba(255,255,255,0.04)"};margin:2px 0;border:1px solid ${isCur ? "rgba(41,211,189,0.4)" : "transparent"};">
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">
+            ${escapeHtml(m.thumb || "🗺️")} ${escapeHtml(m.name || m.id)}${isCur ? " <em style='color:#29d3bd;font-style:normal;font-size:10px;'>(atual)</em>" : ""}
+          </span>
+          <button data-replace-map="${escapeHtml(m.id)}" type="button" title="Trocar arquivo GLB fonte" style="background:#1f3a5a;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">↻ GLB</button>
+          <button data-del-map="${escapeHtml(m.id)}" type="button" title="Apagar mapa" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
+        </div>`;
+    }).join("") : "";
+    const html = `
+      <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);user-select:none;">
+          <strong data-toggle-maps style="font-size:12px;cursor:pointer;flex:1;">${arrow} 🗺️ Mapas <span style="color:#7a8290;font-weight:normal;">(${customs.length})</span></strong>
+        </div>
+        ${open ? `<div style="padding:4px 6px;">${customs.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Nenhum mapa custom</div>'}</div>` : ""}
+      </div>`;
+    layersBody.insertAdjacentHTML("beforeend", html);
+
+    layersBody.querySelector("[data-toggle-maps]")?.addEventListener("click", () => {
+      mapsGroupOpen.v = !mapsGroupOpen.v;
+      window.renderLayersPanel?.();
+    });
+    layersBody.querySelectorAll(".map-row").forEach(el => {
+      el.addEventListener("click", (e) => {
+        if (e.target.closest("[data-replace-map]") || e.target.closest("[data-del-map]")) return;
+        const slug = el.dataset.mapSlug;
+        if (slug && slug !== currentMapId) {
+          switchRoom(slug).catch(err => addSystemLine?.("Erro: " + (err?.message || err)));
+        }
+      });
+    });
+    layersBody.querySelectorAll("[data-replace-map]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pendingReplaceSlug = btn.dataset.replaceMap;
+        replaceInput?.click();
+      });
+    });
+    layersBody.querySelectorAll("[data-del-map]").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const slug = btn.dataset.delMap;
+        if (slug === currentMapId) { alert("Saia desse mapa antes de apagá-lo."); return; }
+        if (!confirm(`Apagar o mapa "${slug}"?`)) return;
+        const { error } = await supabase.from("custom_maps").delete().eq("slug", slug);
+        if (error) { alert("Erro: " + error.message); return; }
+        await loadCustomMaps();
+        window.renderLayersPanel?.();
+      });
+    });
+  };
+  // Re-render quando custom_maps mudar
+  if (typeof supabase !== "undefined") {
+    supabase
+      .channel("custom-maps-layers")
+      .on("postgres_changes", { event: "*", schema: "public", table: "custom_maps" }, () => {
+        setTimeout(() => window.renderLayersPanel?.(), 100);
+      })
+      .subscribe();
+  }
 })();
 
 // ============ Axis Gizmo — setinhas de eixo para arrastar itens ============
