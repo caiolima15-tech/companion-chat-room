@@ -4234,13 +4234,8 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
     });
   }
 
-  // Pose debug
-  const pd = document.getElementById("poseDebug");
-  if (pd) makePanel(pd, {
-    head: pd.querySelector("div"),
-    body: document.getElementById("poseDebugBody"),
-    minBtn: document.getElementById("poseDebugToggle"),
-  });
+  // Pose debug removido
+
 })();
 
 // Bots panel toggle
