@@ -3760,7 +3760,7 @@ function renderLightsAdminList() {
     const spots = lights.filter(l => l.kind !== "sun");
     const suns = lights.filter(l => l.kind === "sun");
 
-    const group = (key, icon, title, rows, posOf, onDel) => {
+    const group = (key, icon, title, rows, posOf, headerExtra = "") => {
       const open = layerGroupsOpen[key];
       const arrow = open ? "▾" : "▸";
       const items = open ? rows.map(r => {
@@ -3773,17 +3773,27 @@ function renderLightsAdminList() {
       }).join("") : "";
       return `
         <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
-          <div data-toggle="${key}" style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);cursor:pointer;user-select:none;">
-            <strong style="font-size:12px;">${arrow} ${icon} ${title} <span style="color:#7a8290;font-weight:normal;">(${rows.length})</span></strong>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);">
+            <strong data-toggle="${key}" style="font-size:12px;cursor:pointer;user-select:none;flex:1;">${arrow} ${icon} ${title} <span style="color:#7a8290;font-weight:normal;">(${rows.length})</span></strong>
+            ${headerExtra}
           </div>
           ${open ? `<div style="padding:4px 6px;">${rows.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Vazio</div>'}</div>` : ""}
         </div>`;
     };
 
+    const addGlbBtn = `<button data-add="glb" type="button" title="Adicionar novo GLB no foco da câmera" style="background:#1f5a3a;color:#fff;border:none;border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;margin-left:6px;">+ GLB</button>`;
+
     layersBody.innerHTML =
-      group("glb", "📦", "GLBs", assets, (a) => ({ x: a.x, y: a.y, z: a.z })) +
+      group("glb", "📦", "GLBs", assets, (a) => ({ x: a.x, y: a.y, z: a.z }), addGlbBtn) +
       group("spot", "🔦", "Spots", spots, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z })) +
       group("sun", "☀️", "Sóis", suns, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z }));
+
+    layersBody.querySelectorAll("[data-add='glb']").forEach(b => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        document.getElementById("glbInput")?.click();
+      });
+    });
 
     layersBody.querySelectorAll("[data-toggle]").forEach(el => {
       el.addEventListener("click", () => {
