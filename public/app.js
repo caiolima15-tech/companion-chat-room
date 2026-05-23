@@ -209,47 +209,7 @@ function applyPoseDebugToMe() {
   const myEntity = myId ? playerEntities.get(myId) : null;
   if (myEntity?.character) applyPoseDebugTo(myEntity.character);
 }
-function setupPoseDebugUI() {
-  const ids = ["poseRotX", "poseRotY", "poseRotZ", "poseOffY"];
-  const keys = ["rotX", "rotY", "rotZ", "offY"];
-  const valIds = ["poseRotXVal", "poseRotYVal", "poseRotZVal", "poseOffYVal"];
-  ids.forEach((id, i) => {
-    const el = document.getElementById(id);
-    const val = document.getElementById(valIds[i]);
-    if (!el) return;
-    el.value = String(poseDebug[keys[i]]);
-    const render = () => {
-      val.textContent = keys[i] === "offY" ? Number(el.value).toFixed(2) : `${el.value}°`;
-    };
-    render();
-    el.addEventListener("input", () => {
-      poseDebug[keys[i]] = parseFloat(el.value);
-      render();
-      try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
-      applyPoseDebugToMe();
-    });
-  });
-  document.getElementById("poseReset")?.addEventListener("click", () => {
-    poseDebug.rotX = 0; poseDebug.rotY = 0; poseDebug.rotZ = 0; poseDebug.offY = 0;
-    try { localStorage.setItem(POSE_DEBUG_KEY, JSON.stringify(poseDebug)); } catch {}
-    setupPoseDebugUI();
-    applyPoseDebugToMe();
-  });
-  const toggle = document.getElementById("poseDebugToggle");
-  const body = document.getElementById("poseDebugBody");
-  if (toggle && body) {
-    toggle.addEventListener("click", () => {
-      const hidden = body.style.display === "none";
-      body.style.display = hidden ? "" : "none";
-      toggle.textContent = hidden ? "−" : "+";
-    });
-  }
-}
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", setupPoseDebugUI);
-} else {
-  setupPoseDebugUI();
-}
+// Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
 const assetObjects = new Map();
 const keyState = new Set();
