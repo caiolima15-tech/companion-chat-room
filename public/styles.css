@@ -1255,3 +1255,92 @@ body.admin-ui-hidden #adminHideToggle { display: flex !important; }
   transform: scale(1.08);
   box-shadow: 0 6px 24px rgba(41,211,189,0.5);
 }
+
+/* ============================================================
+   Global purple theme override (matches login design)
+   ============================================================ */
+.is-admin .role-badge,
+.file-picker,
+#exportButton,
+#placeButton.is-active,
+.asset-actions button.is-active,
+.name-row button,
+.emote-cluster button.is-active,
+#changeCharacterButton {
+  color: #ffffff !important;
+}
+
+/* Gradient purple for primary action buttons */
+.file-picker,
+#exportButton,
+.name-row button,
+#changeCharacterButton {
+  background: linear-gradient(135deg, #6c5ce7 0%, #8a7bff 100%) !important;
+  border: 1px solid rgba(167,139,250,0.35);
+  box-shadow: 0 6px 18px rgba(108,92,231,0.35);
+}
+
+/* Chat send button: from pink to purple */
+.chat-form button {
+  background: linear-gradient(135deg, #6c5ce7 0%, #8a7bff 100%) !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 18px rgba(108,92,231,0.35);
+}
+
+/* Inputs: purple focus instead of teal */
+input:focus {
+  border-color: #6c5ce7 !important;
+  box-shadow: 0 0 0 3px rgba(108,92,231,0.25) !important;
+}
+
+/* Confirm/Enter CTAs (char-enter etc.) — purple if not already */
+.char-enter,
+#enterRoomButton,
+#confirmMapButton,
+button.primary,
+button[data-variant="primary"] {
+  background: linear-gradient(135deg, #6c5ce7 0%, #8a7bff 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(167,139,250,0.35) !important;
+  box-shadow: 0 8px 22px rgba(108,92,231,0.4);
+}
+.char-enter:disabled,
+#enterRoomButton:disabled,
+#confirmMapButton:disabled {
+  filter: grayscale(0.4) brightness(0.7);
+  box-shadow: none;
+}
+
+/* Panels: tint with purple instead of pure dark grey */
+.stage-panel,
+.chat-panel,
+.world-hud,
+.asset-dock {
+  background: rgba(20, 19, 42, 0.88) !important;
+  border-color: rgba(167,139,250,0.18) !important;
+}
+
+/* Identity / chat sections */
+.identity,
+.controls,
+.chat-log {
+  background: rgba(28, 26, 58, 0.45) !important;
+  border-color: rgba(167,139,250,0.12) !important;
+}
+
+/* Secondary buttons (world hud, controls, emote inactive) — subtle purple tint */
+.world-hud button:not(.is-active),
+.controls button,
+.emote-cluster button:not(.is-active) {
+  background: rgba(108,92,231,0.12) !important;
+  border: 1px solid rgba(167,139,250,0.25) !important;
+  color: #f5f3ff !important;
+}
+
+/* Auth link / kicker color → lavender */
+.kicker { color: #a78bfa !important; }
+
+/* Admin shortcut hover glow → purple */
+.admin-shortcut:hover {
+  box-shadow: 0 6px 24px rgba(108,92,231,0.55) !important;
+}
