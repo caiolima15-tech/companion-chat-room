@@ -3596,7 +3596,10 @@ async function openMapEdit(mapId) {
         const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
         patch.url = pub.publicUrl;
       }
-      const { error } = await supabase.from("custom_maps").update(patch).eq("slug", m.id);
+      const { error } = await supabase.from("custom_maps").upsert(
+        { slug: m.id, ...patch, url: patch.url || m.url },
+        { onConflict: "slug" }
+      );
       if (error) throw error;
       status.textContent = "Salvo ✓";
       await loadCustomMaps();
