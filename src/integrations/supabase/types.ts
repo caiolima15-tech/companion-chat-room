@@ -131,7 +131,7 @@ export type Database = {
           slug: string
           thumb: string
           updated_at: string
-          url: string
+          url: string | null
         }
         Insert: {
           bg?: string
@@ -144,7 +144,7 @@ export type Database = {
           slug: string
           thumb?: string
           updated_at?: string
-          url: string
+          url?: string | null
         }
         Update: {
           bg?: string
@@ -157,7 +157,7 @@ export type Database = {
           slug?: string
           thumb?: string
           updated_at?: string
-          url?: string
+          url?: string | null
         }
         Relationships: []
       }
@@ -166,6 +166,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          map_id: string
           name: string
           rotation_x: number
           rotation_y: number
@@ -181,6 +182,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          map_id?: string
           name: string
           rotation_x?: number
           rotation_y?: number
@@ -196,6 +198,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          map_id?: string
           name?: string
           rotation_x?: number
           rotation_y?: number
