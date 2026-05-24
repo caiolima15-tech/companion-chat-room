@@ -3123,7 +3123,7 @@ function animate() {
   if (myId && !window.__freeCameraMode) {
     const entity = playerEntities.get(myId);
     if (entity) {
-      const desired = new THREE.Vector3(entity.group.position.x, 0.85, entity.group.position.z);
+      const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
       const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
       controls.target.lerp(desired, delta * 4.0);
       camera.position.copy(controls.target).add(offset);
