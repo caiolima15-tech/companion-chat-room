@@ -43,11 +43,12 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   height: 100vh;
-  padding: 16px;
+  padding: 0;
 }
+
 
 .stage-panel,
 .chat-panel {
