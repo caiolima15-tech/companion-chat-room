@@ -2501,19 +2501,39 @@ function applyAvatar(entity, url) {
     url,
     (gltf) => {
       const next = gltf.scene;
-      // Normalize size
-      const box = new THREE.Box3().setFromObject(next);
-      const size = box.getSize(new THREE.Vector3());
-      const max = Math.max(size.x, size.y, size.z) || 1;
-      next.scale.setScalar(1.8 / max);
-      const box2 = new THREE.Box3().setFromObject(next);
-      next.position.y -= box2.min.y;
+      // Garante matrizes e bind pose atualizados antes de medir
+      next.updateMatrixWorld(true);
       next.traverse((c) => {
         if (c.isMesh) {
           c.castShadow = true;
           c.receiveShadow = true;
+          if (c.isSkinnedMesh && c.skeleton) {
+            try { c.skeleton.update(); } catch {}
+            // Recalcula bounding box/sphere com base nas posições com skin
+            try { c.computeBoundingBox(); c.computeBoundingSphere(); } catch {}
+            c.frustumCulled = false;
+          }
         }
       });
+      // Mede usando "precise=true" para considerar vértices skinned reais
+      const measure = (obj) => {
+        const b = new THREE.Box3();
+        b.expandByObject(obj, true);
+        if (!isFinite(b.min.y) || !isFinite(b.max.y)) {
+          b.setFromObject(obj);
+        }
+        return b;
+      };
+      const box = measure(next);
+      const size = box.getSize(new THREE.Vector3());
+      // Escala pela ALTURA real (não pela maior dimensão — braços em T inflacionam X)
+      const targetHeight = 1.7;
+      const h = size.y || Math.max(size.x, size.z) || 1;
+      next.scale.setScalar(targetHeight / h);
+      next.updateMatrixWorld(true);
+      // Alinha os pés ao chão (y=0 no grupo do player)
+      const box2 = measure(next);
+      next.position.y -= box2.min.y;
       entity.group.remove(entity.character);
       entity.character = next;
       entity.group.add(next);
