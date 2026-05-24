@@ -2695,6 +2695,7 @@ function renderAssets(assets = []) {
   const byId = new Map(assets.map((a) => [a.id, a]));
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
+      unregisterCollidable(object);
       scene.remove(object);
       assetObjects.delete(id);
     }
@@ -2706,6 +2707,10 @@ function renderAssets(assets = []) {
       object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
+      object.updateMatrixWorld(true);
+      // Reaplica colisão (posição/rotação podem ter mudado, então re-registra)
+      unregisterCollidable(object);
+      registerCollidable(object);
       continue;
     }
     loader.load(
@@ -2723,6 +2728,8 @@ function renderAssets(assets = []) {
           }
         });
         scene.add(object);
+        object.updateMatrixWorld(true);
+        registerCollidable(object);
         assetObjects.set(asset.id, object);
       },
       undefined,
@@ -2731,6 +2738,8 @@ function renderAssets(assets = []) {
         fallback.position.set(asset.x, asset.y, asset.z);
         fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         scene.add(fallback);
+        fallback.updateMatrixWorld(true);
+        registerCollidable(fallback);
         assetObjects.set(asset.id, fallback);
       },
     );
