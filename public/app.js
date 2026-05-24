@@ -1906,9 +1906,9 @@ const boundaryHelper = (() => {
 })();
 function updateBoundaryHelper() {
   const s = (typeof getMapScale === "function") ? getMapScale() : 1;
-  // Walkable region matches percent clamps (5..95 on X, 8..92 on Z) scaled by mapScale
-  const w = MAP_WIDTH * s * 0.90;
-  const d = MAP_DEPTH * s * 0.84;
+  const r = (typeof getWalkRange === "function") ? getWalkRange() : 1;
+  const w = MAP_WIDTH * s * 0.90 * r;
+  const d = MAP_DEPTH * s * 0.84 * r;
   boundaryHelper.scale.set(w, 1.2, d);
 }
 function setBoundaryVisible(v) {
