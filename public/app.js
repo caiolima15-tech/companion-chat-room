@@ -817,6 +817,14 @@ window.addEventListener("message", async (event) => {
   const url = findGlbUrlDeep(payload);
   if (!url) return; // ignora handshakes (iframeReady, etc.)
 
+  // Dedup: Avaturn dispara v1 e v2 em sequência. Ignora chamadas em < 5s.
+  const now = Date.now();
+  if (now - _lastAvaturnImportTs < 5000) {
+    console.log("[Avaturn] ignorando export duplicado");
+    return;
+  }
+  _lastAvaturnImportTs = now;
+
   if (!me?.id) {
     console.warn("[Avaturn] avatar exportado mas usuário não autenticado");
     if (avatarCreatorStatus) {
