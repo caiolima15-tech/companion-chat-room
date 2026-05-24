@@ -3397,14 +3397,21 @@ function currentMapMoodEffective() {
 function syncMapAdminPanel() {
   if (!mapAdminPanel) return;
   const t = currentMapTransform || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
-  if (mapScaleInput) { mapScaleInput.value = t.scale_mul ?? 1; mapScaleVal.textContent = (t.scale_mul ?? 1).toFixed(2) + "×"; }
-  if (mapRotYInput) {
-    const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
-    mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°";
-  }
-  if (mapOffXInput) { mapOffXInput.value = t.offset_x ?? 0; mapOffXVal.textContent = (t.offset_x ?? 0).toFixed(2); }
-  if (mapOffYInput) { mapOffYInput.value = t.offset_y ?? 0; mapOffYVal.textContent = (t.offset_y ?? 0).toFixed(2); }
-  if (mapOffZInput) { mapOffZInput.value = t.offset_z ?? 0; mapOffZVal.textContent = (t.offset_z ?? 0).toFixed(2); }
+  const scale = t.scale_mul ?? 1;
+  const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
+  const ox = t.offset_x ?? 1;
+  const oy = t.offset_y ?? 1;
+  const oz = t.offset_z ?? 1;
+  if (mapScaleInput) { mapScaleInput.value = scale; mapScaleVal.textContent = scale.toFixed(2) + "×"; }
+  if (mapScaleNum) mapScaleNum.value = scale;
+  if (mapRotYInput) { mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°"; }
+  if (mapRotYNum) mapRotYNum.value = deg;
+  if (mapOffXInput) { mapOffXInput.value = ox; mapOffXVal.textContent = ox.toFixed(2); }
+  if (mapOffXNum) mapOffXNum.value = ox;
+  if (mapOffYInput) { mapOffYInput.value = oy; mapOffYVal.textContent = oy.toFixed(2); }
+  if (mapOffYNum) mapOffYNum.value = oy;
+  if (mapOffZInput) { mapOffZInput.value = oz; mapOffZVal.textContent = oz.toFixed(2); }
+  if (mapOffZNum) mapOffZNum.value = oz;
   if (mapMoodInput) mapMoodInput.value = currentMapMoodEffective();
   if (mapAdminTitle) {
     const m = MAPS.find((x) => x.id === currentMapId);
