@@ -3458,12 +3458,17 @@ function onMapAdminInput() {
   const rotDeg = parseFloat(mapRotYInput.value) || 0;
   const ox = parseFloat(mapOffXInput.value) || 0;
   const oy = parseFloat(mapOffYInput.value) || 0;
-  const oz = parseFloat(mapOffZInput.value) || 0;
+  const oz = parseFloat(mapOffZInput.value) || 1;
   mapScaleVal.textContent = scale.toFixed(2) + "×";
+  if (mapScaleNum) mapScaleNum.value = scale;
   mapRotYVal.textContent = Math.round(rotDeg) + "°";
+  if (mapRotYNum) mapRotYNum.value = rotDeg;
   mapOffXVal.textContent = ox.toFixed(2);
+  if (mapOffXNum) mapOffXNum.value = ox;
   mapOffYVal.textContent = oy.toFixed(2);
+  if (mapOffYNum) mapOffYNum.value = oy;
   mapOffZVal.textContent = oz.toFixed(2);
+  if (mapOffZNum) mapOffZNum.value = oz;
   currentMapTransform = {
     ...currentMapTransform,
     offset_x: ox, offset_y: oy, offset_z: oz,
@@ -3476,6 +3481,18 @@ function onMapAdminInput() {
   el?.addEventListener("input", onMapAdminInput);
 });
 
+function onMapAdminNumInput(el, slider) {
+  return () => {
+    const v = parseFloat(el.value);
+    if (!Number.isNaN(v)) { slider.value = v; onMapAdminInput(); }
+  };
+}
+if (mapScaleNum && mapScaleInput) mapScaleNum.addEventListener("input", onMapAdminNumInput(mapScaleNum, mapScaleInput));
+if (mapRotYNum && mapRotYInput) mapRotYNum.addEventListener("input", onMapAdminNumInput(mapRotYNum, mapRotYInput));
+if (mapOffXNum && mapOffXInput) mapOffXNum.addEventListener("input", onMapAdminNumInput(mapOffXNum, mapOffXInput));
+if (mapOffYNum && mapOffYInput) mapOffYNum.addEventListener("input", onMapAdminNumInput(mapOffYNum, mapOffYInput));
+if (mapOffZNum && mapOffZInput) mapOffZNum.addEventListener("input", onMapAdminNumInput(mapOffZNum, mapOffZInput));
+
 // Walk range (área caminhável)
 const walkRangeInput = document.querySelector("#walkRange");
 const walkRangeVal = document.querySelector("#walkRangeVal");
@@ -3483,12 +3500,23 @@ if (walkRangeInput && walkRangeVal) {
   const initial = parseFloat(localStorage.getItem("neon-walk-range") || "1") || 1;
   walkRangeInput.value = initial;
   walkRangeVal.textContent = initial.toFixed(1) + "×";
+  if (walkRangeNum) walkRangeNum.value = initial;
   walkRangeInput.addEventListener("input", () => {
     const v = parseFloat(walkRangeInput.value) || 1;
     walkRangeVal.textContent = v.toFixed(1) + "×";
+    if (walkRangeNum) walkRangeNum.value = v;
     localStorage.setItem("neon-walk-range", String(v));
     if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
   });
+  if (walkRangeNum && walkRangeInput) {
+    walkRangeNum.addEventListener("input", () => {
+      const v = parseFloat(walkRangeNum.value) || 1;
+      walkRangeInput.value = v;
+      walkRangeVal.textContent = v.toFixed(1) + "×";
+      localStorage.setItem("neon-walk-range", String(v));
+      if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
+    });
+  }
 }
 
 mapMoodInput?.addEventListener("change", () => {
