@@ -1404,7 +1404,7 @@ async function setupRoomChannels(mapId) {
       { event: "INSERT", schema: "public", table: "chat_messages", filter: `map_id=eq.${mapId}` },
       (payload) => {
         const m = payload.new;
-        addMessage({ name: m.nickname, color: m.color, text: m.text });
+        addMessage({ user_id: m.user_id, name: m.nickname, color: m.color, text: m.text, avatar_url: m.avatar_url });
         // Set speech bubble briefly
         const player = players.find((p) => p.id === m.user_id);
         if (player) {
