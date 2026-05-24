@@ -1811,11 +1811,19 @@ function worldFromPercent(x, y) {
     (y / 100 - 0.5) * MAP_DEPTH * s,
   );
 }
+function getWalkRange() {
+  const v = parseFloat(localStorage.getItem("neon-walk-range") || "1");
+  return Math.max(1, isFinite(v) ? v : 1);
+}
 function percentFromWorld(x, z) {
   const s = getMapScale();
+  const r = getWalkRange();
+  // Expand clamps symmetrically around 50% as r grows (r=1 keeps original 5..95 / 8..92)
+  const padX = 45 * r; // half-range on X (expands with r)
+  const padZ = 42 * r; // half-range on Z (expands with r)
   return {
-    x: Math.max(5, Math.min(95, (x / (MAP_WIDTH * s) + 0.5) * 100)),
-    y: Math.max(8, Math.min(92, (z / (MAP_DEPTH * s) + 0.5) * 100)),
+    x: Math.max(50 - padX, Math.min(50 + padX, (x / (MAP_WIDTH * s) + 0.5) * 100)),
+    y: Math.max(50 - padZ, Math.min(50 + padZ, (z / (MAP_DEPTH * s) + 0.5) * 100)),
   };
 }
 
@@ -1898,9 +1906,9 @@ const boundaryHelper = (() => {
 })();
 function updateBoundaryHelper() {
   const s = (typeof getMapScale === "function") ? getMapScale() : 1;
-  // Walkable region matches percent clamps (5..95 on X, 8..92 on Z) scaled by mapScale
-  const w = MAP_WIDTH * s * 0.90;
-  const d = MAP_DEPTH * s * 0.84;
+  const r = (typeof getWalkRange === "function") ? getWalkRange() : 1;
+  const w = MAP_WIDTH * s * 0.90 * r;
+  const d = MAP_DEPTH * s * 0.84 * r;
   boundaryHelper.scale.set(w, 1.2, d);
 }
 function setBoundaryVisible(v) {
@@ -3446,6 +3454,21 @@ function onMapAdminInput() {
 [mapScaleInput, mapRotYInput, mapOffXInput, mapOffYInput, mapOffZInput].forEach((el) => {
   el?.addEventListener("input", onMapAdminInput);
 });
+
+// Walk range (área caminhável)
+const walkRangeInput = document.querySelector("#walkRange");
+const walkRangeVal = document.querySelector("#walkRangeVal");
+if (walkRangeInput && walkRangeVal) {
+  const initial = parseFloat(localStorage.getItem("neon-walk-range") || "1") || 1;
+  walkRangeInput.value = initial;
+  walkRangeVal.textContent = initial.toFixed(1) + "×";
+  walkRangeInput.addEventListener("input", () => {
+    const v = parseFloat(walkRangeInput.value) || 1;
+    walkRangeVal.textContent = v.toFixed(1) + "×";
+    localStorage.setItem("neon-walk-range", String(v));
+    if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
+  });
+}
 
 mapMoodInput?.addEventListener("change", () => {
   const mood = mapMoodInput.value || "day";
