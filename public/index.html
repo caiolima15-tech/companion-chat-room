@@ -315,7 +315,50 @@
     </div>
 
 
-    <!-- Auth overlay -->
+    <!-- Radio: now-playing pill + audio + panel -->
+    <div id="radioNowPlaying" class="radio-pill" hidden>
+      <span class="radio-pill-icon">📻</span>
+      <span class="radio-pill-text">
+        <span id="radioPillGenre" class="radio-pill-genre"></span>
+        <span id="radioPillName" class="radio-pill-name"></span>
+      </span>
+      <button id="radioPillMute" type="button" class="radio-pill-btn" aria-label="Mutar">🔊</button>
+    </div>
+    <audio id="radioAudio" preload="none" crossorigin="anonymous"></audio>
+
+    <div id="radioOverlay" class="modal-overlay" hidden>
+      <div class="modal-card radio-card">
+        <button id="radioClose" class="modal-close" type="button" aria-label="Fechar">×</button>
+        <header class="radio-head">
+          <h2>📻 Rádio do local</h2>
+          <p id="radioCurrent" class="radio-current">Nenhuma rádio tocando</p>
+        </header>
+
+        <section class="radio-section">
+          <label class="radio-row">
+            <span>Volume</span>
+            <input id="radioVolume" type="range" min="0" max="100" value="60">
+          </label>
+          <button id="radioToggleLocal" class="radio-btn" type="button">⏸️ Pausar para mim</button>
+        </section>
+
+        <section class="radio-section admin-only">
+          <h3>Escolher estação (admin)</h3>
+          <label class="radio-row">
+            <span>Filtrar gênero</span>
+            <select id="radioGenreFilter">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <div id="radioStationList" class="radio-list"></div>
+          <div class="radio-actions">
+            <button id="radioStopGlobal" class="radio-btn radio-btn-danger" type="button">Desligar rádio para todos</button>
+          </div>
+        </section>
+      </div>
+    </div>
+
+
     <div id="authOverlay" class="auth-overlay" hidden>
       <form id="authForm" class="auth-card">
         <div id="authBanner" class="auth-banner">
