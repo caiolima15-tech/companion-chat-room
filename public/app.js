@@ -3381,6 +3381,12 @@ const mapRotYVal = document.querySelector("#mapRotYVal");
 const mapOffXVal = document.querySelector("#mapOffXVal");
 const mapOffYVal = document.querySelector("#mapOffYVal");
 const mapOffZVal = document.querySelector("#mapOffZVal");
+const mapScaleNum = document.querySelector("#mapScaleNum");
+const mapRotYNum = document.querySelector("#mapRotYNum");
+const mapOffXNum = document.querySelector("#mapOffXNum");
+const mapOffYNum = document.querySelector("#mapOffYNum");
+const mapOffZNum = document.querySelector("#mapOffZNum");
+const walkRangeNum = document.querySelector("#walkRangeNum");
 const mapMoodInput = document.querySelector("#mapMood");
 
 function currentMapMoodEffective() {
