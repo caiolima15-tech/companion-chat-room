@@ -2858,17 +2858,25 @@ function addSystemLine(text) {
 }
 function addMessage(message) {
   const item = document.createElement("div");
-  item.className = "chat-item";
+  const isSelf = message.user_id && myId && message.user_id === myId;
+  item.className = "chat-item" + (isSelf ? " is-self" : "");
+  const avatarStyle = message.avatar_url
+    ? `background-image:url('${escapeHtml(message.avatar_url)}')`
+    : `background:${escapeHtml(message.color || '#6c5ce7')}`;
+  const initial = (message.name || "?").trim().charAt(0).toUpperCase();
+  const avatarClass = message.avatar_url ? "chat-avatar" : "chat-avatar placeholder";
+  const avatarContent = message.avatar_url ? "" : escapeHtml(initial);
   item.innerHTML = `
-    <div class="chat-dot" style="--chat-color: ${escapeHtml(message.color)}"></div>
+    <div class="${avatarClass}" data-user="${escapeHtml(message.user_id || '')}" style="${avatarStyle}">${avatarContent}</div>
     <div class="chat-copy">
-      <div class="chat-name">${escapeHtml(message.name)}</div>
-      <div class="chat-text">${escapeHtml(message.text)}</div>
+      ${isSelf ? "" : `<span class="chat-name" data-user="${escapeHtml(message.user_id || '')}">${escapeHtml(message.name)}</span>`}
+      <div class="chat-bubble">${escapeHtml(message.text)}</div>
     </div>
   `;
   chatLog.appendChild(item);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
+
 
 // ============ Movement ============
 function move(dx, dy, facing) {
