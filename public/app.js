@@ -3624,20 +3624,27 @@ async function openMapEdit(mapId) {
   };
 
   modal.querySelector("#meDelete").onclick = async () => {
-    const msg = isBuiltin
-      ? `Restaurar o mapa "${m.name}" para o padrão original? Suas customizações serão perdidas.`
-      : `Excluir o mapa "${m.name}"? Esta ação é permanente.`;
-    if (!confirm(msg)) return;
+    if (!confirm(`Excluir o mapa "${m.name}"? Ele não aparecerá mais no menu.`)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
-    status.textContent = isBuiltin ? "Restaurando…" : "Excluindo…";
+    status.textContent = "Excluindo…";
     try {
-      const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
-      if (error) throw error;
-      status.textContent = isBuiltin ? "Restaurado ✓" : "Excluído ✓";
+      if (isBuiltin) {
+        // Built-in: marca como hidden (upsert)
+        const { error } = await supabase.from("custom_maps").upsert(
+          { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
+          { onConflict: "slug" }
+        );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
+        if (error) throw error;
+      }
+      status.textContent = "Excluído ✓";
       await loadCustomMaps();
       if (currentMapId === m.id) {
-        loadEnvironment(isBuiltin ? m.id : (BUILTIN_MAPS[0] && BUILTIN_MAPS[0].id));
+        const fallback = MAPS[0];
+        if (fallback) loadEnvironment(fallback.id);
       }
       close();
     } catch (e) {
@@ -3645,6 +3652,26 @@ async function openMapEdit(mapId) {
       delBtn.disabled = false;
     }
   };
+
+  const restoreBtn = modal.querySelector("#meRestore");
+  if (restoreBtn) {
+    restoreBtn.onclick = async () => {
+      if (!confirm(`Restaurar o mapa "${m.name}" para o padrão original? Customizações serão perdidas.`)) return;
+      restoreBtn.disabled = true;
+      status.textContent = "Restaurando…";
+      try {
+        const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
+        if (error) throw error;
+        status.textContent = "Restaurado ✓";
+        await loadCustomMaps();
+        if (currentMapId === m.id) loadEnvironment(m.id);
+        close();
+      } catch (e) {
+        status.textContent = "Erro: " + (e.message || e);
+        restoreBtn.disabled = false;
+      }
+    };
+  }
 }
 
 
