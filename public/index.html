@@ -34,6 +34,8 @@
           <div class="nameplates" id="nameplates"></div>
           <div class="world-hud">
             <button id="cameraButton" type="button">Câmera</button>
+            <button id="openProfileButton" type="button">Meu perfil</button>
+            <button id="openDmInboxButton" type="button">Mensagens</button>
             <button id="changeCharacterButton" type="button">Trocar personagem</button>
             <button id="changeMapButton" type="button">Trocar local</button>
             <button id="manageCharactersButton" class="admin-only" type="button">Personagens</button>
@@ -183,13 +185,8 @@
 
         </div>
 
-        <div class="controls" aria-label="Controles de movimento">
-          <button data-step="up" aria-label="Andar para frente">↑</button>
-          <button data-step="left" aria-label="Andar para esquerda">←</button>
-          <button data-step="down" aria-label="Andar para trás">↓</button>
-          <button data-step="right" aria-label="Andar para direita">→</button>
-        </div>
       </section>
+
 
       <aside class="chat-panel" aria-label="Chat da sala">
         <div class="identity">
@@ -231,8 +228,90 @@
         </svg>
         <span id="mobileChatBadge" class="mobile-bar-badge" hidden></span>
       </button>
+      <button id="mobileProfileBtn" type="button" aria-label="Perfil">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/>
+        </svg>
+      </button>
+      <button id="mobileDmBtn" type="button" aria-label="Mensagens diretas">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 4h16v12H7l-3 3z"/>
+        </svg>
+        <span id="mobileDmBadge" class="mobile-bar-badge" hidden></span>
+      </button>
     </nav>
     <button id="mobileBackdrop" class="mobile-backdrop" type="button" aria-label="Fechar" hidden></button>
+
+    <!-- Profile modal (Instagram-style) -->
+    <div id="profileOverlay" class="ig-overlay" hidden>
+      <div class="ig-card">
+        <button id="profileClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        <header class="ig-head">
+          <div class="ig-avatar-wrap">
+            <img id="profileAvatar" class="ig-avatar" alt="Foto de perfil">
+            <button id="profileAvatarEdit" class="ig-avatar-edit" type="button" title="Trocar foto de perfil">✎</button>
+            <input id="profileAvatarFile" type="file" accept="image/*" hidden>
+          </div>
+          <div class="ig-meta">
+            <div class="ig-name-row">
+              <h2 id="profileName">—</h2>
+              <button id="profileFollowBtn" class="ig-btn ig-btn-primary" type="button" hidden>Seguir</button>
+              <button id="profileDmBtn" class="ig-btn" type="button" hidden>Enviar DM</button>
+              <button id="profileEditBtn" class="ig-btn" type="button" hidden>Editar perfil</button>
+            </div>
+            <div class="ig-stats">
+              <div><strong id="profilePostCount">0</strong> fotos</div>
+              <div><strong id="profileFollowerCount">0</strong> seguidores</div>
+              <div><strong id="profileFollowingCount">0</strong> seguindo</div>
+            </div>
+            <p id="profileBio" class="ig-bio">—</p>
+            <textarea id="profileBioEdit" class="ig-bio-edit" maxlength="240" placeholder="Conta um pouco sobre você..." hidden></textarea>
+            <div id="profileEditActions" class="ig-edit-actions" hidden>
+              <button id="profileBioSave" type="button" class="ig-btn ig-btn-primary">Salvar</button>
+              <button id="profileBioCancel" type="button" class="ig-btn">Cancelar</button>
+            </div>
+          </div>
+        </header>
+        <div class="ig-tabs">
+          <span class="ig-tab is-active">Fotos</span>
+        </div>
+        <div class="ig-grid" id="profileGrid"></div>
+        <label id="profileAddPhoto" class="ig-add-photo" hidden>
+          <input id="profilePhotoFile" type="file" accept="image/*" hidden>
+          + Adicionar foto (máx. 15)
+        </label>
+      </div>
+    </div>
+
+    <!-- DM conversation modal -->
+    <div id="dmOverlay" class="ig-overlay" hidden>
+      <div class="ig-card ig-card-dm">
+        <header class="dm-head">
+          <button id="dmBack" type="button" class="ig-btn">←</button>
+          <img id="dmPeerAvatar" class="dm-avatar" alt="">
+          <strong id="dmPeerName">—</strong>
+          <button id="dmClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <div id="dmLog" class="dm-log"></div>
+        <form id="dmForm" class="dm-form">
+          <input id="dmInput" maxlength="500" placeholder="Mensagem...">
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- DM inbox -->
+    <div id="dmInboxOverlay" class="ig-overlay" hidden>
+      <div class="ig-card ig-card-dm">
+        <header class="dm-head">
+          <strong>Mensagens</strong>
+          <button id="dmInboxClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <div id="dmInboxList" class="dm-inbox"></div>
+      </div>
+    </div>
+
 
     <!-- Auth overlay -->
     <div id="authOverlay" class="auth-overlay" hidden>
