@@ -243,6 +243,76 @@
     </nav>
     <button id="mobileBackdrop" class="mobile-backdrop" type="button" aria-label="Fechar" hidden></button>
 
+    <!-- Profile modal (Instagram-style) -->
+    <div id="profileOverlay" class="ig-overlay" hidden>
+      <div class="ig-card">
+        <button id="profileClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        <header class="ig-head">
+          <div class="ig-avatar-wrap">
+            <img id="profileAvatar" class="ig-avatar" alt="Foto de perfil">
+            <button id="profileAvatarEdit" class="ig-avatar-edit" type="button" title="Trocar foto de perfil">✎</button>
+            <input id="profileAvatarFile" type="file" accept="image/*" hidden>
+          </div>
+          <div class="ig-meta">
+            <div class="ig-name-row">
+              <h2 id="profileName">—</h2>
+              <button id="profileFollowBtn" class="ig-btn ig-btn-primary" type="button" hidden>Seguir</button>
+              <button id="profileDmBtn" class="ig-btn" type="button" hidden>Enviar DM</button>
+              <button id="profileEditBtn" class="ig-btn" type="button" hidden>Editar perfil</button>
+            </div>
+            <div class="ig-stats">
+              <div><strong id="profilePostCount">0</strong> fotos</div>
+              <div><strong id="profileFollowerCount">0</strong> seguidores</div>
+              <div><strong id="profileFollowingCount">0</strong> seguindo</div>
+            </div>
+            <p id="profileBio" class="ig-bio">—</p>
+            <textarea id="profileBioEdit" class="ig-bio-edit" maxlength="240" placeholder="Conta um pouco sobre você..." hidden></textarea>
+            <div id="profileEditActions" class="ig-edit-actions" hidden>
+              <button id="profileBioSave" type="button" class="ig-btn ig-btn-primary">Salvar</button>
+              <button id="profileBioCancel" type="button" class="ig-btn">Cancelar</button>
+            </div>
+          </div>
+        </header>
+        <div class="ig-tabs">
+          <span class="ig-tab is-active">Fotos</span>
+        </div>
+        <div class="ig-grid" id="profileGrid"></div>
+        <label id="profileAddPhoto" class="ig-add-photo" hidden>
+          <input id="profilePhotoFile" type="file" accept="image/*" hidden>
+          + Adicionar foto (máx. 15)
+        </label>
+      </div>
+    </div>
+
+    <!-- DM conversation modal -->
+    <div id="dmOverlay" class="ig-overlay" hidden>
+      <div class="ig-card ig-card-dm">
+        <header class="dm-head">
+          <button id="dmBack" type="button" class="ig-btn">←</button>
+          <img id="dmPeerAvatar" class="dm-avatar" alt="">
+          <strong id="dmPeerName">—</strong>
+          <button id="dmClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <div id="dmLog" class="dm-log"></div>
+        <form id="dmForm" class="dm-form">
+          <input id="dmInput" maxlength="500" placeholder="Mensagem...">
+          <button type="submit">Enviar</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- DM inbox -->
+    <div id="dmInboxOverlay" class="ig-overlay" hidden>
+      <div class="ig-card ig-card-dm">
+        <header class="dm-head">
+          <strong>Mensagens</strong>
+          <button id="dmInboxClose" class="ig-close" type="button" aria-label="Fechar">×</button>
+        </header>
+        <div id="dmInboxList" class="dm-inbox"></div>
+      </div>
+    </div>
+
+
     <!-- Auth overlay -->
     <div id="authOverlay" class="auth-overlay" hidden>
       <form id="authForm" class="auth-card">
