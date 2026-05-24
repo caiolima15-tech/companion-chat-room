@@ -91,6 +91,7 @@ export type Database = {
       }
       chat_messages: {
         Row: {
+          avatar_url: string | null
           color: string
           created_at: string
           id: string
@@ -100,6 +101,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_url?: string | null
           color?: string
           created_at?: string
           id?: string
@@ -109,6 +111,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_url?: string | null
           color?: string
           created_at?: string
           id?: string
@@ -158,6 +161,54 @@ export type Database = {
           thumb?: string
           updated_at?: string
           url?: string | null
+        }
+        Relationships: []
+      }
+      direct_messages: {
+        Row: {
+          created_at: string
+          from_user: string
+          id: string
+          read_at: string | null
+          text: string
+          to_user: string
+        }
+        Insert: {
+          created_at?: string
+          from_user: string
+          id?: string
+          read_at?: string | null
+          text: string
+          to_user: string
+        }
+        Update: {
+          created_at?: string
+          from_user?: string
+          id?: string
+          read_at?: string | null
+          text?: string
+          to_user?: string
+        }
+        Relationships: []
+      }
+      follows: {
+        Row: {
+          created_at: string
+          follower_id: string
+          following_id: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          follower_id: string
+          following_id: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          follower_id?: string
+          following_id?: string
+          id?: string
         }
         Relationships: []
       }
@@ -395,30 +446,60 @@ export type Database = {
         }
         Relationships: []
       }
+      profile_photos: {
+        Row: {
+          created_at: string
+          id: string
+          position: number
+          url: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          position?: number
+          url: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          position?: number
+          url?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
+          bio: string | null
           character_slug: string | null
           color: string
           created_at: string
           id: string
           nickname: string
+          updated_at: string
         }
         Insert: {
           avatar_url?: string | null
+          bio?: string | null
           character_slug?: string | null
           color?: string
           created_at?: string
           id: string
           nickname?: string
+          updated_at?: string
         }
         Update: {
           avatar_url?: string | null
+          bio?: string | null
           character_slug?: string | null
           color?: string
           created_at?: string
           id?: string
           nickname?: string
+          updated_at?: string
         }
         Relationships: []
       }
