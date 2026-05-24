@@ -1340,9 +1340,10 @@ async function applyCharacter(entity, slug) {
 
 // ============ Realtime ============
 async function loadInitialAssets() {
-  const { data } = await supabase.from("map_assets").select("*").order("created_at");
+  const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
   renderAssets((data || []).map(rowToAsset));
 }
+
 async function loadInitialChat() {
   chatLog.innerHTML = "";
   const { data } = await supabase
