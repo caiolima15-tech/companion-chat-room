@@ -897,6 +897,12 @@ function updateConfirmMapButton() {
   confirmMapButton.disabled = !selectedMapId;
 }
 mapGrid?.addEventListener("click", (e) => {
+  const editBtn = e.target.closest("[data-edit-map]");
+  if (editBtn) {
+    e.stopPropagation();
+    openMapEdit(editBtn.dataset.editMap);
+    return;
+  }
   const tile = e.target.closest("[data-map-id]");
   if (!tile) return;
   selectedMapId = tile.dataset.mapId;
