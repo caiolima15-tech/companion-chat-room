@@ -383,6 +383,36 @@ export type Database = {
         }
         Relationships: []
       }
+      map_radios: {
+        Row: {
+          genre: string
+          is_playing: boolean
+          map_id: string
+          station_name: string
+          stream_url: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          genre?: string
+          is_playing?: boolean
+          map_id: string
+          station_name?: string
+          stream_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          genre?: string
+          is_playing?: boolean
+          map_id?: string
+          station_name?: string
+          stream_url?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       map_thumbnails: {
         Row: {
           created_at: string

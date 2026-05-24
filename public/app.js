@@ -5239,3 +5239,240 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, refreshDmBadge)
     .subscribe();
 })();
+
+// ============================================================
+// ===== Radio: per-map stream chosen by admin ================
+// ============================================================
+(function setupRadio() {
+  const STATIONS = [
+    // Lofi / Chill
+    { name: "SomaFM Groove Salad", genre: "Chill / Lofi", url: "https://ice1.somafm.com/groovesalad-128-mp3" },
+    { name: "SomaFM Lush",         genre: "Chill / Lofi", url: "https://ice1.somafm.com/lush-128-mp3" },
+    { name: "SomaFM Deep Space One", genre: "Chill / Lofi", url: "https://ice1.somafm.com/deepspaceone-128-mp3" },
+    // Eletrônica
+    { name: "SomaFM Beat Blender", genre: "Eletrônica", url: "https://ice1.somafm.com/beatblender-128-mp3" },
+    { name: "SomaFM Space Station", genre: "Eletrônica", url: "https://ice1.somafm.com/spacestation-128-mp3" },
+    { name: "SomaFM Drone Zone",    genre: "Eletrônica", url: "https://ice1.somafm.com/dronezone-128-mp3" },
+    { name: "SomaFM DEF CON Radio", genre: "Eletrônica", url: "https://ice1.somafm.com/defcon-128-mp3" },
+    // Indie / Rock
+    { name: "SomaFM Indie Pop Rocks", genre: "Indie / Rock", url: "https://ice1.somafm.com/indiepop-128-mp3" },
+    { name: "SomaFM Left Coast 70s",  genre: "Indie / Rock", url: "https://ice1.somafm.com/seventies-128-mp3" },
+    { name: "Radio Paradise Rock",    genre: "Indie / Rock", url: "https://stream.radioparadise.com/rock-128" },
+    // Pop / Mix
+    { name: "Radio Paradise Main",   genre: "Pop / Mix", url: "https://stream.radioparadise.com/mp3-128" },
+    { name: "Radio Paradise Mellow", genre: "Pop / Mix", url: "https://stream.radioparadise.com/mellow-128" },
+    { name: "Radio Paradise World",  genre: "Pop / Mix", url: "https://stream.radioparadise.com/world-etc-128" },
+    // Jazz / Hip-hop
+    { name: "SomaFM Sonic Universe", genre: "Jazz", url: "https://ice1.somafm.com/sonicuniverse-128-mp3" },
+    { name: "SomaFM Fluid",          genre: "Hip-Hop / Jazz", url: "https://ice1.somafm.com/fluid-128-mp3" },
+    // Vintage
+    { name: "SomaFM Secret Agent",   genre: "Vintage / Lounge", url: "https://ice1.somafm.com/secretagent-128-mp3" },
+    { name: "SomaFM Boot Liquor",    genre: "Country / Folk", url: "https://ice1.somafm.com/bootliquor-128-mp3" },
+  ];
+
+  const btn = document.getElementById("radioButton");
+  const overlay = document.getElementById("radioOverlay");
+  const closeBtn = document.getElementById("radioClose");
+  const audio = document.getElementById("radioAudio");
+  const pill = document.getElementById("radioNowPlaying");
+  const pillName = document.getElementById("radioPillName");
+  const pillGenre = document.getElementById("radioPillGenre");
+  const pillMute = document.getElementById("radioPillMute");
+  const currentText = document.getElementById("radioCurrent");
+  const volumeInput = document.getElementById("radioVolume");
+  const toggleLocalBtn = document.getElementById("radioToggleLocal");
+  const genreFilter = document.getElementById("radioGenreFilter");
+  const list = document.getElementById("radioStationList");
+  const stopGlobalBtn = document.getElementById("radioStopGlobal");
+
+  if (!btn || !overlay) return;
+
+  let currentRow = null;     // { station_name, genre, stream_url, is_playing }
+  let localMuted = false;
+  let localPaused = false;
+  let radioChannel = null;
+  let hadUserGesture = false;
+
+  // Populate filter
+  const genres = ["", ...new Set(STATIONS.map(s => s.genre))];
+  genreFilter.innerHTML = genres.map(g =>
+    `<option value="${g}">${g || "Todos"}</option>`
+  ).join("");
+
+  // Restore local prefs
+  const savedVol = parseInt(localStorage.getItem("ntr-radio-volume") || "60", 10);
+  volumeInput.value = String(savedVol);
+  audio.volume = savedVol / 100;
+  localMuted = localStorage.getItem("ntr-radio-muted") === "1";
+  audio.muted = localMuted;
+  updateMuteBtn();
+
+  function updateMuteBtn() {
+    pillMute.textContent = (localMuted || localPaused) ? "🔇" : "🔊";
+    toggleLocalBtn.textContent = localPaused ? "▶️ Voltar a tocar" : "⏸️ Pausar para mim";
+  }
+
+  function renderList() {
+    const filter = genreFilter.value;
+    const filtered = filter ? STATIONS.filter(s => s.genre === filter) : STATIONS;
+    list.innerHTML = filtered.map((s, i) => {
+      const isCurrent = currentRow && currentRow.stream_url === s.url;
+      const idx = STATIONS.indexOf(s);
+      return `<div class="radio-station ${isCurrent ? 'is-current' : ''}" data-idx="${idx}">
+        <div>
+          <div class="name">${s.name}</div>
+          <div class="genre">${s.genre}</div>
+        </div>
+        <span>${isCurrent ? '▶️' : '▶'}</span>
+      </div>`;
+    }).join("");
+  }
+  genreFilter.addEventListener("change", renderList);
+
+  list.addEventListener("click", async (e) => {
+    const item = e.target.closest(".radio-station");
+    if (!item) return;
+    const idx = parseInt(item.dataset.idx, 10);
+    const s = STATIONS[idx];
+    if (!s) return;
+    await setStationForMap(s);
+  });
+
+  stopGlobalBtn.addEventListener("click", async () => {
+    if (!confirm("Desligar a rádio para todos no mapa?")) return;
+    const { error } = await supabase.from("map_radios").upsert({
+      map_id: currentMapId,
+      station_name: "",
+      genre: "",
+      stream_url: "",
+      is_playing: false,
+      updated_by: me?.id || null,
+    }, { onConflict: "map_id" });
+    if (error) alert("Erro: " + error.message);
+  });
+
+  async function setStationForMap(s) {
+    const { error } = await supabase.from("map_radios").upsert({
+      map_id: currentMapId,
+      station_name: s.name,
+      genre: s.genre,
+      stream_url: s.url,
+      is_playing: true,
+      updated_by: me?.id || null,
+    }, { onConflict: "map_id" });
+    if (error) { alert("Erro: " + error.message); return; }
+  }
+
+  function applyRow(row) {
+    currentRow = row;
+    const playing = row && row.is_playing && row.stream_url;
+    if (!playing) {
+      pill.hidden = true;
+      currentText.textContent = "Nenhuma rádio tocando";
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      renderList();
+      return;
+    }
+    pill.hidden = false;
+    pillName.textContent = row.station_name;
+    pillGenre.textContent = row.genre;
+    currentText.textContent = `▶ ${row.station_name} · ${row.genre}`;
+    if (audio.src !== row.stream_url) {
+      audio.src = row.stream_url;
+    }
+    if (!localPaused && hadUserGesture) {
+      audio.play().then(() => {
+        pill.classList.add("is-playing");
+      }).catch(err => {
+        console.warn("[radio] play failed", err);
+        pill.classList.remove("is-playing");
+      });
+    }
+    renderList();
+  }
+
+  // First-gesture unlock
+  function unlockAudio() {
+    hadUserGesture = true;
+    if (currentRow && currentRow.is_playing && currentRow.stream_url && !localPaused) {
+      audio.play().then(() => pill.classList.add("is-playing")).catch(() => {});
+    }
+  }
+  window.addEventListener("pointerdown", unlockAudio, { once: true });
+  window.addEventListener("keydown", unlockAudio, { once: true });
+
+  // UI events
+  btn.addEventListener("click", () => {
+    hadUserGesture = true;
+    overlay.hidden = false;
+    renderList();
+  });
+  pill.addEventListener("click", (e) => {
+    if (e.target === pillMute) return;
+    hadUserGesture = true;
+    overlay.hidden = false;
+    renderList();
+  });
+  closeBtn.addEventListener("click", () => { overlay.hidden = true; });
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.hidden = true; });
+
+  volumeInput.addEventListener("input", () => {
+    audio.volume = parseInt(volumeInput.value, 10) / 100;
+    localStorage.setItem("ntr-radio-volume", volumeInput.value);
+  });
+
+  pillMute.addEventListener("click", (e) => {
+    e.stopPropagation();
+    localMuted = !localMuted;
+    audio.muted = localMuted;
+    localStorage.setItem("ntr-radio-muted", localMuted ? "1" : "0");
+    updateMuteBtn();
+  });
+
+  toggleLocalBtn.addEventListener("click", () => {
+    localPaused = !localPaused;
+    if (localPaused) {
+      audio.pause();
+      pill.classList.remove("is-playing");
+    } else if (currentRow && currentRow.is_playing && currentRow.stream_url) {
+      audio.play().then(() => pill.classList.add("is-playing")).catch(() => {});
+    }
+    updateMuteBtn();
+  });
+
+  audio.addEventListener("playing", () => pill.classList.add("is-playing"));
+  audio.addEventListener("pause", () => pill.classList.remove("is-playing"));
+  audio.addEventListener("error", () => {
+    pill.classList.remove("is-playing");
+    console.warn("[radio] stream error");
+  });
+
+  // === Per-map subscription ===
+  async function subscribeForMap(mapId) {
+    if (radioChannel) { try { await supabase.removeChannel(radioChannel); } catch {} radioChannel = null; }
+    // Initial fetch
+    const { data } = await supabase.from("map_radios").select("*").eq("map_id", mapId).maybeSingle();
+    applyRow(data || null);
+    // Subscribe
+    radioChannel = supabase
+      .channel(`map-radio:${mapId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "map_radios", filter: `map_id=eq.${mapId}` },
+        (payload) => {
+          if (payload.eventType === "DELETE") applyRow(null);
+          else applyRow(payload.new);
+        })
+      .subscribe();
+  }
+
+  // Hook into map changes
+  let lastMapId = null;
+  setInterval(() => {
+    const mid = window.currentMapId || (typeof currentMapId !== "undefined" ? currentMapId : null);
+    if (mid && mid !== lastMapId) {
+      lastMapId = mid;
+      subscribeForMap(mid);
+    }
+  }, 800);
+})();

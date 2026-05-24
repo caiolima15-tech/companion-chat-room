@@ -1525,3 +1525,123 @@ button[data-variant="primary"] {
 
 /* Hide remaining d-pad rule */
 .controls { display: none !important; }
+
+/* ===== Radio ===== */
+.radio-pill {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1300;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(15, 15, 25, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  max-width: 280px;
+}
+.radio-pill-icon { font-size: 1rem; }
+.radio-pill-text { display: flex; flex-direction: column; line-height: 1.1; min-width: 0; }
+.radio-pill-genre { font-size: 0.65rem; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.05em; }
+.radio-pill-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.radio-pill-btn {
+  border: 0; background: transparent; color: #fff;
+  font-size: 1rem; cursor: pointer; padding: 2px 4px; border-radius: 6px;
+}
+.radio-pill-btn:hover { background: rgba(255,255,255,0.1); }
+.radio-pill.is-playing .radio-pill-icon { animation: radioPulse 1.6s ease-in-out infinite; }
+@keyframes radioPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.92); }
+}
+
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  z-index: 1500;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.modal-card {
+  position: relative;
+  background: linear-gradient(180deg, #1a1a2e, #0f0f1a);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 18px;
+  padding: 22px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 86vh;
+  overflow-y: auto;
+  color: #fff;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-close {
+  position: absolute; top: 10px; right: 12px;
+  background: rgba(255,255,255,0.08); border: 0;
+  color: #fff; width: 32px; height: 32px;
+  border-radius: 50%; font-size: 1.2rem; cursor: pointer;
+}
+.radio-card .radio-head { margin-bottom: 14px; }
+.radio-card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.radio-card h3 { font-size: 0.9rem; margin: 0 0 10px; color: rgba(255,255,255,0.85); }
+.radio-current { font-size: 0.82rem; color: rgba(255,255,255,0.65); margin: 0; }
+.radio-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); }
+.radio-section:first-of-type { border-top: 0; padding-top: 0; }
+.radio-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 10px; font-size: 0.85rem;
+}
+.radio-row span { color: rgba(255,255,255,0.75); }
+.radio-row input[type="range"] { flex: 1; max-width: 220px; }
+.radio-row select {
+  background: rgba(255,255,255,0.08); color: #fff;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 8px; padding: 6px 10px; font-size: 0.85rem;
+}
+.radio-btn {
+  width: 100%;
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  color: #fff; border: 0;
+  padding: 10px; border-radius: 10px;
+  font-weight: 700; cursor: pointer; font-size: 0.88rem;
+}
+.radio-btn-danger { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+.radio-list {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 280px; overflow-y: auto;
+  margin-bottom: 12px;
+  padding-right: 4px;
+}
+.radio-station {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s;
+}
+.radio-station:hover { background: rgba(255,255,255,0.1); }
+.radio-station.is-current {
+  background: rgba(139, 92, 246, 0.2);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.radio-station .name { font-weight: 600; font-size: 0.85rem; }
+.radio-station .genre { font-size: 0.7rem; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.04em; }
+.radio-actions { display: flex; gap: 8px; }
+
+@media (max-width: 600px) {
+  .radio-pill { top: 8px; right: 8px; max-width: 200px; font-size: 0.75rem; padding: 6px 10px; }
+  .radio-pill-name { max-width: 110px; }
+}
+
+/* Non-admin sees no admin sections */
+body:not(.is-admin) .radio-card .admin-only { display: none; }
