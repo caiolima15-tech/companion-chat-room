@@ -3613,17 +3613,20 @@ async function openMapEdit(mapId) {
   };
 
   modal.querySelector("#meDelete").onclick = async () => {
-    if (!confirm(`Excluir o mapa "${m.name}"? Esta ação é permanente.`)) return;
+    const msg = isBuiltin
+      ? `Restaurar o mapa "${m.name}" para o padrão original? Suas customizações serão perdidas.`
+      : `Excluir o mapa "${m.name}"? Esta ação é permanente.`;
+    if (!confirm(msg)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
-    status.textContent = "Excluindo…";
+    status.textContent = isBuiltin ? "Restaurando…" : "Excluindo…";
     try {
       const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
       if (error) throw error;
-      status.textContent = "Excluído ✓";
+      status.textContent = isBuiltin ? "Restaurado ✓" : "Excluído ✓";
       await loadCustomMaps();
-      if (currentMapId === m.id && BUILTIN_MAPS[0]) {
-        loadEnvironment(BUILTIN_MAPS[0].id);
+      if (currentMapId === m.id) {
+        loadEnvironment(isBuiltin ? m.id : (BUILTIN_MAPS[0] && BUILTIN_MAPS[0].id));
       }
       close();
     } catch (e) {
