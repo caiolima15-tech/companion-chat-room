@@ -3568,7 +3568,8 @@ async function openMapEdit(mapId) {
         </div>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
-          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">${isBuiltin ? "↺ Restaurar padrão" : "🗑️ Excluir"}</button>
+          ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
+          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">🗑️ Excluir</button>
           <div style="flex:1;"></div>
           <button id="meCancel" type="button" style="background:#22262e;color:#ddd;border:1px solid #333;border-radius:8px;padding:9px 14px;cursor:pointer;">Cancelar</button>
           <button id="meSave" type="button" style="background:#1e4a6e;color:#fff;border:1px solid #2d8a9e;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;">Salvar</button>
