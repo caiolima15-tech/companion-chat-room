@@ -279,9 +279,9 @@ function showAuth(mode = "signin") {
   authOverlay.hidden = false;
   authError.hidden = true;
   if (mode === "signin") {
-    authTitle.textContent = "Entrar";
+    authTitle.textContent = "​";
     authHint.textContent = "Use email e senha pra entrar na sala.";
-    authSubmit.textContent = "Entrar";
+    authSubmit.textContent = "​";
     authSwitch.textContent = "Criar conta";
     authNickname.hidden = true;
     authNickname.required = false;
@@ -307,9 +307,9 @@ function setAuthBusy(isBusy) {
   authSubmit.disabled = isBusy;
   authSwitch.disabled = isBusy;
   if (isBusy) {
-    authSubmit.textContent = authMode === "signup" ? "Cadastrando…" : "Entrando…";
+    authSubmit.textContent = authMode === "signup" ? "Cadastrando…" : "​";
   } else {
-    authSubmit.textContent = authMode === "signup" ? "Cadastrar" : "Entrar";
+    authSubmit.textContent = authMode === "signup" ? "Cadastrar" : "​";
   }
 }
 
