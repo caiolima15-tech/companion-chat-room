@@ -2049,6 +2049,9 @@ async function loadEnvironment(mapId) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
+  // Recarrega GLBs colocados que pertencem a este mapa
+  loadInitialAssets();
+
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
