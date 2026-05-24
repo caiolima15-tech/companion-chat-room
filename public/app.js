@@ -1819,8 +1819,8 @@ function percentFromWorld(x, z) {
   const s = getMapScale();
   const r = getWalkRange();
   // Expand clamps symmetrically around 50% as r grows (r=1 keeps original 5..95 / 8..92)
-  const padX = 45 / r; // half-range on X
-  const padZ = 42 / r; // half-range on Z
+  const padX = 45 * r; // half-range on X (expands with r)
+  const padZ = 42 * r; // half-range on Z (expands with r)
   return {
     x: Math.max(50 - padX, Math.min(50 + padX, (x / (MAP_WIDTH * s) + 0.5) * 100)),
     y: Math.max(50 - padZ, Math.min(50 + padZ, (z / (MAP_DEPTH * s) + 0.5) * 100)),
