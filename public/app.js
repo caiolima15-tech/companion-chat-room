@@ -768,22 +768,32 @@ avatarCreatorUrlBtn?.addEventListener("click", async () => {
 // Integração SDK Avaturn (postMessage) — captura GLB automaticamente quando
 // o usuário clica "Next/Export" dentro do iframe (hotmapavatar.avaturn.dev).
 // Docs: https://docs.avaturn.me/sdk/iframe
+function isGlbUrlString(s) {
+  if (typeof s !== "string") return false;
+  if (/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(s)) return true;
+  if (/^data:model\/gltf-binary[;,]/i.test(s)) return true;
+  if (/^data:application\/octet-stream[;,]/i.test(s)) return true;
+  if (/^blob:/i.test(s)) return true;
+  return false;
+}
 function findGlbUrlDeep(obj, depth = 0) {
-  if (depth > 6 || obj == null) return null;
-  if (typeof obj === "string") {
-    if (/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(obj)) return obj;
-    return null;
-  }
+  if (depth > 8 || obj == null) return null;
+  if (typeof obj === "string") return isGlbUrlString(obj) ? obj : null;
   if (typeof obj !== "object") return null;
   for (const k of Object.keys(obj)) {
-    const v = findGlbUrlDeep(obj[k], depth + 1);
-    if (v) return v;
+    const v = obj[k];
+    // Avaturn v2: { url: { _type: "String", value: "data:..." } }
+    if (v && typeof v === "object" && typeof v.value === "string" && isGlbUrlString(v.value)) {
+      return v.value;
+    }
+    const found = findGlbUrlDeep(v, depth + 1);
+    if (found) return found;
   }
   return null;
 }
 
+let _lastAvaturnImportTs = 0;
 window.addEventListener("message", async (event) => {
-  // Aceita só mensagens do Avaturn (qualquer subdomínio .avaturn.dev / .avaturn.me)
   let isAvaturn = false;
   try {
     const host = new URL(String(event.origin || "")).hostname;
@@ -791,17 +801,12 @@ window.addEventListener("message", async (event) => {
   } catch { return; }
   if (!isAvaturn) return;
 
-  // Avaturn pode enviar string JSON ou objeto direto
   let payload = event.data;
   if (typeof payload === "string") {
     try { payload = JSON.parse(payload); }
     catch {
-      if (/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(payload)) {
-        payload = { url: payload };
-      } else {
-        console.log("[Avaturn] msg string ignorada:", event.data);
-        return;
-      }
+      if (isGlbUrlString(payload)) payload = { url: payload };
+      else return;
     }
   }
   if (!payload || typeof payload !== "object") return;
@@ -811,6 +816,14 @@ window.addEventListener("message", async (event) => {
 
   const url = findGlbUrlDeep(payload);
   if (!url) return; // ignora handshakes (iframeReady, etc.)
+
+  // Dedup: Avaturn dispara v1 e v2 em sequência. Ignora chamadas em < 5s.
+  const now = Date.now();
+  if (now - _lastAvaturnImportTs < 5000) {
+    console.log("[Avaturn] ignorando export duplicado");
+    return;
+  }
+  _lastAvaturnImportTs = now;
 
   if (!me?.id) {
     console.warn("[Avaturn] avatar exportado mas usuário não autenticado");
