@@ -885,6 +885,7 @@ function renderMapTiles() {
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
+        ${isAdmin && m.custom ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
         <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
@@ -896,6 +897,12 @@ function updateConfirmMapButton() {
   confirmMapButton.disabled = !selectedMapId;
 }
 mapGrid?.addEventListener("click", (e) => {
+  const editBtn = e.target.closest("[data-edit-map]");
+  if (editBtn) {
+    e.stopPropagation();
+    openMapEdit(editBtn.dataset.editMap);
+    return;
+  }
   const tile = e.target.closest("[data-map-id]");
   if (!tile) return;
   selectedMapId = tile.dataset.mapId;
@@ -3491,6 +3498,127 @@ newMapCreate?.addEventListener("click", async () => {
     setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
   }
 });
+
+// ===== Admin: editar mapa custom (lápis) =====
+async function openMapEdit(mapId) {
+  if (!isAdmin) return;
+  const m = MAPS.find((x) => x.id === mapId);
+  if (!m || !m.custom) { alert("Só é possível editar mapas customizados."); return; }
+
+  // Remove modal anterior se existir
+  document.getElementById("mapEditModal")?.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "mapEditModal";
+  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
+  modal.innerHTML = `
+    <div style="background:#13161c;color:#eee;border:1px solid #333;border-radius:12px;padding:18px;width:min(420px,92vw);max-height:90vh;overflow-y:auto;font:13px/1.4 system-ui;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <strong style="font-size:15px;">✏️ Editar mapa</strong>
+        <button id="mapEditClose" type="button" style="background:none;border:none;color:#aaa;font-size:20px;cursor:pointer;">×</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label>Nome
+          <input id="meName" type="text" maxlength="40" value="${(m.name || "").replace(/"/g, "&quot;")}" style="width:100%;padding:8px;border-radius:6px;background:#1a1f2a;color:#fff;border:1px solid #333;margin-top:4px;">
+        </label>
+        <div style="display:flex;gap:8px;">
+          <label style="flex:1;">Thumb
+            <input id="meThumb" type="text" maxlength="4" value="${(m.thumb || "").replace(/"/g, "&quot;")}" style="width:100%;padding:8px;text-align:center;border-radius:6px;background:#1a1f2a;color:#fff;border:1px solid #333;margin-top:4px;">
+          </label>
+          <label style="flex:1;">Clima
+            <select id="meMood" style="width:100%;padding:8px;border-radius:6px;background:#1a1f2a;color:#fff;border:1px solid #333;margin-top:4px;">
+              <option value="day">☀️ Dia</option>
+              <option value="sunset">🌅 Tarde</option>
+              <option value="night">🌙 Noite</option>
+            </select>
+          </label>
+          <label>BG
+            <input id="meBg" type="color" value="${m.bg || "#0e1117"}" style="width:48px;height:38px;margin-top:4px;display:block;border:none;background:transparent;cursor:pointer;">
+          </label>
+        </div>
+        <div style="border:1px dashed #444;border-radius:8px;padding:10px;">
+          <div style="font-size:12px;color:#9aa;margin-bottom:6px;">Trocar arquivo GLB do mapa (opcional)</div>
+          <label class="file-picker" style="display:block;text-align:center;">
+            <input id="meGlb" type="file" accept=".glb,model/gltf-binary">
+            Escolher novo .glb
+          </label>
+          <div style="font-size:11px;color:#777;margin-top:6px;word-break:break-all;">Atual: ${m.url || "—"}</div>
+        </div>
+        <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">🗑️ Excluir</button>
+          <div style="flex:1;"></div>
+          <button id="meCancel" type="button" style="background:#22262e;color:#ddd;border:1px solid #333;border-radius:8px;padding:9px 14px;cursor:pointer;">Cancelar</button>
+          <button id="meSave" type="button" style="background:#1e4a6e;color:#fff;border:1px solid #2d8a9e;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;">Salvar</button>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector("#meMood").value = m.mood || "day";
+
+  const close = () => modal.remove();
+  modal.querySelector("#mapEditClose").onclick = close;
+  modal.querySelector("#meCancel").onclick = close;
+  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+
+  const status = modal.querySelector("#meStatus");
+
+  modal.querySelector("#meSave").onclick = async () => {
+    const name = modal.querySelector("#meName").value.trim();
+    if (!name) { status.textContent = "Nome obrigatório"; return; }
+    const thumb = (modal.querySelector("#meThumb").value || "🗺️").trim() || "🗺️";
+    const mood = modal.querySelector("#meMood").value;
+    const bg = modal.querySelector("#meBg").value;
+    const file = modal.querySelector("#meGlb").files?.[0];
+    const saveBtn = modal.querySelector("#meSave");
+    saveBtn.disabled = true;
+    status.textContent = "Salvando…";
+    try {
+      const patch = { name, thumb, mood, bg };
+      if (file) {
+        status.textContent = "Enviando novo GLB…";
+        const path = `maps/${m.id}-${Date.now()}.glb`;
+        const { error: upErr } = await supabase.storage.from("map-assets")
+          .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+        if (upErr) throw upErr;
+        const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+        patch.url = pub.publicUrl;
+      }
+      const { error } = await supabase.from("custom_maps").update(patch).eq("slug", m.id);
+      if (error) throw error;
+      status.textContent = "Salvo ✓";
+      await loadCustomMaps();
+      // Se o mapa atual foi editado, recarrega
+      if (currentMapId === m.id && patch.url) loadEnvironment(m.id);
+      setTimeout(close, 600);
+    } catch (e) {
+      status.textContent = "Erro: " + (e.message || e);
+      saveBtn.disabled = false;
+    }
+  };
+
+  modal.querySelector("#meDelete").onclick = async () => {
+    if (!confirm(`Excluir o mapa "${m.name}"? Esta ação é permanente.`)) return;
+    const delBtn = modal.querySelector("#meDelete");
+    delBtn.disabled = true;
+    status.textContent = "Excluindo…";
+    try {
+      const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
+      if (error) throw error;
+      status.textContent = "Excluído ✓";
+      await loadCustomMaps();
+      if (currentMapId === m.id && BUILTIN_MAPS[0]) {
+        loadEnvironment(BUILTIN_MAPS[0].id);
+      }
+      close();
+    } catch (e) {
+      status.textContent = "Erro: " + (e.message || e);
+      delBtn.disabled = false;
+    }
+  };
+}
+
+
 
 // ============================================================
 // ===== Custom map lights (admin spotlights + sun globe) =====
