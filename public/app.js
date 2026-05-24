@@ -3514,7 +3514,8 @@ newMapCreate?.addEventListener("click", async () => {
 async function openMapEdit(mapId) {
   if (!isAdmin) return;
   const m = MAPS.find((x) => x.id === mapId);
-  if (!m || !m.custom) { alert("Só é possível editar mapas customizados."); return; }
+  if (!m) return;
+  const isBuiltin = BUILTIN_MAPS.some((b) => b.id === mapId);
 
   // Remove modal anterior se existir
   document.getElementById("mapEditModal")?.remove();
