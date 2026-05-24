@@ -3487,38 +3487,43 @@ newMapCreate?.addEventListener("click", async () => {
   if (!isAdmin) return;
   const name = (newMapName?.value || "").trim();
   const file = newMapGlb?.files?.[0];
-  if (!name || !file) { newMapStatus.textContent = "Informe nome e arquivo .glb"; return; }
+  if (!name) { newMapStatus.textContent = "Informe um nome"; return; }
   let slug = slugifyMap(name);
   if (!slug) { newMapStatus.textContent = "Nome inválido"; return; }
   // Avoid collision with builtins
   if (BUILTIN_MAPS.some((m) => m.id === slug)) slug = slug + "-" + Date.now().toString(36).slice(-4);
   newMapCreate.disabled = true;
-  newMapStatus.textContent = "Enviando arquivo…";
+  let publicUrl = null;
   try {
-    const path = `maps/${slug}-${Date.now()}.glb`;
-    const { error: upErr } = await supabase.storage.from("map-assets")
-      .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
-    if (upErr) throw upErr;
-    const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+    if (file) {
+      newMapStatus.textContent = "Enviando arquivo…";
+      const path = `maps/${slug}-${Date.now()}.glb`;
+      const { error: upErr } = await supabase.storage.from("map-assets")
+        .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      publicUrl = pub.publicUrl;
+    }
     newMapStatus.textContent = "Salvando mapa…";
     const { error: insErr } = await supabase.from("custom_maps").insert({
-      slug, name, url: pub.publicUrl,
+      slug, name, url: publicUrl,
       mood: newMapMood?.value || "day",
       bg: newMapBg?.value || "#0e1117",
       thumb: (newMapThumb?.value || "🗺️").trim() || "🗺️",
       created_by: myId,
     });
     if (insErr) throw insErr;
-    newMapStatus.textContent = "Mapa criado ✓";
-    newMapName.value = ""; newMapThumb.value = ""; newMapGlb.value = "";
+    newMapStatus.textContent = file ? "Mapa criado ✓" : "Mapa vazio criado ✓ — adicione GLBs dentro dele";
+    newMapName.value = ""; newMapThumb.value = ""; if (newMapGlb) newMapGlb.value = "";
     await loadCustomMaps();
   } catch (e) {
     newMapStatus.textContent = "Erro: " + (e.message || e);
   } finally {
     newMapCreate.disabled = false;
-    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
+    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 4000);
   }
 });
+
 
 // ===== Admin: editar mapa custom (lápis) =====
 async function openMapEdit(mapId) {
