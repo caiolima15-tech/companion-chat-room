@@ -3381,6 +3381,12 @@ const mapRotYVal = document.querySelector("#mapRotYVal");
 const mapOffXVal = document.querySelector("#mapOffXVal");
 const mapOffYVal = document.querySelector("#mapOffYVal");
 const mapOffZVal = document.querySelector("#mapOffZVal");
+const mapScaleNum = document.querySelector("#mapScaleNum");
+const mapRotYNum = document.querySelector("#mapRotYNum");
+const mapOffXNum = document.querySelector("#mapOffXNum");
+const mapOffYNum = document.querySelector("#mapOffYNum");
+const mapOffZNum = document.querySelector("#mapOffZNum");
+const walkRangeNum = document.querySelector("#walkRangeNum");
 const mapMoodInput = document.querySelector("#mapMood");
 
 function currentMapMoodEffective() {
@@ -3391,14 +3397,21 @@ function currentMapMoodEffective() {
 function syncMapAdminPanel() {
   if (!mapAdminPanel) return;
   const t = currentMapTransform || { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
-  if (mapScaleInput) { mapScaleInput.value = t.scale_mul ?? 1; mapScaleVal.textContent = (t.scale_mul ?? 1).toFixed(2) + "×"; }
-  if (mapRotYInput) {
-    const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
-    mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°";
-  }
-  if (mapOffXInput) { mapOffXInput.value = t.offset_x ?? 0; mapOffXVal.textContent = (t.offset_x ?? 0).toFixed(2); }
-  if (mapOffYInput) { mapOffYInput.value = t.offset_y ?? 0; mapOffYVal.textContent = (t.offset_y ?? 0).toFixed(2); }
-  if (mapOffZInput) { mapOffZInput.value = t.offset_z ?? 0; mapOffZVal.textContent = (t.offset_z ?? 0).toFixed(2); }
+  const scale = t.scale_mul ?? 1;
+  const deg = Math.round(((t.rotation_y || 0) * 180) / Math.PI);
+  const ox = t.offset_x ?? 1;
+  const oy = t.offset_y ?? 1;
+  const oz = t.offset_z ?? 1;
+  if (mapScaleInput) { mapScaleInput.value = scale; mapScaleVal.textContent = scale.toFixed(2) + "×"; }
+  if (mapScaleNum) mapScaleNum.value = scale;
+  if (mapRotYInput) { mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°"; }
+  if (mapRotYNum) mapRotYNum.value = deg;
+  if (mapOffXInput) { mapOffXInput.value = ox; mapOffXVal.textContent = ox.toFixed(2); }
+  if (mapOffXNum) mapOffXNum.value = ox;
+  if (mapOffYInput) { mapOffYInput.value = oy; mapOffYVal.textContent = oy.toFixed(2); }
+  if (mapOffYNum) mapOffYNum.value = oy;
+  if (mapOffZInput) { mapOffZInput.value = oz; mapOffZVal.textContent = oz.toFixed(2); }
+  if (mapOffZNum) mapOffZNum.value = oz;
   if (mapMoodInput) mapMoodInput.value = currentMapMoodEffective();
   if (mapAdminTitle) {
     const m = MAPS.find((x) => x.id === currentMapId);
@@ -3445,12 +3458,17 @@ function onMapAdminInput() {
   const rotDeg = parseFloat(mapRotYInput.value) || 0;
   const ox = parseFloat(mapOffXInput.value) || 0;
   const oy = parseFloat(mapOffYInput.value) || 0;
-  const oz = parseFloat(mapOffZInput.value) || 0;
+  const oz = parseFloat(mapOffZInput.value) || 1;
   mapScaleVal.textContent = scale.toFixed(2) + "×";
+  if (mapScaleNum) mapScaleNum.value = scale;
   mapRotYVal.textContent = Math.round(rotDeg) + "°";
+  if (mapRotYNum) mapRotYNum.value = rotDeg;
   mapOffXVal.textContent = ox.toFixed(2);
+  if (mapOffXNum) mapOffXNum.value = ox;
   mapOffYVal.textContent = oy.toFixed(2);
+  if (mapOffYNum) mapOffYNum.value = oy;
   mapOffZVal.textContent = oz.toFixed(2);
+  if (mapOffZNum) mapOffZNum.value = oz;
   currentMapTransform = {
     ...currentMapTransform,
     offset_x: ox, offset_y: oy, offset_z: oz,
@@ -3463,6 +3481,18 @@ function onMapAdminInput() {
   el?.addEventListener("input", onMapAdminInput);
 });
 
+function onMapAdminNumInput(el, slider) {
+  return () => {
+    const v = parseFloat(el.value);
+    if (!Number.isNaN(v)) { slider.value = v; onMapAdminInput(); }
+  };
+}
+if (mapScaleNum && mapScaleInput) mapScaleNum.addEventListener("input", onMapAdminNumInput(mapScaleNum, mapScaleInput));
+if (mapRotYNum && mapRotYInput) mapRotYNum.addEventListener("input", onMapAdminNumInput(mapRotYNum, mapRotYInput));
+if (mapOffXNum && mapOffXInput) mapOffXNum.addEventListener("input", onMapAdminNumInput(mapOffXNum, mapOffXInput));
+if (mapOffYNum && mapOffYInput) mapOffYNum.addEventListener("input", onMapAdminNumInput(mapOffYNum, mapOffYInput));
+if (mapOffZNum && mapOffZInput) mapOffZNum.addEventListener("input", onMapAdminNumInput(mapOffZNum, mapOffZInput));
+
 // Walk range (área caminhável)
 const walkRangeInput = document.querySelector("#walkRange");
 const walkRangeVal = document.querySelector("#walkRangeVal");
@@ -3470,12 +3500,23 @@ if (walkRangeInput && walkRangeVal) {
   const initial = parseFloat(localStorage.getItem("neon-walk-range") || "1") || 1;
   walkRangeInput.value = initial;
   walkRangeVal.textContent = initial.toFixed(1) + "×";
+  if (walkRangeNum) walkRangeNum.value = initial;
   walkRangeInput.addEventListener("input", () => {
     const v = parseFloat(walkRangeInput.value) || 1;
     walkRangeVal.textContent = v.toFixed(1) + "×";
+    if (walkRangeNum) walkRangeNum.value = v;
     localStorage.setItem("neon-walk-range", String(v));
     if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
   });
+  if (walkRangeNum && walkRangeInput) {
+    walkRangeNum.addEventListener("input", () => {
+      const v = parseFloat(walkRangeNum.value) || 1;
+      walkRangeInput.value = v;
+      walkRangeVal.textContent = v.toFixed(1) + "×";
+      localStorage.setItem("neon-walk-range", String(v));
+      if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
+    });
+  }
 }
 
 mapMoodInput?.addEventListener("change", () => {
