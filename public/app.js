@@ -277,6 +277,8 @@ function showAuth(mode = "signin") {
   authMode = mode;
   authOverlay.style.display = "grid";
   authOverlay.hidden = false;
+  document.body.classList.remove("in-world");
+
   authError.hidden = true;
   if (mode === "signin") {
     authTitle.textContent = "​";
@@ -297,7 +299,9 @@ function showAuth(mode = "signin") {
 function hideAuth() {
   authOverlay.hidden = true;
   authOverlay.style.display = "none";
+  document.body.classList.add("in-world");
 }
+
 function showAuthError(msg) {
   authError.textContent = msg;
   authError.hidden = false;

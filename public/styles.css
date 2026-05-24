@@ -930,6 +930,12 @@ input:focus {
 /* Admins também veem a barra de ações (chat/emotes/config) no desktop */
 body.is-admin .mobile-bar { display: flex; }
 
+/* Chat e Emotes só aparecem depois que o usuário entra na sala */
+#mobileEmoteBtn, #mobileChatBtn { display: none; }
+body.in-world #mobileEmoteBtn,
+body.in-world #mobileChatBtn { display: inline-flex; }
+
+
 /* Botão escudo só aparece para admin */
 body.is-admin #adminHideToggle { display: flex !important; }
 
