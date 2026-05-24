@@ -2052,8 +2052,21 @@ async function loadEnvironment(mapId) {
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
 
+  // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
+  if (!map.url) {
+    (async () => {
+      currentMapTransform = await transformPromise;
+      setDarkMode(!!currentMapTransform?.dark_mode);
+      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+      reloadMapLights(currentMapId);
+      syncMapAdminPanel();
+    })();
+    return;
+  }
+
   loader.load(
     map.url,
+
     async (gltf) => {
       const env = gltf.scene;
       const box = new THREE.Box3().setFromObject(env);
