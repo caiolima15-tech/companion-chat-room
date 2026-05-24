@@ -3455,6 +3455,21 @@ function onMapAdminInput() {
   el?.addEventListener("input", onMapAdminInput);
 });
 
+// Walk range (área caminhável)
+const walkRangeInput = document.querySelector("#walkRange");
+const walkRangeVal = document.querySelector("#walkRangeVal");
+if (walkRangeInput && walkRangeVal) {
+  const initial = parseFloat(localStorage.getItem("neon-walk-range") || "1") || 1;
+  walkRangeInput.value = initial;
+  walkRangeVal.textContent = initial.toFixed(1) + "×";
+  walkRangeInput.addEventListener("input", () => {
+    const v = parseFloat(walkRangeInput.value) || 1;
+    walkRangeVal.textContent = v.toFixed(1) + "×";
+    localStorage.setItem("neon-walk-range", String(v));
+    if (typeof updateBoundaryHelper === "function") updateBoundaryHelper();
+  });
+}
+
 mapMoodInput?.addEventListener("change", () => {
   const mood = mapMoodInput.value || "day";
   currentMapTransform = { ...currentMapTransform, mood };
