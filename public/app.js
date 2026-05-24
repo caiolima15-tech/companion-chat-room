@@ -1811,11 +1811,19 @@ function worldFromPercent(x, y) {
     (y / 100 - 0.5) * MAP_DEPTH * s,
   );
 }
+function getWalkRange() {
+  const v = parseFloat(localStorage.getItem("neon-walk-range") || "1");
+  return Math.max(1, isFinite(v) ? v : 1);
+}
 function percentFromWorld(x, z) {
   const s = getMapScale();
+  const r = getWalkRange();
+  // Expand clamps symmetrically around 50% as r grows (r=1 keeps original 5..95 / 8..92)
+  const padX = 45 / r; // half-range on X
+  const padZ = 42 / r; // half-range on Z
   return {
-    x: Math.max(5, Math.min(95, (x / (MAP_WIDTH * s) + 0.5) * 100)),
-    y: Math.max(8, Math.min(92, (z / (MAP_DEPTH * s) + 0.5) * 100)),
+    x: Math.max(50 - padX, Math.min(50 + padX, (x / (MAP_WIDTH * s) + 0.5) * 100)),
+    y: Math.max(50 - padZ, Math.min(50 + padZ, (z / (MAP_DEPTH * s) + 0.5) * 100)),
   };
 }
 
