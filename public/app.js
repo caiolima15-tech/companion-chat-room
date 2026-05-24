@@ -2729,7 +2729,7 @@ function renderAssetEditor(asset) {
       ${row("Rot X (tomb.)", "rotationX", deg(asset.rotationX), -180, 180, 1)}
       ${row("Rot Y (gira)", "rotationY", deg(asset.rotationY), -180, 180, 1)}
       ${row("Rot Z (tomb.)", "rotationZ", deg(asset.rotationZ), -180, 180, 1)}
-      ${row("Escala", "scale", asset.scale, 0.1, 6, 0.05)}
+      ${row("Escala", "scale", asset.scale, 0.1, 200, 0.05)}
     </div>`;
 }
 
@@ -4107,7 +4107,7 @@ function botControlRow(row) {
       ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0, v => Number(v).toFixed(2))}
       ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0, v => Number(v).toFixed(1))}
       ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0, v => (Number(v) * 180 / Math.PI).toFixed(0) + "°")}
-      ${slider("Escala", "scale", 0.1, 5, 0.05, row.scale ?? 1, v => Number(v).toFixed(2) + "×")}
+      ${slider("Escala", "scale", 0.1, 200, 0.05, row.scale ?? 1, v => Number(v).toFixed(2) + "×")}
     </div>`;
 }
 
