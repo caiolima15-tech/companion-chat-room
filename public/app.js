@@ -3428,25 +3428,35 @@ supabase
 async function loadCustomMaps() {
   const { data, error } = await supabase
     .from("custom_maps")
-    .select("slug, name, url, mood, bg, thumb")
+    .select("slug, name, url, mood, bg, thumb, hidden")
     .order("created_at", { ascending: true });
   if (error) { console.warn("custom_maps load:", error.message); return; }
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
-  const overrides = [];
+  const overrides = new Map();
+  const hiddenBuiltins = new Set();
   const customs = [];
   for (const m of data || []) {
-    const entry = {
-      id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
-      bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
-    };
-    if (builtinSlugs.has(m.slug)) overrides.push(entry); else customs.push(entry);
+    if (builtinSlugs.has(m.slug)) {
+      if (m.hidden) { hiddenBuiltins.add(m.slug); continue; }
+      overrides.set(m.slug, {
+        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️",
+      });
+    } else {
+      if (m.hidden) continue;
+      customs.push({
+        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
+      });
+    }
   }
-  // Apply overrides on top of builtins (keep original url if override has no url)
-  const merged = BUILTIN_MAPS.map((b) => {
-    const ov = overrides.find((o) => o.id === b.id);
-    if (!ov) return { ...b };
-    return { ...b, ...ov, url: ov.url || b.url, custom: false, overridden: true };
-  });
+  const merged = BUILTIN_MAPS
+    .filter((b) => !hiddenBuiltins.has(b.id))
+    .map((b) => {
+      const ov = overrides.get(b.id);
+      if (!ov) return { ...b };
+      return { ...b, ...ov, url: ov.url || b.url, overridden: true };
+    });
   MAPS = [...merged, ...customs];
   if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
 }
