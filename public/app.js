@@ -5010,3 +5010,228 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   };
 })();
+
+// ============ Profile + Follow + DM ============
+(function setupProfileAndDM() {
+  const $ = (id) => document.getElementById(id);
+  const overlay = $("profileOverlay");
+  const dmOverlay = $("dmOverlay");
+  const inboxOverlay = $("dmInboxOverlay");
+  if (!overlay) return;
+
+  const PHOTO_LIMIT = 15;
+  let currentProfileId = null;
+  let currentDmPeer = null;
+  let dmChannel = null;
+
+  const closeAll = () => { overlay.hidden = true; dmOverlay.hidden = true; inboxOverlay.hidden = true; };
+  $("profileClose").onclick = () => overlay.hidden = true;
+  $("dmClose").onclick = () => { dmOverlay.hidden = true; if (dmChannel) { supabase.removeChannel(dmChannel); dmChannel = null; } };
+  $("dmBack").onclick = () => $("dmClose").click();
+  $("dmInboxClose").onclick = () => inboxOverlay.hidden = true;
+
+  async function openProfile(userId) {
+    if (!userId) return;
+    currentProfileId = userId;
+    overlay.hidden = false;
+    const isMe = userId === myId;
+    const { data: p } = await supabase.from("profiles").select("*").eq("id", userId).maybeSingle();
+    $("profileName").textContent = p?.nickname || "Usuário";
+    $("profileBio").textContent = p?.bio || "Sem descrição.";
+    const av = p?.avatar_url || "";
+    $("profileAvatar").src = av || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='100%' height='100%' fill='%232a2750'/></svg>";
+    $("profileAvatarEdit").hidden = !isMe;
+    $("profileEditBtn").hidden = !isMe;
+    $("profileFollowBtn").hidden = isMe;
+    $("profileDmBtn").hidden = isMe;
+    $("profileAddPhoto").hidden = !isMe;
+    $("profileBioEdit").hidden = true;
+    $("profileEditActions").hidden = true;
+
+    const [{ count: fc }, { count: fwc }, { data: photos }] = await Promise.all([
+      supabase.from("follows").select("*", { count: "exact", head: true }).eq("following_id", userId),
+      supabase.from("follows").select("*", { count: "exact", head: true }).eq("follower_id", userId),
+      supabase.from("profile_photos").select("*").eq("user_id", userId).order("created_at", { ascending: false }),
+    ]);
+    $("profileFollowerCount").textContent = fc || 0;
+    $("profileFollowingCount").textContent = fwc || 0;
+    $("profilePostCount").textContent = (photos || []).length;
+
+    if (!isMe && myId) {
+      const { data: rel } = await supabase.from("follows").select("id").eq("follower_id", myId).eq("following_id", userId).maybeSingle();
+      const btn = $("profileFollowBtn");
+      btn.textContent = rel ? "Deixar de seguir" : "Seguir";
+      btn.dataset.following = rel ? "1" : "";
+    }
+
+    const grid = $("profileGrid");
+    grid.innerHTML = "";
+    (photos || []).forEach((ph) => {
+      const div = document.createElement("div");
+      div.className = "ig-grid-item";
+      div.innerHTML = `<img src="${ph.url}" alt="">${isMe ? `<button class="del" data-id="${ph.id}" title="Remover">×</button>` : ""}`;
+      grid.appendChild(div);
+    });
+    grid.onclick = async (e) => {
+      const del = e.target.closest(".del");
+      if (del && confirm("Remover esta foto?")) {
+        await supabase.from("profile_photos").delete().eq("id", del.dataset.id);
+        openProfile(currentProfileId);
+      }
+    };
+  }
+
+  $("profileFollowBtn").onclick = async () => {
+    if (!myId || !currentProfileId) return;
+    const btn = $("profileFollowBtn");
+    if (btn.dataset.following) {
+      await supabase.from("follows").delete().eq("follower_id", myId).eq("following_id", currentProfileId);
+    } else {
+      await supabase.from("follows").insert({ follower_id: myId, following_id: currentProfileId });
+    }
+    openProfile(currentProfileId);
+  };
+
+  $("profileEditBtn").onclick = () => {
+    $("profileBioEdit").value = $("profileBio").textContent === "Sem descrição." ? "" : $("profileBio").textContent;
+    $("profileBioEdit").hidden = false;
+    $("profileEditActions").hidden = false;
+  };
+  $("profileBioCancel").onclick = () => { $("profileBioEdit").hidden = true; $("profileEditActions").hidden = true; };
+  $("profileBioSave").onclick = async () => {
+    const bio = $("profileBioEdit").value.trim().slice(0, 240);
+    await supabase.from("profiles").update({ bio }).eq("id", myId);
+    openProfile(myId);
+  };
+
+  $("profileAvatarEdit").onclick = () => $("profileAvatarFile").click();
+  $("profileAvatarFile").onchange = async (e) => {
+    const f = e.target.files?.[0]; if (!f || !myId) return;
+    const path = `${myId}/avatar-${Date.now()}.${(f.name.split('.').pop()||'png').toLowerCase()}`;
+    const { error } = await supabase.storage.from("profile-photos").upload(path, f, { upsert: true });
+    if (error) return alert("Falha no upload: " + error.message);
+    const { data } = supabase.storage.from("profile-photos").getPublicUrl(path);
+    await supabase.from("profiles").update({ avatar_url: data.publicUrl }).eq("id", myId);
+    if (me) me.avatar_url = data.publicUrl;
+    openProfile(myId);
+  };
+
+  $("profilePhotoFile").onchange = async (e) => {
+    const f = e.target.files?.[0]; if (!f || !myId) return;
+    const { count } = await supabase.from("profile_photos").select("*", { count: "exact", head: true }).eq("user_id", myId);
+    if ((count || 0) >= PHOTO_LIMIT) return alert(`Limite de ${PHOTO_LIMIT} fotos atingido.`);
+    const path = `${myId}/photo-${Date.now()}.${(f.name.split('.').pop()||'png').toLowerCase()}`;
+    const { error } = await supabase.storage.from("profile-photos").upload(path, f);
+    if (error) return alert("Falha: " + error.message);
+    const { data } = supabase.storage.from("profile-photos").getPublicUrl(path);
+    await supabase.from("profile_photos").insert({ user_id: myId, url: data.publicUrl, position: count || 0 });
+    e.target.value = "";
+    openProfile(myId);
+  };
+
+  // ===== DM =====
+  async function openDm(peerId) {
+    if (!peerId || peerId === myId) return;
+    currentDmPeer = peerId;
+    overlay.hidden = true;
+    dmOverlay.hidden = false;
+    const { data: peer } = await supabase.from("profiles").select("*").eq("id", peerId).maybeSingle();
+    $("dmPeerName").textContent = peer?.nickname || "Usuário";
+    $("dmPeerAvatar").src = peer?.avatar_url || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect fill='%232a2750' width='100%' height='100%'/></svg>";
+    const log = $("dmLog");
+    log.innerHTML = "";
+    const { data: msgs } = await supabase.from("direct_messages")
+      .select("*")
+      .or(`and(from_user.eq.${myId},to_user.eq.${peerId}),and(from_user.eq.${peerId},to_user.eq.${myId})`)
+      .order("created_at", { ascending: true }).limit(200);
+    (msgs || []).forEach(renderDm);
+    log.scrollTop = log.scrollHeight;
+    await supabase.from("direct_messages").update({ read_at: new Date().toISOString() }).eq("to_user", myId).eq("from_user", peerId).is("read_at", null);
+
+    if (dmChannel) await supabase.removeChannel(dmChannel);
+    dmChannel = supabase.channel(`dm:${myId}:${peerId}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, (p) => {
+        const m = p.new;
+        if ((m.from_user === myId && m.to_user === peerId) || (m.from_user === peerId && m.to_user === myId)) {
+          renderDm(m); log.scrollTop = log.scrollHeight;
+        }
+      }).subscribe();
+  }
+  function renderDm(m) {
+    const div = document.createElement("div");
+    div.className = "dm-msg" + (m.from_user === myId ? " is-self" : "");
+    div.textContent = m.text;
+    $("dmLog").appendChild(div);
+  }
+  $("dmForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const t = $("dmInput").value.trim();
+    if (!t || !currentDmPeer || !myId) return;
+    $("dmInput").value = "";
+    await supabase.from("direct_messages").insert({ from_user: myId, to_user: currentDmPeer, text: t });
+  });
+  $("profileDmBtn").onclick = () => openDm(currentProfileId);
+
+  async function openInbox() {
+    if (!myId) return;
+    inboxOverlay.hidden = false;
+    const { data } = await supabase.from("direct_messages")
+      .select("*").or(`from_user.eq.${myId},to_user.eq.${myId}`).order("created_at", { ascending: false }).limit(200);
+    const peers = new Map();
+    (data || []).forEach((m) => {
+      const peer = m.from_user === myId ? m.to_user : m.from_user;
+      if (!peers.has(peer)) peers.set(peer, { last: m, unread: 0 });
+      if (m.to_user === myId && !m.read_at) peers.get(peer).unread++;
+    });
+    const list = $("dmInboxList"); list.innerHTML = "";
+    if (peers.size === 0) { list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem;">Sem mensagens ainda.</p>'; return; }
+    const ids = [...peers.keys()];
+    const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", ids);
+    const pm = new Map((profs || []).map((p) => [p.id, p]));
+    peers.forEach((info, pid) => {
+      const p = pm.get(pid) || {};
+      const div = document.createElement("div");
+      div.className = "dm-inbox-item";
+      div.innerHTML = `
+        <img class="dm-avatar" src="${p.avatar_url || ''}" alt="">
+        <div style="min-width:0;flex:1;">
+          <div class="name">${(p.nickname || 'Usuário').replace(/</g,'&lt;')}</div>
+          <div class="preview">${(info.last.text || '').slice(0,60).replace(/</g,'&lt;')}</div>
+        </div>
+        ${info.unread ? '<span class="unread"></span>' : ''}
+      `;
+      div.onclick = () => { inboxOverlay.hidden = true; openDm(pid); };
+      list.appendChild(div);
+    });
+  }
+
+  // Wire buttons
+  const openProfileBtn = $("openProfileButton");
+  const openInboxBtn = $("openDmInboxButton");
+  if (openProfileBtn) openProfileBtn.onclick = () => myId && openProfile(myId);
+  if (openInboxBtn) openInboxBtn.onclick = openInbox;
+  const mpb = $("mobileProfileBtn"); if (mpb) mpb.onclick = () => myId && openProfile(myId);
+  const mdb = $("mobileDmBtn"); if (mdb) mdb.onclick = openInbox;
+
+  // Click avatar / name in chat -> open profile
+  document.getElementById("chatLog")?.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-user]");
+    if (el && el.dataset.user) openProfile(el.dataset.user);
+  });
+
+  // Global DM badge updater
+  const dmBadge = $("mobileDmBadge");
+  async function refreshDmBadge() {
+    if (!myId) return;
+    const { count } = await supabase.from("direct_messages").select("*", { count: "exact", head: true }).eq("to_user", myId).is("read_at", null);
+    if (dmBadge) {
+      if (count > 0) { dmBadge.hidden = false; dmBadge.textContent = count > 9 ? "9+" : String(count); }
+      else { dmBadge.hidden = true; }
+    }
+  }
+  setInterval(refreshDmBadge, 8000);
+  setTimeout(refreshDmBadge, 2000);
+  supabase.channel("dm-global")
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, refreshDmBadge)
+    .subscribe();
+})();
