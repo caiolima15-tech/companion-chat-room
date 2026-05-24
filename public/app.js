@@ -885,6 +885,7 @@ function renderMapTiles() {
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
+        ${isAdmin && m.custom ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
         <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
