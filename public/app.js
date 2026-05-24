@@ -307,9 +307,9 @@ function setAuthBusy(isBusy) {
   authSubmit.disabled = isBusy;
   authSwitch.disabled = isBusy;
   if (isBusy) {
-    authSubmit.textContent = authMode === "signup" ? "Cadastrando…" : "Entrando…";
+    authSubmit.textContent = authMode === "signup" ? "Cadastrando…" : "​";
   } else {
-    authSubmit.textContent = authMode === "signup" ? "Cadastrar" : "Entrar";
+    authSubmit.textContent = authMode === "signup" ? "Cadastrar" : "​";
   }
 }
 
