@@ -1340,9 +1340,10 @@ async function applyCharacter(entity, slug) {
 
 // ============ Realtime ============
 async function loadInitialAssets() {
-  const { data } = await supabase.from("map_assets").select("*").order("created_at");
+  const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
   renderAssets((data || []).map(rowToAsset));
 }
+
 async function loadInitialChat() {
   chatLog.innerHTML = "";
   const { data } = await supabase
@@ -2048,12 +2049,28 @@ async function loadEnvironment(mapId) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
+  // Recarrega GLBs colocados que pertencem a este mapa
+  loadInitialAssets();
+
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
 
+  // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
+  if (!map.url) {
+    (async () => {
+      currentMapTransform = await transformPromise;
+      setDarkMode(!!currentMapTransform?.dark_mode);
+      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+      reloadMapLights(currentMapId);
+      syncMapAdminPanel();
+    })();
+    return;
+  }
+
   loader.load(
     map.url,
+
     async (gltf) => {
       const env = gltf.scene;
       const box = new THREE.Box3().setFromObject(env);
@@ -2961,6 +2978,7 @@ function sanitize(name) {
 async function placeSelectedAsset(point) {
   if (!isAdmin || !selectedAsset) return;
   const { error } = await supabase.from("map_assets").insert({
+    map_id: currentMapId,
     name: selectedAsset.name,
     url: selectedAsset.url,
     x: point.x,
@@ -2972,6 +2990,7 @@ async function placeSelectedAsset(point) {
     scale: 1,
     created_by: myId,
   });
+
   if (error) addSystemLine("Falha ao colocar GLB: " + error.message);
 }
 
@@ -3487,38 +3506,43 @@ newMapCreate?.addEventListener("click", async () => {
   if (!isAdmin) return;
   const name = (newMapName?.value || "").trim();
   const file = newMapGlb?.files?.[0];
-  if (!name || !file) { newMapStatus.textContent = "Informe nome e arquivo .glb"; return; }
+  if (!name) { newMapStatus.textContent = "Informe um nome"; return; }
   let slug = slugifyMap(name);
   if (!slug) { newMapStatus.textContent = "Nome inválido"; return; }
   // Avoid collision with builtins
   if (BUILTIN_MAPS.some((m) => m.id === slug)) slug = slug + "-" + Date.now().toString(36).slice(-4);
   newMapCreate.disabled = true;
-  newMapStatus.textContent = "Enviando arquivo…";
+  let publicUrl = null;
   try {
-    const path = `maps/${slug}-${Date.now()}.glb`;
-    const { error: upErr } = await supabase.storage.from("map-assets")
-      .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
-    if (upErr) throw upErr;
-    const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+    if (file) {
+      newMapStatus.textContent = "Enviando arquivo…";
+      const path = `maps/${slug}-${Date.now()}.glb`;
+      const { error: upErr } = await supabase.storage.from("map-assets")
+        .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      publicUrl = pub.publicUrl;
+    }
     newMapStatus.textContent = "Salvando mapa…";
     const { error: insErr } = await supabase.from("custom_maps").insert({
-      slug, name, url: pub.publicUrl,
+      slug, name, url: publicUrl,
       mood: newMapMood?.value || "day",
       bg: newMapBg?.value || "#0e1117",
       thumb: (newMapThumb?.value || "🗺️").trim() || "🗺️",
       created_by: myId,
     });
     if (insErr) throw insErr;
-    newMapStatus.textContent = "Mapa criado ✓";
-    newMapName.value = ""; newMapThumb.value = ""; newMapGlb.value = "";
+    newMapStatus.textContent = file ? "Mapa criado ✓" : "Mapa vazio criado ✓ — adicione GLBs dentro dele";
+    newMapName.value = ""; newMapThumb.value = ""; if (newMapGlb) newMapGlb.value = "";
     await loadCustomMaps();
   } catch (e) {
     newMapStatus.textContent = "Erro: " + (e.message || e);
   } finally {
     newMapCreate.disabled = false;
-    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 3000);
+    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 4000);
   }
 });
+
 
 // ===== Admin: editar mapa custom (lápis) =====
 async function openMapEdit(mapId) {
