@@ -3348,9 +3348,11 @@ chatForm.addEventListener("submit", async (event) => {
     user_id: myId,
     nickname: me.name,
     color: me.color,
+    avatar_url: me.avatar_url || null,
     text,
     map_id: currentMapId,
   });
+
   if (error) {
     addSystemLine("Falha ao enviar: " + error.message);
     return;
