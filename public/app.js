@@ -740,6 +740,31 @@ avatarDropzone?.addEventListener("drop", (e) => {
   handleAvatarUpload(e.dataTransfer?.files?.[0]);
 });
 
+// Importar via URL colada (fallback caso o postMessage do Avaturn falhe)
+const avatarCreatorUrlInput = document.querySelector("#avatarCreatorUrl");
+const avatarCreatorUrlBtn = document.querySelector("#avatarCreatorUrlBtn");
+avatarCreatorUrlBtn?.addEventListener("click", async () => {
+  const url = (avatarCreatorUrlInput?.value || "").trim();
+  if (!url) return;
+  if (!/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(url)) {
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = "URL precisa terminar em .glb";
+    return;
+  }
+  try {
+    avatarCreatorStatus.style.color = "";
+    avatarCreatorStatus.textContent = "Baixando avatar…";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Download falhou (${res.status})`);
+    const blob = await res.blob();
+    const file = new File([blob], `avaturn-${Date.now()}.glb`, { type: "model/gltf-binary" });
+    await handleAvatarUpload(file);
+  } catch (err) {
+    avatarCreatorStatus.style.color = "#f26868";
+    avatarCreatorStatus.textContent = `Erro: ${err.message || err}`;
+  }
+});
+
 // Integração SDK Avaturn (postMessage) — captura GLB automaticamente quando
 // o usuário clica "Next/Export" dentro do iframe (hotmapavatar.avaturn.dev).
 // Docs: https://docs.avaturn.me/sdk/iframe
