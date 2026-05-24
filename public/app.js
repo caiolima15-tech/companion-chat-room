@@ -2125,21 +2125,12 @@ async function loadEnvironment(mapId) {
       env.traverse((node) => {
         if (!node.isMesh) return;
         const meshBox = new THREE.Box3().setFromObject(node);
-        const height = meshBox.max.y - meshBox.min.y;
         if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
         node.castShadow = true;
         node.receiveShadow = true;
-        occluderMeshes.push(node);
-
-        const name = (node.name || "") + " " + (node.parent?.name || "");
-        const isStair = STAIR_NAME_RE.test(name);
-        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05;
-        if (isStair || isLowSlope) {
-          walkableMeshes.push(node);
-        } else if (meshBox.max.y > 0.35) {
-          colliderMeshes.push(node);
-        }
       });
+      // Toda malha visível do cenário é sólido (chão + parede automático).
+      registerCollidable(env);
       envGroup.add(env);
       // Atualiza painel admin se aberto
       syncMapAdminPanel();
