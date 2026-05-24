@@ -2931,20 +2931,24 @@ function updatePlayerAnimation(delta) {
   const walkSpeed = 1.4;
   const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
-    const distance = entity.group.position.distanceTo(entity.target);
+    const dxArr = entity.target.x - entity.group.position.x;
+    const dzArr = entity.target.z - entity.group.position.z;
+    const distance = Math.hypot(dxArr, dzArr);
     if (distance > 0.025) {
       const running = !!entity.running;
       const speed = running ? runSpeed : walkSpeed;
       const before = entity.group.position.clone();
       const step = Math.min(distance, speed * delta);
-      const dir = entity.target.clone().sub(entity.group.position).normalize();
+      const dir = new THREE.Vector3(dxArr, 0, dzArr).normalize();
       const candidate = before.clone().addScaledVector(dir, step);
       if (collidesAt(before, candidate)) {
         // Blocked by wall — cancel target so we stop here
-        entity.target.copy(before);
+        entity.target.x = before.x;
+        entity.target.z = before.z;
         setPlayerAction(entity, "idle");
       } else {
-        entity.group.position.copy(candidate);
+        entity.group.position.x = candidate.x;
+        entity.group.position.z = candidate.z;
         // Follow terrain: stairs, ramps, raised floors
         const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
         entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
@@ -2955,7 +2959,11 @@ function updatePlayerAnimation(delta) {
         setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
       }
     } else {
-      entity.group.position.copy(entity.target);
+      entity.group.position.x = entity.target.x;
+      entity.group.position.z = entity.target.z;
+      // Mantém Y do terreno mesmo parado
+      const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+      entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
       entity.running = false;
       if (entity.player?.id === myId && me) me.running = false;
       setPlayerAction(entity, "idle");
