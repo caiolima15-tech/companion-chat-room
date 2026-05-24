@@ -299,7 +299,9 @@ function showAuth(mode = "signin") {
 function hideAuth() {
   authOverlay.hidden = true;
   authOverlay.style.display = "none";
+  document.body.classList.add("in-world");
 }
+
 function showAuthError(msg) {
   authError.textContent = msg;
   authError.hidden = false;
