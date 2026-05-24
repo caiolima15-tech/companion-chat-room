@@ -741,36 +741,66 @@ avatarDropzone?.addEventListener("drop", (e) => {
 });
 
 // Integração SDK Avaturn (postMessage) — captura GLB automaticamente quando
-// o usuário clica "Export" dentro do iframe (hotmapavatar.avaturn.dev).
+// o usuário clica "Next/Export" dentro do iframe (hotmapavatar.avaturn.dev).
+// Docs: https://docs.avaturn.me/sdk/iframe
+function findGlbUrlDeep(obj, depth = 0) {
+  if (depth > 6 || obj == null) return null;
+  if (typeof obj === "string") {
+    if (/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(obj)) return obj;
+    return null;
+  }
+  if (typeof obj !== "object") return null;
+  for (const k of Object.keys(obj)) {
+    const v = findGlbUrlDeep(obj[k], depth + 1);
+    if (v) return v;
+  }
+  return null;
+}
+
 window.addEventListener("message", async (event) => {
   // Aceita só mensagens do Avaturn (qualquer subdomínio .avaturn.dev / .avaturn.me)
+  let isAvaturn = false;
   try {
-    const origin = String(event.origin || "");
-    if (!/\.avaturn\.(dev|me)$/.test(new URL(origin).hostname)) return;
+    const host = new URL(String(event.origin || "")).hostname;
+    isAvaturn = /(^|\.)avaturn\.(dev|me)$/.test(host);
   } catch { return; }
+  if (!isAvaturn) return;
 
   // Avaturn pode enviar string JSON ou objeto direto
   let payload = event.data;
   if (typeof payload === "string") {
-    try { payload = JSON.parse(payload); } catch { return; }
+    try { payload = JSON.parse(payload); }
+    catch {
+      if (/^https?:\/\/\S+\.glb(\?\S*)?$/i.test(payload)) {
+        payload = { url: payload };
+      } else {
+        console.log("[Avaturn] msg string ignorada:", event.data);
+        return;
+      }
+    }
   }
   if (!payload || typeof payload !== "object") return;
 
-  // Formato comum: { source: 'avaturn', eventName: 'v2.avatar.exported', data: { url } }
-  // Fallbacks: { url }, { avatarUrl }, { data: { url } }
-  const url =
-    payload?.data?.url ||
-    payload?.url ||
-    payload?.avatarUrl ||
-    (typeof payload?.data === "string" && payload.data.endsWith(".glb") ? payload.data : null);
+  // Log diagnóstico — para vermos o formato real que o Avaturn manda
+  console.log("[Avaturn] message:", payload);
 
-  if (!url || !/\.glb(\?|$)/i.test(url)) return;
-  if (!avatarCreatorOverlay || avatarCreatorOverlay.hidden) return;
-  if (!me?.id) return;
+  const url = findGlbUrlDeep(payload);
+  if (!url) return; // ignora handshakes (iframeReady, etc.)
+
+  if (!me?.id) {
+    console.warn("[Avaturn] avatar exportado mas usuário não autenticado");
+    if (avatarCreatorStatus) {
+      avatarCreatorStatus.style.color = "#f26868";
+      avatarCreatorStatus.textContent = "Faça login antes de criar o avatar.";
+    }
+    return;
+  }
 
   try {
-    avatarCreatorStatus.style.color = "";
-    avatarCreatorStatus.textContent = "Baixando avatar do Avaturn…";
+    if (avatarCreatorStatus) {
+      avatarCreatorStatus.style.color = "";
+      avatarCreatorStatus.textContent = "Baixando avatar do Avaturn…";
+    }
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Download falhou (${res.status})`);
     const blob = await res.blob();
@@ -778,8 +808,10 @@ window.addEventListener("message", async (event) => {
     await handleAvatarUpload(file);
   } catch (err) {
     console.error("Falha ao importar avatar do Avaturn", err);
-    avatarCreatorStatus.style.color = "#f26868";
-    avatarCreatorStatus.textContent = `Erro ao importar: ${err.message || err}`;
+    if (avatarCreatorStatus) {
+      avatarCreatorStatus.style.color = "#f26868";
+      avatarCreatorStatus.textContent = `Erro ao importar: ${err.message || err}`;
+    }
   }
 });
 
