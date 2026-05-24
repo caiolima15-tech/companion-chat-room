@@ -885,7 +885,7 @@ function renderMapTiles() {
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
-        ${isAdmin && m.custom ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
+        ${isAdmin ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
         <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
@@ -3431,12 +3431,23 @@ async function loadCustomMaps() {
     .select("slug, name, url, mood, bg, thumb")
     .order("created_at", { ascending: true });
   if (error) { console.warn("custom_maps load:", error.message); return; }
-  const customs = (data || []).map((m) => ({
-    id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
-    bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
-  }));
-  // Remove old customs, keep builtins, append customs
-  MAPS = [...BUILTIN_MAPS, ...customs];
+  const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
+  const overrides = [];
+  const customs = [];
+  for (const m of data || []) {
+    const entry = {
+      id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+      bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
+    };
+    if (builtinSlugs.has(m.slug)) overrides.push(entry); else customs.push(entry);
+  }
+  // Apply overrides on top of builtins (keep original url if override has no url)
+  const merged = BUILTIN_MAPS.map((b) => {
+    const ov = overrides.find((o) => o.id === b.id);
+    if (!ov) return { ...b };
+    return { ...b, ...ov, url: ov.url || b.url, custom: false, overridden: true };
+  });
+  MAPS = [...merged, ...customs];
   if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
 }
 loadCustomMaps();
@@ -3503,7 +3514,8 @@ newMapCreate?.addEventListener("click", async () => {
 async function openMapEdit(mapId) {
   if (!isAdmin) return;
   const m = MAPS.find((x) => x.id === mapId);
-  if (!m || !m.custom) { alert("Só é possível editar mapas customizados."); return; }
+  if (!m) return;
+  const isBuiltin = BUILTIN_MAPS.some((b) => b.id === mapId);
 
   // Remove modal anterior se existir
   document.getElementById("mapEditModal")?.remove();
@@ -3546,7 +3558,7 @@ async function openMapEdit(mapId) {
         </div>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
-          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">🗑️ Excluir</button>
+          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">${isBuiltin ? "↺ Restaurar padrão" : "🗑️ Excluir"}</button>
           <div style="flex:1;"></div>
           <button id="meCancel" type="button" style="background:#22262e;color:#ddd;border:1px solid #333;border-radius:8px;padding:9px 14px;cursor:pointer;">Cancelar</button>
           <button id="meSave" type="button" style="background:#1e4a6e;color:#fff;border:1px solid #2d8a9e;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;">Salvar</button>
@@ -3584,7 +3596,10 @@ async function openMapEdit(mapId) {
         const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
         patch.url = pub.publicUrl;
       }
-      const { error } = await supabase.from("custom_maps").update(patch).eq("slug", m.id);
+      const { error } = await supabase.from("custom_maps").upsert(
+        { slug: m.id, ...patch, url: patch.url || m.url },
+        { onConflict: "slug" }
+      );
       if (error) throw error;
       status.textContent = "Salvo ✓";
       await loadCustomMaps();
@@ -3598,17 +3613,20 @@ async function openMapEdit(mapId) {
   };
 
   modal.querySelector("#meDelete").onclick = async () => {
-    if (!confirm(`Excluir o mapa "${m.name}"? Esta ação é permanente.`)) return;
+    const msg = isBuiltin
+      ? `Restaurar o mapa "${m.name}" para o padrão original? Suas customizações serão perdidas.`
+      : `Excluir o mapa "${m.name}"? Esta ação é permanente.`;
+    if (!confirm(msg)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
-    status.textContent = "Excluindo…";
+    status.textContent = isBuiltin ? "Restaurando…" : "Excluindo…";
     try {
       const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
       if (error) throw error;
-      status.textContent = "Excluído ✓";
+      status.textContent = isBuiltin ? "Restaurado ✓" : "Excluído ✓";
       await loadCustomMaps();
-      if (currentMapId === m.id && BUILTIN_MAPS[0]) {
-        loadEnvironment(BUILTIN_MAPS[0].id);
+      if (currentMapId === m.id) {
+        loadEnvironment(isBuiltin ? m.id : (BUILTIN_MAPS[0] && BUILTIN_MAPS[0].id));
       }
       close();
     } catch (e) {
