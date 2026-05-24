@@ -1845,7 +1845,36 @@ const _groundRay = new THREE.Raycaster();
 const _down = new THREE.Vector3(0, -1, 0);
 const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
+const STEP_UP = 0.6;          // altura máxima de degrau que o personagem sobe automaticamente
+const PLAYER_HEIGHT = 1.6;    // altura aproximada do peito/cabeça para colisão
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
+
+// Registra todas as malhas de um root (env ou GLB colocado) como sólidos:
+// servem ao mesmo tempo como chão (subir) e parede (bloquear se alto demais).
+function registerCollidable(root) {
+  const list = [];
+  root.traverse((node) => {
+    if (!node.isMesh || node.visible === false) return;
+    // Ignora malhas puramente decorativas marcadas
+    if (node.userData?.noCollide) return;
+    walkableMeshes.push(node);
+    colliderMeshes.push(node);
+    occluderMeshes.push(node);
+    list.push(node);
+  });
+  root.userData._collidableMeshes = list;
+}
+function unregisterCollidable(root) {
+  const list = root?.userData?._collidableMeshes;
+  if (!list || !list.length) return;
+  for (const arr of [walkableMeshes, colliderMeshes, occluderMeshes]) {
+    for (const m of list) {
+      const i = arr.indexOf(m);
+      if (i >= 0) arr.splice(i, 1);
+    }
+  }
+  root.userData._collidableMeshes = null;
+}
 
 
 // Lighting groups we can swap when the map mood changes
