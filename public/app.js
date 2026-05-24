@@ -2975,6 +2975,7 @@ function sanitize(name) {
 async function placeSelectedAsset(point) {
   if (!isAdmin || !selectedAsset) return;
   const { error } = await supabase.from("map_assets").insert({
+    map_id: currentMapId,
     name: selectedAsset.name,
     url: selectedAsset.url,
     x: point.x,
@@ -2986,6 +2987,7 @@ async function placeSelectedAsset(point) {
     scale: 1,
     created_by: myId,
   });
+
   if (error) addSystemLine("Falha ao colocar GLB: " + error.message);
 }
 
