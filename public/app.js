@@ -1352,7 +1352,7 @@ async function loadInitialChat() {
     .eq("map_id", currentMapId)
     .order("created_at", { ascending: true })
     .limit(80);
-  (data || []).forEach((m) => addMessage({ name: m.nickname, color: m.color, text: m.text }));
+  (data || []).forEach((m) => addMessage({ user_id: m.user_id, name: m.nickname, color: m.color, text: m.text, avatar_url: m.avatar_url }));
 }
 
 function rowToAsset(row) {
