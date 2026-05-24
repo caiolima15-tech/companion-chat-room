@@ -1,0 +1,1 @@
+ALTER TABLE public.custom_maps ADD COLUMN IF NOT EXISTS hidden boolean NOT NULL DEFAULT false;

@@ -124,6 +124,7 @@ export type Database = {
           bg: string
           created_at: string
           created_by: string | null
+          hidden: boolean
           id: string
           mood: string
           name: string
@@ -136,6 +137,7 @@ export type Database = {
           bg?: string
           created_at?: string
           created_by?: string | null
+          hidden?: boolean
           id?: string
           mood?: string
           name: string
@@ -148,6 +150,7 @@ export type Database = {
           bg?: string
           created_at?: string
           created_by?: string | null
+          hidden?: boolean
           id?: string
           mood?: string
           name?: string
