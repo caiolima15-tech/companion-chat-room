@@ -1845,7 +1845,36 @@ const _groundRay = new THREE.Raycaster();
 const _down = new THREE.Vector3(0, -1, 0);
 const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
+const STEP_UP = 0.6;          // altura máxima de degrau que o personagem sobe automaticamente
+const PLAYER_HEIGHT = 1.6;    // altura aproximada do peito/cabeça para colisão
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
+
+// Registra todas as malhas de um root (env ou GLB colocado) como sólidos:
+// servem ao mesmo tempo como chão (subir) e parede (bloquear se alto demais).
+function registerCollidable(root) {
+  const list = [];
+  root.traverse((node) => {
+    if (!node.isMesh || node.visible === false) return;
+    // Ignora malhas puramente decorativas marcadas
+    if (node.userData?.noCollide) return;
+    walkableMeshes.push(node);
+    colliderMeshes.push(node);
+    occluderMeshes.push(node);
+    list.push(node);
+  });
+  root.userData._collidableMeshes = list;
+}
+function unregisterCollidable(root) {
+  const list = root?.userData?._collidableMeshes;
+  if (!list || !list.length) return;
+  for (const arr of [walkableMeshes, colliderMeshes, occluderMeshes]) {
+    for (const m of list) {
+      const i = arr.indexOf(m);
+      if (i >= 0) arr.splice(i, 1);
+    }
+  }
+  root.userData._collidableMeshes = null;
+}
 
 
 // Lighting groups we can swap when the map mood changes
@@ -2096,21 +2125,12 @@ async function loadEnvironment(mapId) {
       env.traverse((node) => {
         if (!node.isMesh) return;
         const meshBox = new THREE.Box3().setFromObject(node);
-        const height = meshBox.max.y - meshBox.min.y;
         if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
         node.castShadow = true;
         node.receiveShadow = true;
-        occluderMeshes.push(node);
-
-        const name = (node.name || "") + " " + (node.parent?.name || "");
-        const isStair = STAIR_NAME_RE.test(name);
-        const isLowSlope = height < 0.6 && meshBox.min.y < 0.05;
-        if (isStair || isLowSlope) {
-          walkableMeshes.push(node);
-        } else if (meshBox.max.y > 0.35) {
-          colliderMeshes.push(node);
-        }
       });
+      // Toda malha visível do cenário é sólido (chão + parede automático).
+      registerCollidable(env);
       envGroup.add(env);
       // Atualiza painel admin se aberto
       syncMapAdminPanel();
@@ -2127,20 +2147,37 @@ async function loadEnvironment(mapId) {
 }
 
 
-// Returns the highest walkable surface Y under `pos` that is at or below the player's head.
+// Retorna a altura Y do chão sob `pos`, escolhendo o topo mais alto que o
+// personagem consegue subir (até STEP_UP acima do Y atual). Permite subir
+// escadas, rampas, plataformas e GLBs colocados sem ficar enterrado.
 function groundHeightAt(pos, currentY) {
   if (!walkableMeshes.length) return 0;
-  _groundOrigin.set(pos.x, (currentY ?? pos.y) + 4, pos.z);
+  const baseY = currentY ?? pos.y;
+  _groundOrigin.set(pos.x, baseY + 50, pos.z);
   _groundRay.set(_groundOrigin, _down);
-  _groundRay.far = 20;
+  _groundRay.far = 100;
   const hits = _groundRay.intersectObjects(walkableMeshes, false);
+  if (!hits.length) return baseY;
+  const ceil = baseY + STEP_UP + 0.05;
+  let best = null;
+  // Acha o topo mais alto que ainda é subível; caso não exista, pega o mais alto abaixo.
   for (const h of hits) {
-    if (h.point.y <= (currentY ?? pos.y) + 1.2) return h.point.y;
+    if (h.point.y <= ceil) {
+      if (best === null || h.point.y > best) best = h.point.y;
+    }
   }
-  return currentY ?? 0;
+  if (best !== null) return best;
+  // Sem nada subível: cai para a superfície mais alta abaixo do personagem
+  let below = null;
+  for (const h of hits) {
+    if (h.point.y <= baseY + 0.05 && (below === null || h.point.y > below)) below = h.point.y;
+  }
+  return below !== null ? below : baseY;
 }
 
-// Returns true if moving from `from` to `to` would collide with a wall/counter/chair.
+// Verifica colisão entre `from` e `to`. Se houver um obstáculo baixo (≤ STEP_UP),
+// permite passar (o personagem "sobe" o degrau via groundHeightAt). Apenas
+// obstáculos altos (peito/cabeça) realmente bloqueiam.
 function collidesAt(from, to) {
   if (!colliderMeshes.length) return false;
   _collDir.copy(to).sub(from);
@@ -2148,14 +2185,31 @@ function collidesAt(from, to) {
   const dist = _collDir.length();
   if (dist < 0.0001) return false;
   _collDir.normalize();
-  // Two rays: knees & chest. Catches low chairs AND tall walls; stairs are walkable, not colliders.
-  for (const yOff of [0.35, 1.2]) {
-    _collOrigin.copy(from);
-    _collOrigin.y = from.y + yOff;
-    _collRay.set(_collOrigin, _collDir);
-    _collRay.far = dist + COLLISION_RADIUS;
-    const hits = _collRay.intersectObjects(colliderMeshes, false);
-    if (hits.length && hits[0].distance < dist + COLLISION_RADIUS) return true;
+  // Raio na altura do peito: qualquer hit aqui é parede de verdade
+  _collOrigin.set(from.x, from.y + 1.3, from.z);
+  _collRay.set(_collOrigin, _collDir);
+  _collRay.far = dist + COLLISION_RADIUS;
+  const chestHits = _collRay.intersectObjects(colliderMeshes, false);
+  if (chestHits.length && chestHits[0].distance < dist + COLLISION_RADIUS) return true;
+  // Raio na altura do joelho: se hit, checa se dá pra subir
+  _collOrigin.set(from.x, from.y + 0.2, from.z);
+  _collRay.set(_collOrigin, _collDir);
+  _collRay.far = dist + COLLISION_RADIUS;
+  const kneeHits = _collRay.intersectObjects(colliderMeshes, false);
+  if (kneeHits.length && kneeHits[0].distance < dist + COLLISION_RADIUS) {
+    // Mede a altura do topo do obstáculo no ponto de destino
+    _groundOrigin.set(to.x, from.y + 4, to.z);
+    _groundRay.set(_groundOrigin, _down);
+    _groundRay.far = 10;
+    const topHits = _groundRay.intersectObjects(colliderMeshes, false);
+    if (!topHits.length) return true;
+    // Maior Y abaixo de chest
+    let top = -Infinity;
+    for (const h of topHits) {
+      if (h.point.y < from.y + 1.3 && h.point.y > top) top = h.point.y;
+    }
+    if (top === -Infinity) return false;
+    if (top - from.y > STEP_UP) return true;
   }
   return false;
 }
@@ -2641,6 +2695,7 @@ function renderAssets(assets = []) {
   const byId = new Map(assets.map((a) => [a.id, a]));
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
+      unregisterCollidable(object);
       scene.remove(object);
       assetObjects.delete(id);
     }
@@ -2652,6 +2707,10 @@ function renderAssets(assets = []) {
       object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
+      object.updateMatrixWorld(true);
+      // Reaplica colisão (posição/rotação podem ter mudado, então re-registra)
+      unregisterCollidable(object);
+      registerCollidable(object);
       continue;
     }
     loader.load(
@@ -2669,6 +2728,8 @@ function renderAssets(assets = []) {
           }
         });
         scene.add(object);
+        object.updateMatrixWorld(true);
+        registerCollidable(object);
         assetObjects.set(asset.id, object);
       },
       undefined,
@@ -2677,6 +2738,8 @@ function renderAssets(assets = []) {
         fallback.position.set(asset.x, asset.y, asset.z);
         fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
         scene.add(fallback);
+        fallback.updateMatrixWorld(true);
+        registerCollidable(fallback);
         assetObjects.set(asset.id, fallback);
       },
     );
