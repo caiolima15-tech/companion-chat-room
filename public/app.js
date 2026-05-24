@@ -3428,25 +3428,35 @@ supabase
 async function loadCustomMaps() {
   const { data, error } = await supabase
     .from("custom_maps")
-    .select("slug, name, url, mood, bg, thumb")
+    .select("slug, name, url, mood, bg, thumb, hidden")
     .order("created_at", { ascending: true });
   if (error) { console.warn("custom_maps load:", error.message); return; }
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
-  const overrides = [];
+  const overrides = new Map();
+  const hiddenBuiltins = new Set();
   const customs = [];
   for (const m of data || []) {
-    const entry = {
-      id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
-      bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
-    };
-    if (builtinSlugs.has(m.slug)) overrides.push(entry); else customs.push(entry);
+    if (builtinSlugs.has(m.slug)) {
+      if (m.hidden) { hiddenBuiltins.add(m.slug); continue; }
+      overrides.set(m.slug, {
+        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️",
+      });
+    } else {
+      if (m.hidden) continue;
+      customs.push({
+        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
+        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
+      });
+    }
   }
-  // Apply overrides on top of builtins (keep original url if override has no url)
-  const merged = BUILTIN_MAPS.map((b) => {
-    const ov = overrides.find((o) => o.id === b.id);
-    if (!ov) return { ...b };
-    return { ...b, ...ov, url: ov.url || b.url, custom: false, overridden: true };
-  });
+  const merged = BUILTIN_MAPS
+    .filter((b) => !hiddenBuiltins.has(b.id))
+    .map((b) => {
+      const ov = overrides.get(b.id);
+      if (!ov) return { ...b };
+      return { ...b, ...ov, url: ov.url || b.url, overridden: true };
+    });
   MAPS = [...merged, ...customs];
   if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
 }
@@ -3558,7 +3568,8 @@ async function openMapEdit(mapId) {
         </div>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
-          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">${isBuiltin ? "↺ Restaurar padrão" : "🗑️ Excluir"}</button>
+          ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
+          <button id="meDelete" type="button" style="background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:8px;padding:9px 14px;cursor:pointer;">🗑️ Excluir</button>
           <div style="flex:1;"></div>
           <button id="meCancel" type="button" style="background:#22262e;color:#ddd;border:1px solid #333;border-radius:8px;padding:9px 14px;cursor:pointer;">Cancelar</button>
           <button id="meSave" type="button" style="background:#1e4a6e;color:#fff;border:1px solid #2d8a9e;border-radius:8px;padding:9px 14px;cursor:pointer;font-weight:600;">Salvar</button>
@@ -3613,20 +3624,27 @@ async function openMapEdit(mapId) {
   };
 
   modal.querySelector("#meDelete").onclick = async () => {
-    const msg = isBuiltin
-      ? `Restaurar o mapa "${m.name}" para o padrão original? Suas customizações serão perdidas.`
-      : `Excluir o mapa "${m.name}"? Esta ação é permanente.`;
-    if (!confirm(msg)) return;
+    if (!confirm(`Excluir o mapa "${m.name}"? Ele não aparecerá mais no menu.`)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
-    status.textContent = isBuiltin ? "Restaurando…" : "Excluindo…";
+    status.textContent = "Excluindo…";
     try {
-      const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
-      if (error) throw error;
-      status.textContent = isBuiltin ? "Restaurado ✓" : "Excluído ✓";
+      if (isBuiltin) {
+        // Built-in: marca como hidden (upsert)
+        const { error } = await supabase.from("custom_maps").upsert(
+          { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
+          { onConflict: "slug" }
+        );
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
+        if (error) throw error;
+      }
+      status.textContent = "Excluído ✓";
       await loadCustomMaps();
       if (currentMapId === m.id) {
-        loadEnvironment(isBuiltin ? m.id : (BUILTIN_MAPS[0] && BUILTIN_MAPS[0].id));
+        const fallback = MAPS[0];
+        if (fallback) loadEnvironment(fallback.id);
       }
       close();
     } catch (e) {
@@ -3634,6 +3652,26 @@ async function openMapEdit(mapId) {
       delBtn.disabled = false;
     }
   };
+
+  const restoreBtn = modal.querySelector("#meRestore");
+  if (restoreBtn) {
+    restoreBtn.onclick = async () => {
+      if (!confirm(`Restaurar o mapa "${m.name}" para o padrão original? Customizações serão perdidas.`)) return;
+      restoreBtn.disabled = true;
+      status.textContent = "Restaurando…";
+      try {
+        const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
+        if (error) throw error;
+        status.textContent = "Restaurado ✓";
+        await loadCustomMaps();
+        if (currentMapId === m.id) loadEnvironment(m.id);
+        close();
+      } catch (e) {
+        status.textContent = "Erro: " + (e.message || e);
+        restoreBtn.disabled = false;
+      }
+    };
+  }
 }
 
 
