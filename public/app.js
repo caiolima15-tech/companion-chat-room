@@ -277,6 +277,8 @@ function showAuth(mode = "signin") {
   authMode = mode;
   authOverlay.style.display = "grid";
   authOverlay.hidden = false;
+  document.body.classList.remove("in-world");
+
   authError.hidden = true;
   if (mode === "signin") {
     authTitle.textContent = "​";
