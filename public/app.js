@@ -466,9 +466,15 @@ async function bootstrapSession(user) {
 }
 
 async function enterRoom() {
-  await Promise.all([loadInitialAssets(), loadInitialChat()]);
-  await connectRealtime();
-  addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
+  window.showWorldLoading?.("Carregando o mundo");
+  try {
+    await Promise.all([loadInitialAssets(), loadInitialChat()]);
+    await connectRealtime();
+    try { await window.radioEnterRoom?.(currentMapId); } catch {}
+    addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
+  } finally {
+    window.hideWorldLoading?.();
+  }
 }
 
 function randomColor() {
