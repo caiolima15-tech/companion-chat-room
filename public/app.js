@@ -5239,3 +5239,238 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, refreshDmBadge)
     .subscribe();
 })();
+
+// ============================================================
+// ===== World loading overlay ================================
+// ============================================================
+(function setupWorldLoading() {
+  const el = document.getElementById("worldLoadingOverlay");
+  if (!el) return;
+  let counter = 0;
+  let hideTimer = null;
+  window.showWorldLoading = function (label) {
+    counter++;
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    if (label) {
+      const t = el.querySelector(".world-loading-text");
+      if (t) t.textContent = label;
+    }
+    el.hidden = false;
+  };
+  window.hideWorldLoading = function (force) {
+    if (force) counter = 0;
+    else counter = Math.max(0, counter - 1);
+    if (counter > 0) return;
+    // small delay so the world has a frame to paint
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; }, 250);
+  };
+})();
+
+// ============================================================
+// ===== Radio (per-room, admin defines, user listens) ========
+// ============================================================
+(function setupRadio() {
+  const audio = document.getElementById("radioPlayer");
+  const hud = document.getElementById("radioHud");
+  const hudName = document.getElementById("radioHudName");
+  const hudGenre = document.getElementById("radioHudGenre");
+  const muteBtn = document.getElementById("radioMuteBtn");
+  const volSlider = document.getElementById("radioVolumeSlider");
+  const adminBtn = document.getElementById("radioToggleBtn");
+  const adminPanel = document.getElementById("radioAdminPanel");
+  const stationsList = document.getElementById("radioStationsList");
+  const newName = document.getElementById("radioNewName");
+  const newGenre = document.getElementById("radioNewGenre");
+  const newUrl = document.getElementById("radioNewUrl");
+  const addBtn = document.getElementById("radioAddBtn");
+  const stopBtn = document.getElementById("radioStopAllBtn");
+  if (!audio || !hud) return;
+
+  let stations = [];          // all stations for current map
+  let activeStation = null;   // the one is_playing=true
+  let channel = null;
+  let subscribedMapId = null;
+  let inRoom = false;
+
+  // Persisted local volume/mute
+  const savedVol = parseFloat(localStorage.getItem("radio.volume"));
+  const savedMuted = localStorage.getItem("radio.muted") === "1";
+  audio.volume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : 0.7;
+  audio.muted = savedMuted;
+  if (volSlider) volSlider.value = String(Math.round(audio.volume * 100));
+  syncMuteUi();
+
+  function syncMuteUi() {
+    if (muteBtn) muteBtn.textContent = audio.muted || audio.volume === 0 ? "🔇" : "🔊";
+    hud.classList.toggle("is-muted", audio.muted || audio.volume === 0);
+  }
+
+  muteBtn?.addEventListener("click", () => {
+    audio.muted = !audio.muted;
+    localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
+    syncMuteUi();
+  });
+  volSlider?.addEventListener("input", () => {
+    const v = Math.min(1, Math.max(0, (Number(volSlider.value) || 0) / 100));
+    audio.volume = v;
+    if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
+    localStorage.setItem("radio.volume", String(v));
+    syncMuteUi();
+  });
+
+  function showHud(st) {
+    activeStation = st;
+    if (!st) { hud.hidden = true; return; }
+    hudName.textContent = st.station_name || "Rádio";
+    hudGenre.textContent = st.genre ? "· " + st.genre : "";
+    hud.hidden = false;
+  }
+
+  function applyActive() {
+    const playing = stations.find((s) => s.is_playing);
+    if (!inRoom || !playing || !playing.stream_url) {
+      try { audio.pause(); } catch {}
+      audio.removeAttribute("src");
+      try { audio.load(); } catch {}
+      showHud(null);
+      return;
+    }
+    if (audio.src !== playing.stream_url) {
+      try { audio.pause(); } catch {}
+      audio.src = playing.stream_url;
+      audio.play().catch((err) => {
+        console.warn("Rádio: autoplay bloqueado, aguardando interação.", err);
+        const resume = () => { audio.play().catch(() => {}); document.removeEventListener("click", resume); document.removeEventListener("keydown", resume); };
+        document.addEventListener("click", resume, { once: true });
+        document.addEventListener("keydown", resume, { once: true });
+      });
+    } else if (audio.paused) {
+      audio.play().catch(() => {});
+    }
+    showHud(playing);
+  }
+
+  async function loadStations(mapId) {
+    if (!mapId) { stations = []; renderAdminList(); applyActive(); return; }
+    const { data, error } = await supabase
+      .from("map_radios")
+      .select("*")
+      .eq("map_id", mapId)
+      .order("station_name", { ascending: true });
+    if (error) { console.warn("Falha ao carregar rádios:", error); return; }
+    stations = data || [];
+    renderAdminList();
+    applyActive();
+  }
+
+  async function subscribe(mapId) {
+    if (channel && subscribedMapId === mapId) return;
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = mapId;
+    if (!mapId) return;
+    channel = supabase
+      .channel("radio:" + mapId)
+      .on("postgres_changes", { event: "*", schema: "public", table: "map_radios", filter: "map_id=eq." + mapId }, () => loadStations(mapId))
+      .subscribe();
+  }
+
+  async function unsubscribe() {
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = null;
+  }
+
+  // Public lifecycle
+  window.radioEnterRoom = async function (mapId) {
+    inRoom = true;
+    await subscribe(mapId);
+    await loadStations(mapId);
+  };
+  window.radioLeaveRoom = async function () {
+    inRoom = false;
+    await unsubscribe();
+    stations = [];
+    applyActive();
+    renderAdminList();
+  };
+
+  // ===== Admin panel =====
+  adminBtn?.addEventListener("click", () => {
+    if (!isAdmin) return alert("Apenas admin.");
+    adminPanel.hidden = !adminPanel.hidden;
+    if (!adminPanel.hidden) loadStations(currentMapId);
+  });
+
+  function renderAdminList() {
+    if (!stationsList) return;
+    if (!stations.length) { stationsList.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma estação ainda. Adicione a primeira acima.</div>'; return; }
+    stationsList.innerHTML = stations.map((s) => {
+      const playing = !!s.is_playing;
+      return `
+        <div class="radio-station-row ${playing ? "is-playing" : ""}" data-id="${s.id || s.map_id + '|' + s.station_name}">
+          <div class="rs-title">${escapeHtml(s.station_name || "—")} ${playing ? "▶" : ""}</div>
+          <div class="rs-meta">${escapeHtml(s.genre || "")}${s.genre ? " · " : ""}${escapeHtml(s.stream_url || "")}</div>
+          <div class="rs-actions">
+            <button type="button" class="rs-play" data-act="play" data-name="${encodeURIComponent(s.station_name)}">${playing ? "Tocando" : "▶ Tocar"}</button>
+            <button type="button" class="rs-del" data-act="del" data-name="${encodeURIComponent(s.station_name)}">Excluir</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  stationsList?.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const name = decodeURIComponent(btn.dataset.name || "");
+    const target = stations.find((s) => s.station_name === name);
+    if (!target) return;
+    if (act === "play") {
+      // Set all to false, target to true (single source for this map_id)
+      const others = stations.filter((s) => s.station_name !== name && s.is_playing);
+      for (const s of others) {
+        await supabase.from("map_radios").update({ is_playing: false, updated_at: new Date().toISOString() }).match({ map_id: s.map_id, station_name: s.station_name });
+      }
+      await supabase.from("map_radios").update({ is_playing: true, updated_at: new Date().toISOString() }).match({ map_id: target.map_id, station_name: target.station_name });
+      await loadStations(currentMapId);
+    } else if (act === "del") {
+      if (!confirm("Excluir estação \"" + name + "\"?")) return;
+      await supabase.from("map_radios").delete().match({ map_id: target.map_id, station_name: target.station_name });
+      await loadStations(currentMapId);
+    }
+  });
+
+  addBtn?.addEventListener("click", async () => {
+    if (!isAdmin) return alert("Apenas admin.");
+    const name = (newName?.value || "").trim();
+    const url = (newUrl?.value || "").trim();
+    const genre = (newGenre?.value || "").trim();
+    if (!name) return alert("Dê um nome à estação.");
+    if (!url) return alert("Informe a URL do stream.");
+    if (!currentMapId) return alert("Entre em uma sala primeiro.");
+    const { error } = await supabase.from("map_radios").insert({
+      map_id: currentMapId,
+      station_name: name,
+      stream_url: url,
+      genre,
+      is_playing: false,
+      updated_by: myId || null,
+    });
+    if (error) { alert("Erro: " + error.message); return; }
+    if (newName) newName.value = "";
+    if (newUrl) newUrl.value = "";
+    if (newGenre) newGenre.value = "";
+    await loadStations(currentMapId);
+  });
+
+  stopBtn?.addEventListener("click", async () => {
+    if (!isAdmin) return;
+    const playing = stations.filter((s) => s.is_playing);
+    for (const s of playing) {
+      await supabase.from("map_radios").update({ is_playing: false, updated_at: new Date().toISOString() }).match({ map_id: s.map_id, station_name: s.station_name });
+    }
+    await loadStations(currentMapId);
+  });
+
+  function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+})();
