@@ -1695,39 +1695,45 @@ async function trackLobby() {
 // === Trocar de sala em runtime ===
 async function switchRoom(newMapId) {
   if (newMapId === currentRoomChannelsMapId) return;
-  // Tira do canal antigo: derruba presence/movement/chat
-  // Avisa imediatamente os outros que estamos saindo (sem esperar heartbeat)
+  window.showWorldLoading?.("Carregando o mundo");
+  try { await window.radioLeaveRoom?.(); } catch {}
   try {
-    await movementChannel?.send({
-      type: "broadcast",
-      event: "leave",
-      payload: { id: myId },
-    });
-  } catch {}
-  if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
-  if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
-  if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
+    // Tira do canal antigo: derruba presence/movement/chat
+    try {
+      await movementChannel?.send({
+        type: "broadcast",
+        event: "leave",
+        payload: { id: myId },
+      });
+    } catch {}
+    if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
+    if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
+    if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
 
-  // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
-  for (const [id, entity] of Array.from(playerEntities)) {
-    if (id === myId) continue;
-    scene.remove(entity.group);
-    entity.plate?.remove();
-    if (entity.loadingSpinner) entity.loadingSpinner.remove();
-    playerEntities.delete(id);
+    // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
+    for (const [id, entity] of Array.from(playerEntities)) {
+      if (id === myId) continue;
+      scene.remove(entity.group);
+      entity.plate?.remove();
+      if (entity.loadingSpinner) entity.loadingSpinner.remove();
+      playerEntities.delete(id);
+    }
+    players = players.filter((p) => p.id === myId);
+
+    // Limpa o histórico do chat e carrega o da sala nova
+    if (chatLog) chatLog.innerHTML = "";
+
+    currentMapId = newMapId;
+    localStorage.setItem("neon-tap-room-map", newMapId);
+
+    await loadInitialChat();
+    await setupRoomChannels(newMapId);
+    await trackLobby();
+    try { await window.radioEnterRoom?.(newMapId); } catch {}
+    addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
+  } finally {
+    window.hideWorldLoading?.();
   }
-  players = players.filter((p) => p.id === myId);
-
-  // Limpa o histórico do chat e carrega o da sala nova
-  if (chatLog) chatLog.innerHTML = "";
-
-  currentMapId = newMapId;
-  localStorage.setItem("neon-tap-room-map", newMapId);
-
-  await loadInitialChat();
-  await setupRoomChannels(newMapId);
-  await trackLobby();
-  addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
 }
 
 
