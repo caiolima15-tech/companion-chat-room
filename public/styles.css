@@ -1525,3 +1525,201 @@ button[data-variant="primary"] {
 
 /* Hide remaining d-pad rule */
 .controls { display: none !important; }
+
+/* ==================== Radio HUD (user-facing) ==================== */
+#radioHud {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px 7px 12px;
+  background: linear-gradient(135deg, rgba(40, 20, 70, 0.85), rgba(15, 13, 40, 0.85));
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  border-radius: 999px;
+  color: #f3eaff;
+  font: 12px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(108, 92, 231, 0.25), 0 0 0 1px rgba(255,255,255,0.04) inset;
+  max-width: min(86vw, 460px);
+}
+#radioHud[hidden] { display: none !important; }
+#radioHud .radio-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  width: 16px;
+}
+#radioHud .radio-eq span {
+  display: block;
+  width: 3px;
+  background: linear-gradient(180deg, #c4b5fd, #8b5cf6);
+  border-radius: 2px;
+  animation: radio-eq 1s ease-in-out infinite;
+}
+#radioHud .radio-eq span:nth-child(1) { animation-delay: -0.2s; height: 60%; }
+#radioHud .radio-eq span:nth-child(2) { animation-delay: -0.6s; height: 100%; }
+#radioHud .radio-eq span:nth-child(3) { animation-delay: -0.4s; height: 75%; }
+#radioHud .radio-eq span:nth-child(4) { animation-delay: -0.9s; height: 50%; }
+@keyframes radio-eq {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+#radioHud.is-muted .radio-eq span { animation-play-state: paused; opacity: 0.35; }
+#radioHud .radio-icon { font-size: 14px; }
+#radioHud .radio-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#radioHud #radioHudName { font-weight: 600; }
+#radioHud .radio-genre { color: rgba(243, 234, 255, 0.6); font-size: 11px; }
+#radioHud .radio-genre:empty { display: none; }
+#radioHud #radioMuteBtn {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  line-height: 1;
+}
+#radioHud #radioVolumeSlider {
+  width: 0;
+  opacity: 0;
+  transition: width 0.18s ease, opacity 0.18s ease;
+  accent-color: #a78bfa;
+  height: 3px;
+}
+#radioHud:hover #radioVolumeSlider,
+#radioHud:focus-within #radioVolumeSlider { width: 80px; opacity: 1; }
+@media (max-width: 720px) {
+  #radioHud { top: 8px; padding: 6px 10px; font-size: 11px; }
+  #radioHud:hover #radioVolumeSlider, #radioHud:focus-within #radioVolumeSlider { width: 60px; }
+}
+
+/* ==================== World loading overlay ==================== */
+#worldLoadingOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(1200px 800px at 30% 20%, rgba(108, 92, 231, 0.55), transparent 60%),
+    radial-gradient(1000px 700px at 75% 80%, rgba(167, 139, 250, 0.4), transparent 60%),
+    linear-gradient(135deg, #1a1740 0%, #0b0a1a 100%);
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  animation: world-loading-fade 0.25s ease-out;
+}
+#worldLoadingOverlay[hidden] { display: none !important; }
+@keyframes world-loading-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.world-loading-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  text-align: center;
+  padding: 0 24px;
+}
+.world-loading-orb {
+  position: relative;
+  width: 130px;
+  height: 130px;
+}
+.world-loading-orb-core {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ddd6fe, #8b5cf6 60%, #4c1d95);
+  box-shadow:
+    0 0 30px rgba(167, 139, 250, 0.9),
+    0 0 70px rgba(139, 92, 246, 0.6),
+    0 0 120px rgba(108, 92, 231, 0.4);
+  animation: world-orb-pulse 1.6s ease-in-out infinite;
+}
+.world-loading-orb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(167, 139, 250, 0.55);
+  border-top-color: #f0abfc;
+  border-right-color: #c4b5fd;
+  animation: world-orb-spin 1.8s linear infinite;
+  box-shadow: 0 0 28px rgba(167, 139, 250, 0.45);
+}
+.world-loading-orb-ring-2 {
+  inset: 14%;
+  border-color: rgba(196, 181, 253, 0.3);
+  border-top-color: #a78bfa;
+  animation: world-orb-spin 2.6s linear infinite reverse;
+}
+@keyframes world-orb-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes world-orb-pulse {
+  0%, 100% { transform: scale(0.9); box-shadow: 0 0 22px rgba(167,139,250,0.7), 0 0 50px rgba(139,92,246,0.5), 0 0 100px rgba(108,92,231,0.35); }
+  50% { transform: scale(1.08); box-shadow: 0 0 40px rgba(196,181,253,1), 0 0 90px rgba(139,92,246,0.8), 0 0 160px rgba(108,92,231,0.55); }
+}
+.world-loading-text {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: linear-gradient(90deg, #f0abfc, #a78bfa, #c4b5fd);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 24px rgba(167, 139, 250, 0.3);
+}
+.world-loading-sub {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.02em;
+}
+
+/* ==================== Admin radio stations list ==================== */
+#radioStationsList .radio-station-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.02);
+}
+#radioStationsList .radio-station-row.is-playing {
+  border-color: #a78bfa;
+  box-shadow: 0 0 0 1px rgba(167,139,250,0.4) inset;
+}
+#radioStationsList .radio-station-row .rs-title { font-weight: 600; color: #f3eaff; font-size: 12px; }
+#radioStationsList .radio-station-row .rs-meta { font-size: 10px; color: #888; word-break: break-all; }
+#radioStationsList .radio-station-row .rs-actions { display: flex; gap: 6px; margin-top: 4px; }
+#radioStationsList .radio-station-row button {
+  flex: 1;
+  background: #1a1740;
+  color: #e9d5ff;
+  border: 1px solid #2a3040;
+  border-radius: 4px;
+  padding: 5px;
+  font-size: 11px;
+  cursor: pointer;
+}
+#radioStationsList .radio-station-row button.rs-play {
+  background: linear-gradient(135deg,#8b5cf6,#a78bfa);
+  color: #fff;
+  border: none;
+}
+#radioStationsList .radio-station-row button.rs-del { background: transparent; color: #f87171; border-color: #5a2a2a; }
