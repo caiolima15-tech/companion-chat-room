@@ -61,6 +61,31 @@
           <button id="freeCamToggleBtn" type="button" title="Câmera livre (WASD anda, QE sobe/desce, mouse gira)" style="position:absolute;top:12px;left:355px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui;">🎥 Câmera Livre: OFF</button>
           <button id="layersToggleBtn" class="admin-only" type="button" title="Camadas do mapa" style="position:absolute;top:12px;left:510px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui;">🗂️ Camadas</button>
           <button id="botsToggleBtn" class="admin-only" type="button" title="Bots (avatares com animação)" style="position:absolute;top:12px;left:610px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui;">🤖 Bots</button>
+          <button id="radioToggleBtn" class="admin-only" type="button" title="Rádio da sala (admin)" style="position:absolute;top:12px;left:705px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui;">📻 Rádio</button>
+
+          <div id="radioAdminPanel" class="admin-only floating-panel" hidden data-panel-id="radio" style="position:absolute;top:60px;left:705px;background:rgba(10,10,20,.92);color:#eee;padding:0;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:320px;max-height:78vh;backdrop-filter:blur(8px);border:1px solid #333;display:flex;flex-direction:column;">
+            <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:move;background:rgba(255,255,255,0.04);border-bottom:1px solid #222;border-radius:10px 10px 0 0;">
+              <strong>📻 Rádio da sala</strong>
+              <div style="display:flex;gap:4px;">
+                <button data-panel-min type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">−</button>
+                <button data-panel-close type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">×</button>
+              </div>
+            </div>
+            <div class="panel-body" style="padding:10px 12px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+              <div style="display:flex;flex-direction:column;gap:6px;border:1px dashed #2a3040;border-radius:6px;padding:8px;">
+                <strong style="font-size:11px;color:#a78bfa;">+ Nova estação</strong>
+                <input id="radioNewName" type="text" placeholder="Nome (ex: Jovem Pan FM)" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:6px;font:12px system-ui;">
+                <input id="radioNewGenre" type="text" placeholder="Gênero (ex: Pop, Rock, Lo-fi)" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:6px;font:12px system-ui;">
+                <input id="radioNewUrl" type="url" placeholder="URL do stream (.mp3 / .m3u8 / Icecast)" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:6px;font:12px system-ui;">
+                <button id="radioAddBtn" type="button" style="background:linear-gradient(135deg,#8b5cf6,#a78bfa);color:#fff;border:none;border-radius:4px;padding:7px;cursor:pointer;font-weight:600;">Adicionar estação</button>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <strong style="font-size:11px;color:#aaa;">Estações desta sala</strong>
+                <button id="radioStopAllBtn" type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:3px 8px;cursor:pointer;font-size:11px;">⏹ Parar</button>
+              </div>
+              <div id="radioStationsList" style="display:flex;flex-direction:column;gap:6px;">Carregando…</div>
+            </div>
+          </div>
 
           <div id="botsAdminPanel" class="admin-only floating-panel" hidden data-panel-id="bots" style="position:absolute;top:60px;left:610px;background:rgba(10,10,20,.92);color:#eee;padding:0;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:320px;max-height:78vh;backdrop-filter:blur(8px);border:1px solid #333;display:flex;flex-direction:column;">
             <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:move;background:rgba(255,255,255,0.04);border-bottom:1px solid #222;border-radius:10px 10px 0 0;gap:6px;">
@@ -550,5 +575,30 @@
         }
       })();
     </script>
+
+    <audio id="radioPlayer" preload="none" crossorigin="anonymous"></audio>
+
+    <div id="radioHud" hidden>
+      <div class="radio-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <span class="radio-icon">📻</span>
+      <span class="radio-meta">
+        <span id="radioHudName">—</span>
+        <span id="radioHudGenre" class="radio-genre"></span>
+      </span>
+      <button id="radioMuteBtn" type="button" title="Mutar/desmutar rádio" aria-label="Mutar rádio">🔊</button>
+      <input id="radioVolumeSlider" type="range" min="0" max="100" value="70" aria-label="Volume do rádio">
+    </div>
+
+    <div id="worldLoadingOverlay" hidden aria-hidden="true">
+      <div class="world-loading-inner">
+        <div class="world-loading-orb">
+          <div class="world-loading-orb-ring"></div>
+          <div class="world-loading-orb-ring world-loading-orb-ring-2"></div>
+          <div class="world-loading-orb-core"></div>
+        </div>
+        <div class="world-loading-text">Carregando o mundo</div>
+        <div class="world-loading-sub">Preparando os personagens e a iluminação…</div>
+      </div>
+    </div>
   </body>
 </html>
