@@ -575,5 +575,30 @@
         }
       })();
     </script>
+
+    <audio id="radioPlayer" preload="none" crossorigin="anonymous"></audio>
+
+    <div id="radioHud" hidden>
+      <div class="radio-eq" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <span class="radio-icon">📻</span>
+      <span class="radio-meta">
+        <span id="radioHudName">—</span>
+        <span id="radioHudGenre" class="radio-genre"></span>
+      </span>
+      <button id="radioMuteBtn" type="button" title="Mutar/desmutar rádio" aria-label="Mutar rádio">🔊</button>
+      <input id="radioVolumeSlider" type="range" min="0" max="100" value="70" aria-label="Volume do rádio">
+    </div>
+
+    <div id="worldLoadingOverlay" hidden aria-hidden="true">
+      <div class="world-loading-inner">
+        <div class="world-loading-orb">
+          <div class="world-loading-orb-ring"></div>
+          <div class="world-loading-orb-ring world-loading-orb-ring-2"></div>
+          <div class="world-loading-orb-core"></div>
+        </div>
+        <div class="world-loading-text">Carregando o mundo</div>
+        <div class="world-loading-sub">Preparando os personagens e a iluminação…</div>
+      </div>
+    </div>
   </body>
 </html>
