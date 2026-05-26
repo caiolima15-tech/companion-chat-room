@@ -279,7 +279,9 @@ function showAuth(mode = "signin") {
   authOverlay.hidden = false;
   document.body.classList.remove("in-world");
   try { window.radioLeaveRoom?.(); } catch {}
+  try { window.interactionsLeaveRoom?.(); } catch {}
   try { window.hideWorldLoading?.(true); } catch {}
+
 
   authError.hidden = true;
   if (mode === "signin") {
