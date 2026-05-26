@@ -1723,3 +1723,40 @@ button[data-variant="primary"] {
   border: none;
 }
 #radioStationsList .radio-station-row button.rs-del { background: transparent; color: #f87171; border-color: #5a2a2a; }
+
+/* ===== Interactions (sit / pose) ===== */
+#interactionPrompt {
+  position: fixed; left: 0; top: 0; z-index: 60;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px; border-radius: 999px;
+  background: linear-gradient(135deg, rgba(108,92,231,.95), rgba(167,139,250,.95));
+  color: #fff; font: 600 13px/1 system-ui; border: 1px solid rgba(255,255,255,.25);
+  box-shadow: 0 8px 22px rgba(108,92,231,.5), 0 0 24px rgba(167,139,250,.35);
+  cursor: pointer; pointer-events: auto; transition: transform .15s, opacity .15s;
+  animation: ipFloat 2.6s ease-in-out infinite;
+}
+#interactionPrompt:hover { transform: translate(-50%,-100%) scale(1.05); }
+#interactionPrompt .ip-icon { font-size: 16px; }
+@keyframes ipFloat { 0%,100% { filter: drop-shadow(0 0 6px rgba(167,139,250,.4)); } 50% { filter: drop-shadow(0 0 14px rgba(167,139,250,.85)); } }
+
+#interactionsAdminPanel .interact-row { display:flex; flex-direction:column; gap:4px; padding:8px; background:rgba(255,255,255,.03); border:1px solid #222; border-radius:6px; }
+#interactionsAdminPanel .interact-row.is-editing { border-color:#a78bfa; }
+#interactionsAdminPanel .ir-line { display:flex; align-items:center; gap:6px; }
+#interactionsAdminPanel .ir-asset { margin-left:auto; color:#888; font-size:10px; }
+#interactionsAdminPanel .ir-actions { display:flex; gap:4px; }
+#interactionsAdminPanel .ir-actions button { flex:1; background:#1a1f2a; color:#eee; border:1px solid #333; border-radius:4px; padding:4px; font-size:11px; cursor:pointer; }
+#interactionsAdminPanel .ir-actions button.danger { color:#f87171; border-color:#5a2a2a; flex:0 0 32px; }
+#interactionsAdminPanel .interact-editor { display:flex; flex-direction:column; gap:8px; padding:10px; background:rgba(167,139,250,.06); border:1px solid #2a2540; border-radius:6px; margin-top:8px; }
+#interactionsAdminPanel .ie-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+#interactionsAdminPanel .ie-row > label { width:80px; font-size:11px; color:#aaa; }
+#interactionsAdminPanel .ie-row > input[type=text], #interactionsAdminPanel .ie-row > input[type=url], #interactionsAdminPanel .ie-row > select { flex:1; min-width:120px; background:#0c0c18; color:#fff; border:1px solid #2a3040; border-radius:4px; padding:5px; font:12px system-ui; }
+#interactionsAdminPanel .ie-pick { background:#1a1f2a; color:#a78bfa; border:1px solid #3a3060; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:11px; }
+#interactionsAdminPanel .ie-fs { border:1px solid #2a3040; border-radius:6px; padding:6px 8px; }
+#interactionsAdminPanel .ie-fs legend { color:#a78bfa; font-size:11px; padding:0 4px; }
+#interactionsAdminPanel .ie-slider { display:flex; align-items:center; gap:6px; font-size:11px; }
+#interactionsAdminPanel .ie-slider .ie-label { width:80px; color:#aaa; }
+#interactionsAdminPanel .ie-slider input[type=range] { flex:1; }
+#interactionsAdminPanel .ie-slider .ie-val { width:48px; text-align:right; color:#ccc; font-variant-numeric:tabular-nums; }
+#interactionsAdminPanel .ie-actions { display:flex; gap:6px; }
+#interactionsAdminPanel .ie-actions button { flex:1; padding:7px; border-radius:4px; border:1px solid #333; background:#1a1f2a; color:#eee; cursor:pointer; font-weight:600; }
+#interactionsAdminPanel .ie-actions button.primary { background:linear-gradient(135deg,#8b5cf6,#a78bfa); border:none; }
