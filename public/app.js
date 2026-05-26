@@ -2981,6 +2981,17 @@ function updatePlayerAnimation(delta) {
   const walkSpeed = 1.4;
   const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
+    // Sit override (local player only): trava no assento, sem terreno, sem walk
+    if (entity.player?.id === myId && window.__sittingInteraction) {
+      const s = window.__sittingInteraction;
+      if (s.worldPos) {
+        entity.group.position.copy(s.worldPos);
+        entity.group.rotation.y = s.worldRotY || 0;
+        entity.target.copy(s.worldPos);
+      }
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
     const distance = Math.hypot(dxArr, dzArr);
@@ -3022,6 +3033,7 @@ function updatePlayerAnimation(delta) {
     if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
+
 
 function updateNameplates() {
   const rect = renderer.domElement.getBoundingClientRect();
