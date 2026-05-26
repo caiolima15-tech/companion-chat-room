@@ -212,6 +212,75 @@ export type Database = {
         }
         Relationships: []
       }
+      map_asset_interactions: {
+        Row: {
+          animation_key: string
+          animation_url: string | null
+          asset_id: string
+          created_at: string
+          created_by: string | null
+          exit_radius: number
+          icon: string
+          id: string
+          kind: string
+          label: string
+          loop: boolean
+          map_id: string
+          occupancy: string
+          offset_x: number
+          offset_y: number
+          offset_z: number
+          rotation_y: number
+          scale_mul: number
+          trigger_radius: number
+          updated_at: string
+        }
+        Insert: {
+          animation_key?: string
+          animation_url?: string | null
+          asset_id: string
+          created_at?: string
+          created_by?: string | null
+          exit_radius?: number
+          icon?: string
+          id?: string
+          kind?: string
+          label?: string
+          loop?: boolean
+          map_id: string
+          occupancy?: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_y?: number
+          scale_mul?: number
+          trigger_radius?: number
+          updated_at?: string
+        }
+        Update: {
+          animation_key?: string
+          animation_url?: string | null
+          asset_id?: string
+          created_at?: string
+          created_by?: string | null
+          exit_radius?: number
+          icon?: string
+          id?: string
+          kind?: string
+          label?: string
+          loop?: boolean
+          map_id?: string
+          occupancy?: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_y?: number
+          scale_mul?: number
+          trigger_radius?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       map_assets: {
         Row: {
           created_at: string

@@ -279,7 +279,9 @@ function showAuth(mode = "signin") {
   authOverlay.hidden = false;
   document.body.classList.remove("in-world");
   try { window.radioLeaveRoom?.(); } catch {}
+  try { window.interactionsLeaveRoom?.(); } catch {}
   try { window.hideWorldLoading?.(true); } catch {}
+
 
   authError.hidden = true;
   if (mode === "signin") {
@@ -473,6 +475,8 @@ async function enterRoom() {
     await Promise.all([loadInitialAssets(), loadInitialChat()]);
     await connectRealtime();
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
+    try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
+
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
@@ -1699,6 +1703,8 @@ async function switchRoom(newMapId) {
   if (newMapId === currentRoomChannelsMapId) return;
   window.showWorldLoading?.("Carregando o mundo");
   try { await window.radioLeaveRoom?.(); } catch {}
+  try { await window.interactionsLeaveRoom?.(); } catch {}
+
   try {
     // Tira do canal antigo: derruba presence/movement/chat
     try {
@@ -1732,6 +1738,8 @@ async function switchRoom(newMapId) {
     await setupRoomChannels(newMapId);
     await trackLobby();
     try { await window.radioEnterRoom?.(newMapId); } catch {}
+    try { await window.interactionsEnterRoom?.(newMapId); } catch {}
+
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
     window.hideWorldLoading?.();
@@ -2898,6 +2906,7 @@ function addMessage(message) {
 
 // ============ Movement ============
 function move(dx, dy, facing) {
+  if (window.__sittingInteraction) return;
   if (!me || !myId) return;
   const now = performance.now();
   me = {
@@ -2918,6 +2927,7 @@ function move(dx, dy, facing) {
 }
 let lastMoveClickAt = 0;
 function moveToWorld(point) {
+  if (window.__sittingInteraction) return;
   if (!me || !myId) return;
   const now = performance.now();
   const isDoubleClick = now - lastMoveClickAt < 350;
@@ -2939,6 +2949,7 @@ function moveToWorld(point) {
 }
 function applyHeldMovement() {
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
+  if (window.__sittingInteraction) return;
   if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
@@ -2951,6 +2962,7 @@ function applyHeldMovement() {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
 }
+
 function applyFreeCameraMovement() {
   const amount = 0.35;
   let fwd = 0, right = 0, up = 0;
@@ -2977,6 +2989,17 @@ function updatePlayerAnimation(delta) {
   const walkSpeed = 1.4;
   const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
+    // Sit override (local player only): trava no assento, sem terreno, sem walk
+    if (entity.player?.id === myId && window.__sittingInteraction) {
+      const s = window.__sittingInteraction;
+      if (s.worldPos) {
+        entity.group.position.copy(s.worldPos);
+        entity.group.rotation.y = s.worldRotY || 0;
+        entity.target.copy(s.worldPos);
+      }
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
     const distance = Math.hypot(dxArr, dzArr);
@@ -3018,6 +3041,7 @@ function updatePlayerAnimation(delta) {
     if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
+
 
 function updateNameplates() {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -3209,8 +3233,15 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (key === " " || key === "spacebar") { event.preventDefault(); return; }
+  if (key === "e" && !window.__freeCameraMode && window.__sittingInteraction) {
+    event.preventDefault();
+    try { window.standUpFromInteraction?.(); } catch {}
+    return;
+  }
+  if (window.__sittingInteraction) return; // bloqueia emotes enquanto sentado
   if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
   if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
+
 });
 document.addEventListener("keyup", (event) => {
   if (!event.key) return;
@@ -5488,3 +5519,431 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 })();
+
+// ============================================================
+// ===== Interações em objetos (sentar / posar / animar) ======
+// ============================================================
+(function setupInteractions() {
+  const promptEl = document.getElementById("interactionPrompt");
+  const adminBtn = document.getElementById("interactionsToggleBtn");
+  const adminPanel = document.getElementById("interactionsAdminPanel");
+  const listEl = document.getElementById("interactionsList");
+  const editorEl = document.getElementById("interactionsEditor");
+  const newBtn = document.getElementById("interactionsNewBtn");
+  if (!promptEl) return;
+
+  let interactions = [];       // [{...row}]
+  let channel = null;
+  let subscribedMapId = null;
+  let inRoom = false;
+  let activeNearby = null;     // interaction we're currently close to
+  let editingId = null;        // id sendo editado no painel admin (string or "new")
+  let editingDraft = null;     // patch em edição (preview ao vivo)
+  let pickMode = false;        // selecionar asset no mundo
+  let currentSit = null;       // {id, assetId, worldPos, worldRotY, animationUrl, mixerAction, animClipName}
+
+  const tmpV = new THREE.Vector3();
+
+  function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  // ---------- Data layer ----------
+  async function loadInteractions(mapId) {
+    if (!mapId) { interactions = []; renderAdmin(); return; }
+    const { data, error } = await supabase
+      .from("map_asset_interactions")
+      .select("*")
+      .eq("map_id", mapId)
+      .order("created_at", { ascending: true });
+    if (error) { console.warn("[interactions] load", error); return; }
+    interactions = data || [];
+    renderAdmin();
+  }
+
+  async function subscribe(mapId) {
+    if (channel && subscribedMapId === mapId) return;
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = mapId;
+    if (!mapId) return;
+    channel = supabase
+      .channel("interactions:" + mapId)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "map_asset_interactions", filter: "map_id=eq." + mapId },
+        () => loadInteractions(mapId))
+      .subscribe();
+  }
+  async function unsubscribe() {
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = null;
+  }
+
+  // ---------- Geometry helpers ----------
+  function computeSeatPose(inter, draft) {
+    const obj = assetObjects.get(inter.asset_id);
+    if (!obj) return null;
+    obj.updateMatrixWorld(true);
+    const ox = (draft?.offset_x ?? inter.offset_x) || 0;
+    const oy = (draft?.offset_y ?? inter.offset_y) || 0;
+    const oz = (draft?.offset_z ?? inter.offset_z) || 0;
+    const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
+    const local = new THREE.Vector3(ox, oy, oz);
+    const world = local.clone().applyMatrix4(obj.matrixWorld);
+    return { worldPos: world, worldRotY: obj.rotation.y + ry };
+  }
+
+  function getMyEntity() { return (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null; }
+
+  // ---------- Proximity loop ----------
+  setInterval(() => {
+    if (!inRoom) { hidePrompt(); return; }
+    const entity = getMyEntity();
+    if (!entity || !entity.group) { hidePrompt(); return; }
+
+    // Se sentado, mostra prompt "Levantar" no botão
+    if (currentSit) { activeNearby = null; showPromptForSit(); return; }
+
+    let best = null;
+    let bestDist = Infinity;
+    const pos = entity.group.position;
+    for (const inter of interactions) {
+      const pose = computeSeatPose(inter);
+      if (!pose) continue;
+      const d = Math.hypot(pose.worldPos.x - pos.x, pose.worldPos.z - pos.z);
+      const r = inter.trigger_radius || 1.5;
+      if (d <= r && d < bestDist) { best = { inter, pose, d }; bestDist = d; }
+    }
+    activeNearby = best;
+    if (best) showPromptForInteraction(best.inter, best.pose);
+    else hidePrompt();
+  }, 180);
+
+  // Reposiciona o botão (HUD) acompanhando o objeto/avatar
+  function tickPromptPosition() {
+    if (promptEl.hidden) return;
+    let world;
+    if (currentSit?.worldPos) {
+      world = currentSit.worldPos.clone(); world.y += 1.7;
+    } else if (activeNearby) {
+      world = activeNearby.pose.worldPos.clone(); world.y += 1.6;
+    } else return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    tmpV.copy(world).project(camera);
+    const x = (tmpV.x * 0.5 + 0.5) * rect.width + rect.left;
+    const y = (-tmpV.y * 0.5 + 0.5) * rect.height + rect.top;
+    const visible = tmpV.z > -1 && tmpV.z < 1;
+    promptEl.style.opacity = visible ? "1" : "0";
+    promptEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
+  }
+  // Anexa no rAF global
+  (function loop() { requestAnimationFrame(loop); tickPromptPosition(); })();
+
+  function showPromptForInteraction(inter, pose) {
+    promptEl.hidden = false;
+    promptEl.dataset.kind = "enter";
+    promptEl.innerHTML = `<span class="ip-icon">${_esc(inter.icon || "💺")}</span><span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
+    promptEl.onclick = () => enterSit(inter);
+  }
+  function showPromptForSit() {
+    promptEl.hidden = false;
+    promptEl.dataset.kind = "exit";
+    promptEl.innerHTML = `<span class="ip-icon">🚪</span><span class="ip-label">Levantar (E)</span>`;
+    promptEl.onclick = () => standUp();
+  }
+  function hidePrompt() { promptEl.hidden = true; promptEl.onclick = null; }
+
+  // ---------- Enter / exit sit ----------
+  async function enterSit(inter) {
+    const entity = getMyEntity();
+    if (!entity || !entity.mixer) return;
+    const pose = computeSeatPose(inter);
+    if (!pose) return;
+
+    currentSit = {
+      id: inter.id,
+      assetId: inter.asset_id,
+      worldPos: pose.worldPos.clone(),
+      worldRotY: pose.worldRotY,
+      animationUrl: inter.animation_url || null,
+      mixerAction: null,
+      animClipName: null,
+    };
+    window.__sittingInteraction = currentSit;
+
+    // Atualiza me.x/y para o assento (evita salto ao levantar)
+    if (typeof me !== "undefined" && me) {
+      const pct = percentFromWorld(pose.worldPos.x, pose.worldPos.z);
+      me.x = pct.x; me.y = pct.y;
+    }
+    entity.target.copy(pose.worldPos);
+    entity.group.position.copy(pose.worldPos);
+    entity.group.rotation.y = pose.worldRotY;
+
+    // Para ação atual e toca clip de sit (custom ou idle como fallback)
+    try {
+      if (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) {
+        entity.actions[entity.currentAction].fadeOut(0.2);
+      }
+      entity.currentAction = null;
+      if (inter.animation_url) {
+        const clip = await loadFbxClip(inter.animation_url);
+        if (window.__sittingInteraction !== currentSit) return; // saiu nesse meio tempo
+        const bones = collectBoneNames(entity.character);
+        const retarg = retargetClipToBones(clip, bones) || clip.clone();
+        const action = entity.mixer.clipAction(retarg);
+        action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+        action.clampWhenFinished = true;
+        action.reset().fadeIn(0.2).play();
+        currentSit.mixerAction = action;
+      } else {
+        const idle = entity.actions?.idle;
+        if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+      }
+    } catch (e) { console.warn("[interactions] sit clip", e); }
+
+    showPromptForSit();
+  }
+
+  function standUp() {
+    if (!currentSit) return;
+    const entity = getMyEntity();
+    if (entity && currentSit.mixerAction) {
+      currentSit.mixerAction.fadeOut(0.2);
+      setTimeout(() => { try { currentSit?.mixerAction?.stop(); } catch {} }, 250);
+    }
+    if (entity?.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+    currentSit = null;
+    window.__sittingInteraction = null;
+    hidePrompt();
+  }
+  window.standUpFromInteraction = standUp;
+
+  // ---------- Lifecycle ----------
+  window.interactionsEnterRoom = async function (mapId) {
+    inRoom = true;
+    await subscribe(mapId);
+    await loadInteractions(mapId);
+  };
+  window.interactionsLeaveRoom = async function () {
+    inRoom = false;
+    standUp();
+    await unsubscribe();
+    interactions = [];
+    hidePrompt();
+    renderAdmin();
+  };
+
+  // ---------- Admin panel ----------
+  adminBtn?.addEventListener("click", () => {
+    if (!isAdmin) return alert("Apenas admin.");
+    adminPanel.hidden = !adminPanel.hidden;
+    if (!adminPanel.hidden) { editingId = null; editingDraft = null; renderAdmin(); }
+  });
+
+  newBtn?.addEventListener("click", () => {
+    editingId = "new";
+    editingDraft = {
+      asset_id: "",
+      label: "Sentar",
+      icon: "💺",
+      kind: "sit",
+      animation_key: "sit",
+      animation_url: "",
+      loop: true,
+      offset_x: 0, offset_y: 0, offset_z: 0,
+      rotation_y: 0, scale_mul: 1,
+      trigger_radius: 1.5,
+      exit_radius: 2.0,
+      occupancy: "multi",
+    };
+    renderAdmin();
+  });
+
+  function renderAdmin() {
+    if (!listEl || !editorEl) return;
+    if (!interactions.length && editingId !== "new") {
+      listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma interação ainda.</div>';
+    } else {
+      listEl.innerHTML = interactions.map((it) => {
+        const obj = assetObjects.get(it.asset_id);
+        const assetName = obj?.name || "(asset removido)";
+        const isEd = editingId === it.id;
+        return `<div class="interact-row ${isEd ? "is-editing" : ""}" data-id="${_esc(it.id)}">
+          <div class="ir-line"><span class="ir-icon">${_esc(it.icon || "💺")}</span>
+            <span class="ir-label">${_esc(it.label || "—")}</span>
+            <span class="ir-asset">${_esc(assetName)}</span></div>
+          <div class="ir-actions">
+            <button type="button" data-act="edit">${isEd ? "Cancelar" : "Editar"}</button>
+            <button type="button" data-act="test">Testar</button>
+            <button type="button" data-act="del" class="danger">×</button>
+          </div>
+        </div>`;
+      }).join("");
+    }
+    // Editor form
+    if (editingId === null) { editorEl.innerHTML = ""; return; }
+    const isNew = editingId === "new";
+    const base = isNew ? editingDraft : (interactions.find((i) => i.id === editingId) || null);
+    if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
+    const draft = editingDraft || { ...base };
+    editingDraft = draft;
+
+    const assetsOptions = Array.from(assetObjects.entries())
+      .map(([id, o]) => `<option value="${_esc(id)}" ${draft.asset_id === id ? "selected" : ""}>${_esc(o.name || id)}</option>`)
+      .join("");
+
+    const slider = (label, field, min, max, step) => `
+      <label class="ie-slider">
+        <span class="ie-label">${label}</span>
+        <input type="range" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0)}">
+        <span class="ie-val">${Number(draft[field] || 0).toFixed(2)}</span>
+      </label>`;
+
+    editorEl.innerHTML = `
+      <div class="interact-editor">
+        <div class="ie-row"><label>Objeto</label>
+          <select data-field="asset_id"><option value="">— escolha —</option>${assetsOptions}</select>
+          <button type="button" class="ie-pick">${pickMode ? "Cancelar seleção" : "Selecionar no mundo"}</button>
+        </div>
+        <div class="ie-row"><label>Rótulo</label><input type="text" data-field="label" value="${_esc(draft.label)}" maxlength="40"></div>
+        <div class="ie-row"><label>Ícone</label><input type="text" data-field="icon" value="${_esc(draft.icon)}" maxlength="4" style="width:64px"></div>
+        <div class="ie-row"><label>Tipo</label>
+          <select data-field="kind">
+            <option value="sit" ${draft.kind === "sit" ? "selected" : ""}>Sentar</option>
+            <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
+            <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
+          </select>
+        </div>
+        <div class="ie-row"><label>Animação (URL FBX)</label>
+          <input type="url" data-field="animation_url" placeholder="opcional — sobrepõe o idle" value="${_esc(draft.animation_url || "")}">
+        </div>
+        <div class="ie-row"><label>Loop</label>
+          <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
+        </div>
+        <fieldset class="ie-fs"><legend>Posição relativa ao objeto</legend>
+          ${slider("X", "offset_x", -3, 3, 0.05)}
+          ${slider("Altura (Y)", "offset_y", -2, 3, 0.05)}
+          ${slider("Z", "offset_z", -3, 3, 0.05)}
+          ${slider("Rotação Y (°)", "rotation_y", -180, 180, 1)}
+        </fieldset>
+        <fieldset class="ie-fs"><legend>Aproximação</legend>
+          ${slider("Raio (m)", "trigger_radius", 0.5, 5, 0.1)}
+        </fieldset>
+        <div class="ie-actions">
+          <button type="button" class="ie-save primary">Salvar</button>
+          <button type="button" class="ie-cancel">Cancelar</button>
+        </div>
+      </div>`;
+  }
+
+  // Delegação de eventos
+  listEl?.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-act]"); if (!btn) return;
+    const row = btn.closest(".interact-row"); const id = row?.dataset.id;
+    const inter = interactions.find((i) => i.id === id); if (!inter) return;
+    const act = btn.dataset.act;
+    if (act === "edit") {
+      editingId = editingId === id ? null : id;
+      editingDraft = editingId ? { ...inter } : null;
+      renderAdmin();
+    } else if (act === "test") {
+      enterSit(inter);
+    } else if (act === "del") {
+      if (!confirm("Excluir esta interação?")) return;
+      const { error } = await supabase.from("map_asset_interactions").delete().eq("id", id);
+      if (error) { alert("Erro: " + error.message); return; }
+      if (editingId === id) { editingId = null; editingDraft = null; }
+      await loadInteractions(currentMapId);
+    }
+  });
+
+  editorEl?.addEventListener("input", (e) => {
+    const el = e.target.closest("[data-field]"); if (!el || !editingDraft) return;
+    const field = el.dataset.field;
+    let val;
+    if (el.type === "checkbox") val = el.checked;
+    else if (el.type === "range" || el.type === "number") val = Number(el.value);
+    else val = el.value;
+    editingDraft[field] = val;
+    // Atualiza valor visual no slider
+    if (el.type === "range") {
+      const v = el.parentElement?.querySelector(".ie-val"); if (v) v.textContent = Number(val).toFixed(2);
+    }
+    // Preview ao vivo: se já sentamos para testar, atualiza pose
+    if (currentSit && (editingId === currentSit.id || editingId === "new")) {
+      const fake = { ...(interactions.find((i) => i.id === editingId) || {}), ...editingDraft, asset_id: editingDraft.asset_id || currentSit.assetId };
+      const pose = computeSeatPose(fake);
+      if (pose) {
+        currentSit.worldPos.copy(pose.worldPos);
+        currentSit.worldRotY = pose.worldRotY;
+      }
+    }
+  });
+
+  editorEl?.addEventListener("click", async (e) => {
+    const t = e.target;
+    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; renderAdmin(); return; }
+    if (t.classList.contains("ie-pick")) {
+      pickMode = !pickMode;
+      addSystemLine?.(pickMode ? "Clique num objeto do mapa para selecionar." : "Seleção cancelada.");
+      renderAdmin();
+      return;
+    }
+    if (t.classList.contains("ie-save")) {
+      if (!editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
+      const payload = {
+        asset_id: editingDraft.asset_id,
+        map_id: currentMapId,
+        label: editingDraft.label || "Sentar",
+        icon: editingDraft.icon || "💺",
+        kind: editingDraft.kind || "sit",
+        animation_key: editingDraft.animation_key || "sit",
+        animation_url: editingDraft.animation_url || null,
+        loop: editingDraft.loop !== false,
+        offset_x: Number(editingDraft.offset_x) || 0,
+        offset_y: Number(editingDraft.offset_y) || 0,
+        offset_z: Number(editingDraft.offset_z) || 0,
+        rotation_y: Number(editingDraft.rotation_y) || 0,
+        scale_mul: Number(editingDraft.scale_mul) || 1,
+        trigger_radius: Number(editingDraft.trigger_radius) || 1.5,
+        exit_radius: (Number(editingDraft.trigger_radius) || 1.5) + 0.5,
+        occupancy: editingDraft.occupancy || "multi",
+      };
+      let res;
+      if (editingId === "new") {
+        payload.created_by = myId || null;
+        res = await supabase.from("map_asset_interactions").insert(payload).select().single();
+      } else {
+        res = await supabase.from("map_asset_interactions").update(payload).eq("id", editingId).select().single();
+      }
+      if (res.error) { alert("Erro: " + res.error.message); return; }
+      editingId = null; editingDraft = null;
+      await loadInteractions(currentMapId);
+    }
+  });
+
+  // Picker: clique no canvas, raycast contra assetObjects
+  renderer?.domElement.addEventListener("click", (event) => {
+    if (!pickMode || !isAdmin) return;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, camera);
+    const targets = Array.from(assetObjects.values());
+    const hits = rc.intersectObjects(targets, true);
+    if (!hits.length) return;
+    // Sobe na hierarquia até achar o root em assetObjects
+    let root = hits[0].object;
+    while (root && !Array.from(assetObjects.values()).includes(root)) root = root.parent;
+    if (!root) return;
+    let foundId = null;
+    for (const [id, obj] of assetObjects) if (obj === root) { foundId = id; break; }
+    if (!foundId) return;
+    if (editingDraft) editingDraft.asset_id = foundId;
+    pickMode = false;
+    addSystemLine?.("Objeto selecionado: " + (root.name || foundId));
+    renderAdmin();
+    event.stopPropagation();
+  }, true);
+})();
+
