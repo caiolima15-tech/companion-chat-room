@@ -475,6 +475,8 @@ async function enterRoom() {
     await Promise.all([loadInitialAssets(), loadInitialChat()]);
     await connectRealtime();
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
+    try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
+
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
