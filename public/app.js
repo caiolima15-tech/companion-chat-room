@@ -1738,6 +1738,8 @@ async function switchRoom(newMapId) {
     await setupRoomChannels(newMapId);
     await trackLobby();
     try { await window.radioEnterRoom?.(newMapId); } catch {}
+    try { await window.interactionsEnterRoom?.(newMapId); } catch {}
+
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
     window.hideWorldLoading?.();
