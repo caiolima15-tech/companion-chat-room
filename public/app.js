@@ -3233,8 +3233,15 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (key === " " || key === "spacebar") { event.preventDefault(); return; }
+  if (key === "e" && !window.__freeCameraMode && window.__sittingInteraction) {
+    event.preventDefault();
+    try { window.standUpFromInteraction?.(); } catch {}
+    return;
+  }
+  if (window.__sittingInteraction) return; // bloqueia emotes enquanto sentado
   if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
   if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
+
 });
 document.addEventListener("keyup", (event) => {
   if (!event.key) return;
