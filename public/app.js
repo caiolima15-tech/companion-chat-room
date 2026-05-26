@@ -1703,6 +1703,8 @@ async function switchRoom(newMapId) {
   if (newMapId === currentRoomChannelsMapId) return;
   window.showWorldLoading?.("Carregando o mundo");
   try { await window.radioLeaveRoom?.(); } catch {}
+  try { await window.interactionsLeaveRoom?.(); } catch {}
+
   try {
     // Tira do canal antigo: derruba presence/movement/chat
     try {
