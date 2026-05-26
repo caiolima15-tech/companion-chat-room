@@ -2898,6 +2898,7 @@ function addMessage(message) {
 
 // ============ Movement ============
 function move(dx, dy, facing) {
+  if (window.__sittingInteraction) return;
   if (!me || !myId) return;
   const now = performance.now();
   me = {
@@ -2918,6 +2919,7 @@ function move(dx, dy, facing) {
 }
 let lastMoveClickAt = 0;
 function moveToWorld(point) {
+  if (window.__sittingInteraction) return;
   if (!me || !myId) return;
   const now = performance.now();
   const isDoubleClick = now - lastMoveClickAt < 350;
@@ -2939,6 +2941,7 @@ function moveToWorld(point) {
 }
 function applyHeldMovement() {
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
+  if (window.__sittingInteraction) return;
   if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
@@ -2951,6 +2954,7 @@ function applyHeldMovement() {
     move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
   }
 }
+
 function applyFreeCameraMovement() {
   const amount = 0.35;
   let fwd = 0, right = 0, up = 0;
