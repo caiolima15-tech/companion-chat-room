@@ -473,7 +473,8 @@ async function bootstrapSession(user) {
 async function enterRoom() {
   window.showWorldLoading?.("Carregando o mundo");
   try {
-    await Promise.all([loadInitialAssets(), loadInitialChat()]);
+    // Aguarda o cenário (mapa + GLBs) terminar de carregar antes de mostrar a sala.
+    await Promise.all([loadEnvironment(currentMapId), loadInitialChat()]);
     await connectRealtime();
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
     try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
