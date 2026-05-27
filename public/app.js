@@ -258,7 +258,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 2.5;
-controls.maxDistance = 11;
+controls.maxDistance = 60;
+const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
 
 const stage = new THREE.Group();
