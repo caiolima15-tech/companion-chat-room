@@ -2057,8 +2057,8 @@ function buildMap() {
   scene.fog = null;
   stage.add(envGroup);
 
-  // Load initial environment
-  loadEnvironment(currentMapId);
+  // Cenário NÃO é carregado aqui — só dentro de enterRoom()/switchRoom(),
+  // para evitar mostrar um mapa de fundo antes do usuário escolher sala.
 }
 
 function clearEnvironment() {
