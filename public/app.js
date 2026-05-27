@@ -937,7 +937,8 @@ confirmMapButton?.addEventListener("click", async () => {
   const switching = selectedMapId !== currentMapId;
 
   if (switching) {
-    loadEnvironment(selectedMapId);
+    window.showWorldLoading?.("Carregando o mundo");
+    await loadEnvironment(selectedMapId);
     const myEntity = playerEntities.get(myId);
     if (myEntity) {
       myEntity.group.position.set(0, 0, 0);
