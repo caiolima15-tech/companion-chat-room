@@ -2113,8 +2113,8 @@ async function loadEnvironment(mapId) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
-  // Recarrega GLBs colocados que pertencem a este mapa
-  loadInitialAssets();
+  // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
+  const assetsPromise = loadInitialAssets();
 
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
@@ -2122,60 +2122,64 @@ async function loadEnvironment(mapId) {
 
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
-    (async () => {
-      currentMapTransform = await transformPromise;
-      setDarkMode(!!currentMapTransform?.dark_mode);
-      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-      reloadMapLights(currentMapId);
-      syncMapAdminPanel();
-    })();
+    currentMapTransform = await transformPromise;
+    setDarkMode(!!currentMapTransform?.dark_mode);
+    applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+    reloadMapLights(currentMapId);
+    syncMapAdminPanel();
+    try { await assetsPromise; } catch {}
     return;
   }
 
-  loader.load(
-    map.url,
+  const envPromise = new Promise((resolve) => {
+    loader.load(
+      map.url,
+      async (gltf) => {
+        try {
+          const env = gltf.scene;
+          const box = new THREE.Box3().setFromObject(env);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
+          const currentSize = Math.max(size.x, size.z);
+          const baseScale = currentSize > 0 ? targetSize / currentSize : 1;
+          currentEnvBaseScale = baseScale;
+          env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
-    async (gltf) => {
-      const env = gltf.scene;
-      const box = new THREE.Box3().setFromObject(env);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
-      const currentSize = Math.max(size.x, size.z);
-      const baseScale = currentSize > 0 ? targetSize / currentSize : 1;
-      currentEnvBaseScale = baseScale;
-      env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
+          currentMapTransform = await transformPromise;
+          setDarkMode(!!currentMapTransform?.dark_mode);
+          applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+          reloadMapLights(currentMapId);
+          currentEnvRoot = env;
+          applyEnvTransform();
 
-      currentMapTransform = await transformPromise;
-      setDarkMode(!!currentMapTransform?.dark_mode);
-      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-      // Recarrega luzes custom desse mapa
-      reloadMapLights(currentMapId);
-      currentEnvRoot = env;
-      applyEnvTransform();
+          // Tetos visíveis: nenhuma malha é escondida por altura.
+          env.traverse((node) => {
+            if (!node.isMesh) return;
+            node.castShadow = true;
+            node.receiveShadow = true;
+          });
+          registerCollidable(env);
+          envGroup.add(env);
+          syncMapAdminPanel();
+        } finally {
+          resolve();
+        }
+      },
+      undefined,
+      (err) => {
+        console.error("Falha carregando cenário:", err);
+        if (map.id !== "bar") {
+          localStorage.removeItem("neon-tap-room-map");
+          loadEnvironment("bar").then(resolve);
+        } else {
+          resolve();
+        }
+      },
+    );
+  });
 
-      // Tetos visíveis: nenhuma malha é escondida por altura. Tudo vira colisor
-      // (registerCollidable abaixo) e a câmera é limitada por clampCameraToCeiling().
-      env.traverse((node) => {
-        if (!node.isMesh) return;
-        node.castShadow = true;
-        node.receiveShadow = true;
-      });
-      // Toda malha visível do cenário é sólido (chão + parede automático).
-      registerCollidable(env);
-      envGroup.add(env);
-      // Atualiza painel admin se aberto
-      syncMapAdminPanel();
-    },
-    undefined,
-    (err) => {
-      console.error("Falha carregando cenário:", err);
-      if (map.id !== "bar") {
-        localStorage.removeItem("neon-tap-room-map");
-        loadEnvironment("bar");
-      }
-    },
-  );
+  await Promise.all([envPromise, assetsPromise.catch(() => {})]);
 }
 
 
