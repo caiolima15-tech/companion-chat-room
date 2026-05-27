@@ -894,9 +894,12 @@ const mapGrid = document.querySelector("#mapGrid");
 const confirmMapButton = document.querySelector("#confirmMapButton");
 const mapSelectBack = document.querySelector("#mapSelectBack");
 
-function openMapSelect() {
+async function openMapSelect() {
   if (!mapSelectOverlay) return;
   selectedMapId = currentMapId;
+  // Sempre busca a lista mais recente (importante p/ não-admin ver exclusões/edições)
+  try { await loadCustomMaps(); } catch {}
+  selectedMapId = MAPS.some((m) => m.id === selectedMapId) ? selectedMapId : (MAPS[0]?.id || null);
   renderMapTiles();
   updateConfirmMapButton();
   mapSelectOverlay.hidden = false;
