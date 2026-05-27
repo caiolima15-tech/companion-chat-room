@@ -2275,25 +2275,41 @@ function setMeshFaded(mesh, faded) {
 }
 
 function updateCameraOcclusion() {
-  _fadedNow.clear();
-  const entity = myId ? playerEntities.get(myId) : null;
-  if (entity && occluderMeshes.length) {
-    _occFrom.copy(camera.position);
-    _occDir.set(entity.group.position.x, entity.group.position.y + 1.1, entity.group.position.z).sub(_occFrom);
-    const dist = _occDir.length();
-    _occDir.normalize();
-    _occRay.set(_occFrom, _occDir);
-    _occRay.far = dist;
-    const hits = _occRay.intersectObjects(occluderMeshes, false);
-    for (const h of hits) {
-      if (h.distance < dist - 0.4) _fadedNow.add(h.object);
-    }
+  // Paredes não somem mais. Restaura qualquer mesh que ainda esteja fadeada
+  // de versões anteriores e sai. O clamping da câmera contra teto é feito
+  // separadamente em clampCameraToCeiling().
+  if (_fadedPrev.size) {
+    for (const m of _fadedPrev) setMeshFaded(m, false);
+    _fadedPrev.clear();
   }
-  // Apply / restore
-  for (const m of _fadedNow) if (!_fadedPrev.has(m)) setMeshFaded(m, true);
-  for (const m of _fadedPrev) if (!_fadedNow.has(m)) setMeshFaded(m, false);
-  _fadedPrev.clear();
-  for (const m of _fadedNow) _fadedPrev.add(m);
+}
+
+// Limita o zoom-out para que a câmera não atravesse o teto do recinto.
+// Se houver mesh acima do alvo, calcula a distância máxima possível ao longo
+// do vetor câmera→alvo de forma que camera.position.y <= ceilingY - margem.
+const _ceilRay = new THREE.Raycaster();
+const _ceilOrigin = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+function clampCameraToCeiling() {
+  if (window.__freeCameraMode) return;
+  if (!colliderMeshes.length) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  _ceilOrigin.copy(controls.target);
+  _ceilRay.set(_ceilOrigin, _up);
+  _ceilRay.far = 50;
+  const hits = _ceilRay.intersectObjects(colliderMeshes, false);
+  let ceilingY = Infinity;
+  for (const h of hits) { if (h.point.y > controls.target.y + 0.5 && h.point.y < ceilingY) ceilingY = h.point.y; }
+  if (!isFinite(ceilingY)) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const margin = 0.3;
+  const maxY = ceilingY - margin;
+  // direção câmera→alvo (normalizada)
+  const dy = camera.position.y - controls.target.y;
+  const dist = camera.position.distanceTo(controls.target);
+  if (dy <= 0 || dist < 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const sinElev = dy / dist; // componente vertical do vetor unitário
+  if (sinElev <= 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const maxDist = (maxY - controls.target.y) / sinElev;
+  controls.maxDistance = Math.max(controls.minDistance + 0.1, Math.min(BASE_MAX_DISTANCE, maxDist));
 }
 
 
