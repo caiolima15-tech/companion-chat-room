@@ -1374,8 +1374,9 @@ async function applyCharacter(entity, slug) {
 }
 
 // ============ Realtime ============
-async function loadInitialAssets() {
-  const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
+async function loadInitialAssets(mapId = currentMapId) {
+  const { data } = await supabase.from("map_assets").select("*").eq("map_id", mapId).order("created_at");
+  if (mapId !== currentMapId) return;
   await renderAssets((data || []).map(rowToAsset));
 }
 
@@ -2153,8 +2154,9 @@ async function loadEnvironment(mapId, opts = {}) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
-  // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
-  const assetsPromise = loadInitialAssets();
+  // GLBs colocados não bloqueiam a entrada: só carregam junto quando explicitamente pedido.
+  const startAssetsLoad = () => loadInitialAssets(map.id);
+  const assetsPromise = waitForAssets ? startAssetsLoad() : null;
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
@@ -2162,13 +2164,13 @@ async function loadEnvironment(mapId, opts = {}) {
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
-    if (token !== __envLoadToken) { assetsPromise.catch(() => {}); return; }
+    if (token !== __envLoadToken) { assetsPromise?.catch(() => {}); return; }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
     syncMapAdminPanel();
     if (waitForAssets) try { await assetsPromise; } catch {}
-    else assetsPromise.catch(() => {});
+    else startAssetsLoad().catch(() => {});
     return;
   }
 
@@ -2235,8 +2237,8 @@ async function loadEnvironment(mapId, opts = {}) {
     await Promise.all([envPromise, assetsPromise.catch(() => {})]);
   } else {
     await envPromise;
-    // assetsPromise continua em background; erros silenciosos
-    assetsPromise.catch(() => {});
+    // GLBs extras entram em segundo plano depois que mapa e usuário já aparecem.
+    startAssetsLoad().catch(() => {});
   }
 }
 
