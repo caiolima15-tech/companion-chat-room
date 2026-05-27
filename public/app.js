@@ -2173,6 +2173,17 @@ async function loadEnvironment(mapId, opts = {}) {
   }
 
   const envPromise = new Promise((resolve) => {
+    let settled = false;
+    const safeResolve = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(loadTimeout);
+      resolve();
+    };
+    const loadTimeout = setTimeout(() => {
+      console.warn("Cenário demorou demais; liberando entrada e mantendo o carregamento em segundo plano.");
+      safeResolve();
+    }, 12000);
     loader.load(
       map.url,
       async (gltf) => {
@@ -2205,7 +2216,7 @@ async function loadEnvironment(mapId, opts = {}) {
           envGroup.add(env);
           syncMapAdminPanel();
         } finally {
-          resolve();
+          safeResolve();
         }
       },
       undefined,
@@ -2214,7 +2225,7 @@ async function loadEnvironment(mapId, opts = {}) {
         // Não tenta fallback automático para "bar" (pode estar oculto).
         // Apenas resolve — o jogador entra num cenário vazio mas a UI segue.
         localStorage.removeItem("neon-tap-room-map");
-        resolve();
+        safeResolve();
       },
     );
   });
