@@ -583,7 +583,7 @@ input:focus {
 .chat-form {
   padding: 10px 12px 12px;
   border-top: 1px solid rgba(255,255,255,0.08);
-  background: rgba(0,0,0,0.18);
+  background: rgba(0,0,0,0.5);
 }
 
 .file-mode-hint {
@@ -1373,10 +1373,14 @@ button[data-variant="primary"] {
 
 /* Panels: tint with purple instead of pure dark grey */
 .stage-panel,
-.chat-panel,
 .world-hud,
 .asset-dock {
   background: rgba(20, 19, 42, 0.88) !important;
+  border-color: rgba(167,139,250,0.18) !important;
+}
+
+.chat-panel {
+  background: rgba(20, 19, 42, 0.5) !important;
   border-color: rgba(167,139,250,0.18) !important;
 }
 
@@ -1384,7 +1388,7 @@ button[data-variant="primary"] {
 .identity,
 .controls,
 .chat-log {
-  background: rgba(28, 26, 58, 0.45) !important;
+  background: rgba(28, 26, 58, 0.5) !important;
   border-color: rgba(167,139,250,0.12) !important;
 }
 
