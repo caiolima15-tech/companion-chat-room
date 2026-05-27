@@ -2772,6 +2772,7 @@ function renderAssets(assets = []) {
       assetObjects.delete(id);
     }
   }
+  const pending = [];
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
@@ -2780,43 +2781,47 @@ function renderAssets(assets = []) {
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
       object.updateMatrixWorld(true);
-      // Reaplica colisão (posição/rotação podem ter mudado, então re-registra)
       unregisterCollidable(object);
       registerCollidable(object);
       continue;
     }
-    loader.load(
-      asset.url,
-      (gltf) => {
-        const object = gltf.scene;
-        object.name = asset.name;
-        normalizeImportedObject(object, asset.scale);
-        object.position.set(asset.x, asset.y, asset.z);
-        object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-        object.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-        scene.add(object);
-        object.updateMatrixWorld(true);
-        registerCollidable(object);
-        assetObjects.set(asset.id, object);
-      },
-      undefined,
-      () => {
-        const fallback = makeFallbackAsset(asset.name, asset.scale);
-        fallback.position.set(asset.x, asset.y, asset.z);
-        fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-        scene.add(fallback);
-        fallback.updateMatrixWorld(true);
-        registerCollidable(fallback);
-        assetObjects.set(asset.id, fallback);
-      },
-    );
+    pending.push(new Promise((resolve) => {
+      loader.load(
+        asset.url,
+        (gltf) => {
+          const object = gltf.scene;
+          object.name = asset.name;
+          normalizeImportedObject(object, asset.scale);
+          object.position.set(asset.x, asset.y, asset.z);
+          object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+          object.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scene.add(object);
+          object.updateMatrixWorld(true);
+          registerCollidable(object);
+          assetObjects.set(asset.id, object);
+          resolve();
+        },
+        undefined,
+        () => {
+          const fallback = makeFallbackAsset(asset.name, asset.scale);
+          fallback.position.set(asset.x, asset.y, asset.z);
+          fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+          scene.add(fallback);
+          fallback.updateMatrixWorld(true);
+          registerCollidable(fallback);
+          assetObjects.set(asset.id, fallback);
+          resolve();
+        },
+      );
+    }));
   }
   updateAssetList(assets);
+  return Promise.all(pending);
 }
 
 function normalizeImportedObject(object, scale = 1) {
