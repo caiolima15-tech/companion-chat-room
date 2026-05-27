@@ -488,6 +488,7 @@ async function enterRoom() {
     // Chat, GLBs colocados, realtime, rádio e interações carregam em segundo plano
     // — o usuário entra mais rápido e os elementos aparecem progressivamente.
     await loadEnvironment(currentMapId, { waitForAssets: false });
+    if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
@@ -958,14 +959,9 @@ confirmMapButton?.addEventListener("click", async () => {
   const alreadyInRoom = !!playerEntities.get(myId);
   const switching = selectedMapId !== currentMapId;
 
-  if (switching) {
-    window.showWorldLoading?.("Carregando o mundo");
-    await loadEnvironment(selectedMapId);
-    const myEntity = playerEntities.get(myId);
-    if (myEntity) {
-      myEntity.group.position.set(0, 0, 0);
-      if (me) { me.x = 50; me.y = 50; }
-    }
+  if (switching && !alreadyInRoom) {
+    currentMapId = selectedMapId;
+    localStorage.setItem("neon-tap-room-map", selectedMapId);
   }
   closeMapSelect();
   if (!alreadyInRoom) {
@@ -1379,8 +1375,9 @@ async function applyCharacter(entity, slug) {
 }
 
 // ============ Realtime ============
-async function loadInitialAssets() {
-  const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
+async function loadInitialAssets(mapId = currentMapId) {
+  const { data } = await supabase.from("map_assets").select("*").eq("map_id", mapId).order("created_at");
+  if (mapId !== currentMapId) return;
   await renderAssets((data || []).map(rowToAsset));
 }
 
@@ -1758,11 +1755,19 @@ async function switchRoom(newMapId) {
     currentMapId = newMapId;
     localStorage.setItem("neon-tap-room-map", newMapId);
 
-    await loadInitialChat();
-    await setupRoomChannels(newMapId);
-    await trackLobby();
-    try { await window.radioEnterRoom?.(newMapId); } catch {}
-    try { await window.interactionsEnterRoom?.(newMapId); } catch {}
+    await loadEnvironment(newMapId, { waitForAssets: false });
+    const myEntity = playerEntities.get(myId);
+    if (myEntity) {
+      myEntity.group.position.set(0, 0, 0);
+      if (me) { me.x = 50; me.y = 50; }
+      const idx = players.findIndex((p) => p.id === myId);
+      if (idx >= 0 && me) players[idx] = { ...players[idx], x: 50, y: 50 };
+    }
+
+    loadInitialChat().catch(() => {});
+    setupRoomChannels(newMapId).then(() => trackLobby()).catch(() => {});
+    Promise.resolve().then(() => window.radioEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
@@ -2150,8 +2155,9 @@ async function loadEnvironment(mapId, opts = {}) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
-  // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
-  const assetsPromise = loadInitialAssets();
+  // GLBs colocados não bloqueiam a entrada: só carregam junto quando explicitamente pedido.
+  const startAssetsLoad = () => loadInitialAssets(map.id);
+  const assetsPromise = waitForAssets ? startAssetsLoad() : null;
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
@@ -2159,16 +2165,29 @@ async function loadEnvironment(mapId, opts = {}) {
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
-    if (token !== __envLoadToken) { try { await assetsPromise; } catch {} return; }
+    if (token !== __envLoadToken) { assetsPromise?.catch(() => {}); return; }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
     syncMapAdminPanel();
-    try { await assetsPromise; } catch {}
+    if (waitForAssets) try { await assetsPromise; } catch {}
+    else startAssetsLoad().catch(() => {});
     return;
   }
 
   const envPromise = new Promise((resolve) => {
+    let settled = false;
+    let loadTimeout = null;
+    const safeResolve = () => {
+      if (settled) return;
+      settled = true;
+      if (loadTimeout) clearTimeout(loadTimeout);
+      resolve();
+    };
+    loadTimeout = setTimeout(() => {
+      console.warn("Cenário demorou demais; liberando entrada e mantendo o carregamento em segundo plano.");
+      safeResolve();
+    }, 12000);
     loader.load(
       map.url,
       async (gltf) => {
@@ -2201,7 +2220,7 @@ async function loadEnvironment(mapId, opts = {}) {
           envGroup.add(env);
           syncMapAdminPanel();
         } finally {
-          resolve();
+          safeResolve();
         }
       },
       undefined,
@@ -2210,7 +2229,7 @@ async function loadEnvironment(mapId, opts = {}) {
         // Não tenta fallback automático para "bar" (pode estar oculto).
         // Apenas resolve — o jogador entra num cenário vazio mas a UI segue.
         localStorage.removeItem("neon-tap-room-map");
-        resolve();
+        safeResolve();
       },
     );
   });
@@ -2219,8 +2238,8 @@ async function loadEnvironment(mapId, opts = {}) {
     await Promise.all([envPromise, assetsPromise.catch(() => {})]);
   } else {
     await envPromise;
-    // assetsPromise continua em background; erros silenciosos
-    assetsPromise.catch(() => {});
+    // GLBs extras entram em segundo plano depois que mapa e usuário já aparecem.
+    startAssetsLoad().catch(() => {});
   }
 }
 
@@ -5523,10 +5542,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
+  const RADIO_DEFAULT_VOLUME = 0.42;
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260527";
+
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
-  audio.volume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : 0.7;
+  let initialVolume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
+  if (Number.isFinite(savedVol) && localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
+    initialVolume = Math.min(1, Math.max(0, initialVolume * 0.6));
+    localStorage.setItem("radio.volume", String(initialVolume));
+  }
+  localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
+  audio.volume = initialVolume;
   audio.muted = savedMuted;
   if (volSlider) volSlider.value = String(Math.round(audio.volume * 100));
   syncMuteUi();
