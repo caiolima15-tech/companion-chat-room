@@ -1,69 +1,75 @@
-## 1. Alcance visível (skybox preto)
 
-Hoje em `public/app.js`:
-- `camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90)` — far plane corta tudo a 90 m.
-- `scene.fog = new THREE.Fog("#0e1117", 16, 36)` — neblina escurece o skybox antes mesmo de chegar no far.
-- `controls.maxDistance = 11` — limita o quanto o usuário pode afastar a câmera.
+## 1. Não mostrar nenhum mapa antes de entrar na sala
 
-Mudanças:
-- Aumentar `camera.far` para `2000` e chamar `camera.updateProjectionMatrix()`.
-- Remover a `Fog` padrão (já existe lógica em `applyLightingForMood` que zera fog em vários moods; vou deixar `scene.fog = null` por padrão e só ativar fog quando o mood explicitamente pedir, com `far` muito maior — ex.: `200`).
-- O `maxDistance` do orbit fica controlado pelo item 2 (não mais hardcoded em 11).
+Hoje `buildMap()` chama `loadEnvironment(currentMapId)` na linha 2051, então o "Bar" (ou o último `localStorage.neon-tap-room-map`) começa a carregar logo no boot e fica visível atrás da tela de login/seleção.
 
-Resultado: o skybox carregado pelo admin aparece de ponta a ponta.
+Mudanças em `public/app.js`:
+- Remover a chamada `loadEnvironment(currentMapId)` de `buildMap()`. O cenário só começa a carregar dentro de `enterRoom()` / `switchRoom()`.
+- Adicionar uma classe `pre-world` no `<body>` enquanto o usuário ainda não entrou. CSS esconde o `#scene` (canvas), `#hud`, rádio, etc., deixando só a UI de overlays (auth, seleção de personagem, seleção de mapa).
+- `enterRoom()` remove `pre-world` só depois que `loadEnvironment` resolve, garantindo que o mundo apareça pronto.
 
-## 2. Paredes não somem mais + zoom respeita teto
+Resultado: ao logar não aparece nenhum cenário de fundo; o usuário vai direto para "escolher personagem → escolher sala → carregar → entrar".
 
-Hoje:
-- `updateCameraOcclusion()` (linha ~2279) deixa qualquer parede entre câmera e jogador transparente.
-- `ceilingCutoff = 2.8` em `loadEnvironment` esconde qualquer mesh cuja base esteja acima de 2.8 m — efetivamente apagando tetos.
+## 2. Excluir mapas de verdade (builtins inclusos)
 
-Mudanças:
-- Desligar o fade de paredes: `updateCameraOcclusion()` vira no-op (mantém função para não quebrar chamada no loop, mas só faz `return;`). Sem mais clone de material/`opacity = 0`.
-- Remover o `ceilingCutoff`: tetos ficam visíveis e viram colisores normais (`registerCollidable` já cobre).
-- Restringir zoom da câmera ao interior do recinto: novo helper `clampCameraToCeiling()` chamado a cada frame após `controls.update()`. Faz um raycast de `controls.target` para cima; se acertar um colisor a uma altura `h`, define `controls.maxDistance` dinamicamente de forma que `camera.position.y` nunca ultrapasse `h - 0.3`. Quando não há teto (ar livre), `maxDistance` volta para um valor amplo (ex.: 60) para permitir afastar bastante. Isso resolve "zoom out não consegue afastar dentro do estabelecimento com teto" porque o limite passa a ser geométrico, não um número fixo.
+Hoje, quando o admin "exclui" um builtin (Bar, Bar Antigo, Milk Bar, etc.), o código só insere `hidden=true` em `custom_maps`. Mesmo assim, `currentMapId` no `localStorage` pode continuar apontando para `"bar"`, e `loadEnvironment("bar")` ainda carrega a GLB builtin (`/assets/maps/bar.glb`).
 
-## 3. Painel "🎯 Interações" não minimiza
+Mudanças em `public/app.js`:
+- `loadCustomMaps()`: depois de calcular `hiddenBuiltins` e `MAPS`, se `currentMapId` não estiver mais em `MAPS`, limpar `localStorage.neon-tap-room-map` e setar `currentMapId = MAPS[0]?.id || null`.
+- `loadEnvironment(mapId)`: se `MAPS.find(m=>m.id===mapId)` não existir (mapa foi excluído), abortar sem chamar `loader.load`, e em vez de cair no fallback `"bar"`, voltar para o `MAPS[0]` disponível (ou nenhum, se a lista estiver vazia).
+- O delete continua marcando builtin como `hidden=true` (não dá pra apagar uma linha que não existe), MAS na UI ele some 100%: do menu, do default de boot e do `currentMapId`. Para o usuário é "excluído de verdade".
+- Bônus: ao excluir builtin, também apagar `map_thumbnails`, `map_transforms`, `map_lights`, `map_radios`, `map_assets`, `map_bots`, `map_asset_interactions` daquele `map_id` (cleanup completo dos registros associados). Para non-builtins, mesma limpeza antes do `delete from custom_maps`.
 
-O HTML já tem `data-panel-min`, `.panel-head` e `.panel-body`, mas `setupFloatingPanels()` em `public/app.js` (~linha 4619) não registra esse painel — só registra `botsAdminPanel`, `mapAdminPanel`, `lightsAdminPanel` e `layersPanel`.
+## 3. Barra de progresso real (sem orb)
 
-Mudança: adicionar `makePanel(document.getElementById("interactionsAdminPanel"))` ao final do bloco. Como o painel já segue a convenção `.panel-head` / `.panel-body` / `[data-panel-min]` / `[data-panel-close]`, basta isso para drag + minimizar + fechar funcionarem.
-
-Bônus: faço o mesmo para o `radioAdminPanel` (mesma estrutura — também não está registrado).
-
-## 4. Carregar mapa antes de aparecer dentro
-
-Hoje `enterRoom()` faz:
-
-```text
-await Promise.all([loadInitialAssets(), loadInitialChat()]);
-await connectRealtime();
-await radioEnterRoom / interactionsEnterRoom
-hideWorldLoading()
-```
-
-Problema: `loadInitialAssets()` chama `renderAssets()`, que dispara `loader.load(...)` para cada GLB **sem await** — resolve imediato e a tela mostra o jogador no vazio enquanto os GLBs ainda baixam. `loadEnvironment(mapId)` também é fire-and-forget.
+Hoje `#worldLoadingOverlay` mostra um orb animado sem percentual, e o `hideWorldLoading` espera 250ms.
 
 Mudanças:
-- `loadEnvironment(mapId)` vira `async` e retorna uma `Promise` que só resolve quando o `GLTFLoader.load` chama o callback de sucesso/erro (envolver em `new Promise`).
-- `renderAssets()` retorna `Promise.all(pendingLoads)` — cada `loader.load` vira uma promise que resolve no sucesso ou no fallback.
-- `loadInitialAssets()` passa a aguardar `loadEnvironment(currentMapId)` E `renderAssets(...)`.
-- `enterRoom()` e `switchRoom()` aguardam tudo antes de chamar `hideWorldLoading()`. A overlay roxa "Carregando o mundo" só some quando o cenário + GLBs estão prontos. A aba do navegador (favicon/spinner do browser) também para de girar porque não há mais fetches pendentes no momento em que o jogador entra.
+- `public/index.html`: substituir o bloco `.world-loading-orb` por uma barra: `<div class="world-loading-bar"><div class="world-loading-bar-fill" id="worldLoadingBarFill"></div></div>` mais um `<span id="worldLoadingPercent">0%</span>`.
+- `public/styles.css`: estilos da barra (trilho escuro, fill com gradiente, transição `width 200ms`).
+- `public/app.js` em `setupWorldLoading`:
+  - Adicionar `window.setWorldLoadingProgress(loaded, total)` que atualiza largura do fill e o `%`.
+  - Reset para 0% em cada `showWorldLoading`.
+- Usar um `THREE.LoadingManager` único compartilhado pelo `loader` (GLTF) e pelo `FBXLoader` durante o boot/entrada. O manager tem `onProgress(url, loaded, total)` que será encaminhado para `setWorldLoadingProgress`. `enterRoom()` e `switchRoom()` ligam o manager antes do `Promise.all` e desligam depois.
+- Para transições de tela (escolher mapa → trocar sala), a mesma barra é reutilizada com label "Trocando de sala…".
 
-## 5. Onde subir animações (sentar / em pé / etc.)
+## 4. Carregando o mundo nunca sumindo / mapa não aparece
 
-Isso é orientação, não mudança de código. As animações FBX vivem na tabela `bot_animations` e são gerenciadas pelo painel **🤖 Bots** (admin) → seção **"📚 Biblioteca de animações FBX"** → botão de upload. Cada FBX vira uma URL pública no Storage.
+Causa provável: hoje `loadEnvironment` é disparado **duas vezes** na primeira entrada — uma vez em `buildMap()` (linha 2051) e outra em `enterRoom()`. As duas concorrem em `clearEnvironment()` e `currentEnvRoot`, e se o primeiro `loader.load` termina depois do segundo, o cenário fica num estado inconsistente e a promise que `enterRoom` espera pode ficar pendurada se o segundo `assetsPromise` ainda estiver in-flight.
 
-Depois, no painel **🎯 Interações** (admin), no campo **"Animação (URL FBX)"** da interação, você cola a URL do FBX da biblioteca (ou deixa em branco para usar `idle`). O mesmo FBX serve para sentar, deitar, encostar, dançar — o que diferencia é a categoria escolhida na interação e o offset/rotação que você ajusta nos sliders.
+Mudanças:
+- Item 1 já remove a chamada duplicada de `buildMap()`.
+- `loadEnvironment` ganha guarda de concorrência: variável `__envLoadToken` incrementada a cada chamada; callbacks só aplicam resultado se ainda forem o token atual. Caso contrário, só resolvem.
+- Branch de erro em `loadEnvironment` (linha 2174-2178) tem bug: chama `loadEnvironment("bar").then(resolve)` mas `resolve` é do escopo do `new Promise` interno — funciona, mas se "bar" também falhar entra em loop. Trocar por: se `MAPS[0]` existir e for diferente, tentar uma única vez; senão `resolve()` direto (sem cenário, ainda valida o `enterRoom`).
+- Garantir que `hideWorldLoading()` é chamado mesmo se `loadEnvironment` lançar (já está em `finally` no `enterRoom`, mas conferir o `switchRoom` em ~1748 — falta `try/finally` igual).
 
-Fluxo: subir 1x no painel Bots → reutilizar a URL em quantas interações (e objetos) quiser.
+Resultado: a barra carrega até 100% e some; o cenário aparece pronto.
 
-## Arquivos afetados
+## 5. Thumbnail de mapa por upload de imagem
+
+Já existe a tabela `map_thumbnails (map_id, thumb_url)` e o bucket público `map-assets`. Hoje só usamos o campo `thumb` (emoji) em `custom_maps`.
+
+Mudanças:
+- `public/app.js`, no modal de `openMapEdit`:
+  - Adicionar um bloco "Thumbnail (imagem)" com `<input type="file" accept="image/*">` mais preview da imagem atual e botão "Remover imagem".
+  - Ao salvar com arquivo: upload em `map-assets/thumbs/{slug}-{ts}.{ext}`, pegar `getPublicUrl`, `upsert` em `map_thumbnails` por `map_id = slug`. Ao remover: `delete from map_thumbnails where map_id = slug` (sem mexer no Storage para não quebrar caches).
+- `loadCustomMaps()`: também buscar `map_thumbnails` e juntar `thumbUrl` em cada item de `MAPS`.
+- `renderMapTiles()`: se `m.thumbUrl` existir, renderizar `<img src=...>` no `.char-tile-thumb` em vez do emoji. Caso contrário, manter o emoji `m.thumb` como fallback.
+- Modal "criar novo mapa" ganha o mesmo campo opcional (idêntico fluxo).
+
+## Resumo dos arquivos afetados
 
 - `public/app.js`:
-  - Ajustar `camera.far`, remover/relaxar `scene.fog`, novo `clampCameraToCeiling()` no loop.
-  - Neutralizar `updateCameraOcclusion()` e remover `ceilingCutoff` em `loadEnvironment`.
-  - Registrar `interactionsAdminPanel` (e `radioAdminPanel`) em `setupFloatingPanels()`.
-  - Tornar `loadEnvironment` e `renderAssets` aguardáveis; `enterRoom`/`switchRoom` esperam terminar antes de `hideWorldLoading`.
+  - Remover `loadEnvironment` do boot inicial.
+  - Adicionar classe `pre-world` no body e remover após `enterRoom`.
+  - `loadCustomMaps`: limpar `currentMapId` se mapa sumiu; juntar `thumbUrl` de `map_thumbnails`.
+  - `openMapEdit` / criar mapa: campo de upload de thumbnail.
+  - Delete completo: cascata em todas as tabelas `map_*` ligadas ao `map_id`.
+  - `loadEnvironment`: token de concorrência, fallback seguro sem loop.
+  - `switchRoom`: envolver em `try/finally` para garantir `hideWorldLoading`.
+  - `setupWorldLoading`: `setWorldLoadingProgress`, integração com `THREE.LoadingManager`.
+  - `renderMapTiles`: usar `<img>` quando houver `thumbUrl`.
+- `public/index.html`: substituir orb por barra de progresso + `%`.
+- `public/styles.css`: estilos da barra + regra `body.pre-world #scene, body.pre-world #hud, body.pre-world #radioHud { display: none }`.
 
-Sem alterações em HTML, CSS ou banco.
+Sem migrations: `map_thumbnails` já existe.

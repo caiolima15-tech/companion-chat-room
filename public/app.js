@@ -108,8 +108,18 @@ const authError = document.querySelector("#authError");
 const MAP_WIDTH = 18;
 const MAP_DEPTH = 14;
 const clock = new THREE.Clock();
-const loader = new GLTFLoader();
-const fbxLoader = new FBXLoader();
+const loadingManager = new THREE.LoadingManager();
+loadingManager.onProgress = (url, loaded, total) => {
+  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+};
+loadingManager.onStart = (url, loaded, total) => {
+  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+};
+loadingManager.onLoad = () => {
+  try { window.setWorldLoadingProgress?.(1, 1); } catch {}
+};
+const loader = new GLTFLoader(loadingManager);
+const fbxLoader = new FBXLoader(loadingManager);
 const exporter = new GLTFExporter();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
@@ -279,6 +289,7 @@ function showAuth(mode = "signin") {
   authOverlay.style.display = "grid";
   authOverlay.hidden = false;
   document.body.classList.remove("in-world");
+  document.body.classList.remove("world-ready");
   try { window.radioLeaveRoom?.(); } catch {}
   try { window.interactionsLeaveRoom?.(); } catch {}
   try { window.hideWorldLoading?.(true); } catch {}
@@ -479,6 +490,7 @@ async function enterRoom() {
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
     try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
 
+    document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
@@ -897,14 +909,17 @@ function renderMapTiles() {
     const count = lobbyCounts[m.id] || 0;
     const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
     const isCurrent = currentRoomChannelsMapId === m.id;
+    const thumbInner = m.thumbUrl
+      ? `<img src="${m.thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;">`
+      : `<span style="font-size:32px;">${m.thumb}</span>`;
     return `
       <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;">
-        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;">
+        <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;z-index:2;">
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
         ${isAdmin ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
-        <div class="char-tile-thumb" style="font-size:32px">${m.thumb}</div>
+        <div class="char-tile-thumb" style="display:flex;align-items:center;justify-content:center;overflow:hidden;">${thumbInner}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
       </div>`;
@@ -2047,8 +2062,8 @@ function buildMap() {
   scene.fog = null;
   stage.add(envGroup);
 
-  // Load initial environment
-  loadEnvironment(currentMapId);
+  // Cenário NÃO é carregado aqui — só dentro de enterRoom()/switchRoom(),
+  // para evitar mostrar um mapa de fundo antes do usuário escolher sala.
 }
 
 function clearEnvironment() {
@@ -2106,8 +2121,21 @@ function applyEnvTransform() {
   updateBoundaryHelper();
 }
 
+let __envLoadToken = 0;
 async function loadEnvironment(mapId) {
-  const map = MAPS.find((m) => m.id === mapId) || MAPS[0];
+  const token = ++__envLoadToken;
+  let map = MAPS.find((m) => m.id === mapId);
+  if (!map) {
+    // Mapa foi excluído / não existe mais — cair pro primeiro disponível.
+    map = MAPS[0];
+    if (!map) {
+      // Sem mapas: limpa cenário e sai.
+      clearEnvironment();
+      currentEnvRoot = null;
+      localStorage.removeItem("neon-tap-room-map");
+      return;
+    }
+  }
   currentMapId = map.id;
   localStorage.setItem("neon-tap-room-map", map.id);
 
@@ -2118,13 +2146,13 @@ async function loadEnvironment(mapId) {
   // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
   const assetsPromise = loadInitialAssets();
 
-
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
 
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
+    if (token !== __envLoadToken) { try { await assetsPromise; } catch {} return; }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
@@ -2138,6 +2166,7 @@ async function loadEnvironment(mapId) {
       map.url,
       async (gltf) => {
         try {
+          if (token !== __envLoadToken) return; // outra chamada assumiu
           const env = gltf.scene;
           const box = new THREE.Box3().setFromObject(env);
           const size = box.getSize(new THREE.Vector3());
@@ -2149,13 +2178,13 @@ async function loadEnvironment(mapId) {
           env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
           currentMapTransform = await transformPromise;
+          if (token !== __envLoadToken) return;
           setDarkMode(!!currentMapTransform?.dark_mode);
           applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
           reloadMapLights(currentMapId);
           currentEnvRoot = env;
           applyEnvTransform();
 
-          // Tetos visíveis: nenhuma malha é escondida por altura.
           env.traverse((node) => {
             if (!node.isMesh) return;
             node.castShadow = true;
@@ -2171,12 +2200,10 @@ async function loadEnvironment(mapId) {
       undefined,
       (err) => {
         console.error("Falha carregando cenário:", err);
-        if (map.id !== "bar") {
-          localStorage.removeItem("neon-tap-room-map");
-          loadEnvironment("bar").then(resolve);
-        } else {
-          resolve();
-        }
+        // Não tenta fallback automático para "bar" (pode estar oculto).
+        // Apenas resolve — o jogador entra num cenário vazio mas a UI segue.
+        localStorage.removeItem("neon-tap-room-map");
+        resolve();
       },
     );
   });
@@ -3685,11 +3712,13 @@ supabase
 
 // ===== Custom maps (admin-created) =====
 async function loadCustomMaps() {
-  const { data, error } = await supabase
-    .from("custom_maps")
-    .select("slug, name, url, mood, bg, thumb, hidden")
-    .order("created_at", { ascending: true });
+  const [{ data, error }, { data: thumbs }] = await Promise.all([
+    supabase.from("custom_maps").select("slug, name, url, mood, bg, thumb, hidden").order("created_at", { ascending: true }),
+    supabase.from("map_thumbnails").select("map_id, thumb_url"),
+  ]);
   if (error) { console.warn("custom_maps load:", error.message); return; }
+  const thumbMap = new Map();
+  for (const t of thumbs || []) thumbMap.set(t.map_id, t.thumb_url);
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
   const overrides = new Map();
   const hiddenBuiltins = new Set();
@@ -3716,7 +3745,18 @@ async function loadCustomMaps() {
       if (!ov) return { ...b };
       return { ...b, ...ov, url: ov.url || b.url, overridden: true };
     });
-  MAPS = [...merged, ...customs];
+  MAPS = [...merged, ...customs].map((m) => ({ ...m, thumbUrl: thumbMap.get(m.id) || null }));
+  // Se o mapa atual foi excluído/oculto, escolhe outro disponível
+  if (!MAPS.some((m) => m.id === currentMapId)) {
+    const next = MAPS[0]?.id || null;
+    if (next) {
+      currentMapId = next;
+      selectedMapId = next;
+      localStorage.setItem("neon-tap-room-map", next);
+    } else {
+      localStorage.removeItem("neon-tap-room-map");
+    }
+  }
   if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
 }
 loadCustomMaps();
@@ -3724,6 +3764,9 @@ loadCustomMaps();
 supabase
   .channel("custom-maps")
   .on("postgres_changes", { event: "*", schema: "public", table: "custom_maps" }, () => {
+    loadCustomMaps();
+  })
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_thumbnails" }, () => {
     loadCustomMaps();
   })
   .subscribe();
@@ -3830,6 +3873,15 @@ async function openMapEdit(mapId) {
           </label>
           <div style="font-size:11px;color:#777;margin-top:6px;word-break:break-all;">Atual: ${m.url || "—"}</div>
         </div>
+        <div style="border:1px dashed #444;border-radius:8px;padding:10px;">
+          <div style="font-size:12px;color:#9aa;margin-bottom:6px;">Thumbnail (imagem) — opcional</div>
+          ${m.thumbUrl ? `<img src="${m.thumbUrl}" alt="" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-bottom:6px;">` : ""}
+          <label class="file-picker" style="display:block;text-align:center;">
+            <input id="meThumbImg" type="file" accept="image/*">
+            ${m.thumbUrl ? "Trocar imagem" : "Escolher imagem"}
+          </label>
+          ${m.thumbUrl ? `<button id="meThumbRemove" type="button" style="margin-top:6px;background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px;width:100%;">Remover imagem</button>` : ""}
+        </div>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
           ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
@@ -3857,6 +3909,7 @@ async function openMapEdit(mapId) {
     const mood = modal.querySelector("#meMood").value;
     const bg = modal.querySelector("#meBg").value;
     const file = modal.querySelector("#meGlb").files?.[0];
+    const thumbFile = modal.querySelector("#meThumbImg")?.files?.[0];
     const saveBtn = modal.querySelector("#meSave");
     saveBtn.disabled = true;
     status.textContent = "Salvando…";
@@ -3876,6 +3929,20 @@ async function openMapEdit(mapId) {
         { onConflict: "slug" }
       );
       if (error) throw error;
+      if (thumbFile) {
+        status.textContent = "Enviando thumbnail…";
+        const ext = (thumbFile.name.split(".").pop() || "png").toLowerCase();
+        const tpath = `thumbs/${m.id}-${Date.now()}.${ext}`;
+        const { error: tErr } = await supabase.storage.from("map-assets")
+          .upload(tpath, thumbFile, { contentType: thumbFile.type || "image/png", upsert: false });
+        if (tErr) throw tErr;
+        const { data: tpub } = supabase.storage.from("map-assets").getPublicUrl(tpath);
+        const { error: thErr } = await supabase.from("map_thumbnails").upsert(
+          { map_id: m.id, thumb_url: tpub.publicUrl, updated_by: myId, updated_at: new Date().toISOString() },
+          { onConflict: "map_id" }
+        );
+        if (thErr) throw thErr;
+      }
       status.textContent = "Salvo ✓";
       await loadCustomMaps();
       // Se o mapa atual foi editado, recarrega
@@ -3887,14 +3954,34 @@ async function openMapEdit(mapId) {
     }
   };
 
+  modal.querySelector("#meThumbRemove")?.addEventListener("click", async () => {
+    if (!confirm("Remover a imagem de thumbnail?")) return;
+    status.textContent = "Removendo…";
+    try {
+      const { error } = await supabase.from("map_thumbnails").delete().eq("map_id", m.id);
+      if (error) throw error;
+      status.textContent = "Removido ✓";
+      await loadCustomMaps();
+      setTimeout(close, 500);
+    } catch (e) {
+      status.textContent = "Erro: " + (e.message || e);
+    }
+  });
+
+  async function cascadeDeleteMapData(mapId) {
+    const tables = ["map_thumbnails", "map_transforms", "map_lights", "map_radios", "map_assets", "map_bots", "map_asset_interactions"];
+    await Promise.all(tables.map((t) => supabase.from(t).delete().eq("map_id", mapId)));
+  }
+
   modal.querySelector("#meDelete").onclick = async () => {
-    if (!confirm(`Excluir o mapa "${m.name}"? Ele não aparecerá mais no menu.`)) return;
+    if (!confirm(`Excluir o mapa "${m.name}"? Todos os objetos, luzes e configurações dele serão apagados.`)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
     status.textContent = "Excluindo…";
     try {
+      await cascadeDeleteMapData(m.id);
       if (isBuiltin) {
-        // Built-in: marca como hidden (upsert)
+        // Built-in: marca como hidden (a entrada hardcoded continua existindo no código, mas some da UI)
         const { error } = await supabase.from("custom_maps").upsert(
           { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
           { onConflict: "slug" }
@@ -5322,8 +5409,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 (function setupWorldLoading() {
   const el = document.getElementById("worldLoadingOverlay");
   if (!el) return;
+  const fill = document.getElementById("worldLoadingBarFill");
+  const pct = document.getElementById("worldLoadingPercent");
   let counter = 0;
   let hideTimer = null;
+  let lastPct = 0;
+  function setPct(p) {
+    p = Math.max(0, Math.min(1, p));
+    lastPct = p;
+    if (fill) fill.style.width = (p * 100).toFixed(0) + "%";
+    if (pct) pct.textContent = (p * 100).toFixed(0) + "%";
+  }
+  window.setWorldLoadingProgress = function (loaded, total) {
+    if (!total || total <= 0) return;
+    const p = loaded / total;
+    if (p >= lastPct) setPct(p);
+  };
   window.showWorldLoading = function (label) {
     counter++;
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -5331,15 +5432,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const t = el.querySelector(".world-loading-text");
       if (t) t.textContent = label;
     }
+    setPct(0.05); // mostra um traço inicial
     el.hidden = false;
   };
   window.hideWorldLoading = function (force) {
     if (force) counter = 0;
     else counter = Math.max(0, counter - 1);
     if (counter > 0) return;
-    // small delay so the world has a frame to paint
+    setPct(1);
     if (hideTimer) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; }, 250);
+    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; lastPct = 0; }, 300);
   };
 })();
 
