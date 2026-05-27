@@ -1,116 +1,69 @@
+## 1. Alcance visível (skybox preto)
 
-# Interações em objetos: sentar + animações por objeto
+Hoje em `public/app.js`:
+- `camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90)` — far plane corta tudo a 90 m.
+- `scene.fog = new THREE.Fog("#0e1117", 16, 36)` — neblina escurece o skybox antes mesmo de chegar no far.
+- `controls.maxDistance = 11` — limita o quanto o usuário pode afastar a câmera.
 
-Hoje os objetos vivem em `map_assets` (GLBs posicionados pelo admin) e os personagens já têm `mixer` com clips (idle/walk/run/wave/dance/jump). Vou adicionar uma camada de **"interações"** anexada ao objeto: ao chegar perto, aparece um botão flutuante; ao clicar, o avatar trava na pose definida (sentar, encostar, etc.) em cima do objeto, com offset/rotação/altura ajustáveis pelo admin e salvos no banco.
+Mudanças:
+- Aumentar `camera.far` para `2000` e chamar `camera.updateProjectionMatrix()`.
+- Remover a `Fog` padrão (já existe lógica em `applyLightingForMood` que zera fog em vários moods; vou deixar `scene.fog = null` por padrão e só ativar fog quando o mood explicitamente pedir, com `far` muito maior — ex.: `200`).
+- O `maxDistance` do orbit fica controlado pelo item 2 (não mais hardcoded em 11).
 
-## 1. Banco — nova tabela `map_asset_interactions`
+Resultado: o skybox carregado pelo admin aparece de ponta a ponta.
 
-Uma linha = um "ponto de interação" preso a um asset.
+## 2. Paredes não somem mais + zoom respeita teto
 
-Campos:
-- `id`, `asset_id` (FK lógica p/ `map_assets.id`), `map_id` (denormalizado p/ realtime/filtro rápido)
-- `label` (texto do botão, ex: "Sentar", "Encostar", "Dançar aqui")
-- `icon` (emoji curto, ex: "💺")
-- `kind` (`sit` | `pose` | `animation`) — define comportamento padrão
-- `animation_key` (`idle` | `sit` | `wave` | `dance` | `custom`) — qual clip rodar
-- `animation_url` (opcional, FBX/GLB extra carregado por demanda — reaproveita o pipeline de `bot_animations`)
-- `loop` (bool, default true)
-- Pose-offset (relativa ao asset, em coords locais):
-  - `offset_x`, `offset_y`, `offset_z`
-  - `rotation_y` (graus)
-  - `scale_mul` (default 1, raramente usado)
-- `trigger_radius` (metros, default 1.5 — distância para o botão aparecer)
-- `exit_radius` (default `trigger_radius + 0.5`)
-- `occupancy` (`single` | `multi`) — se single, só 1 avatar por vez; vai usar canal de presença
-- `created_by`, `created_at`, `updated_at`
-- RLS: leitura para todos os autenticados, escrita só para admin (mesmo padrão de `map_assets`).
+Hoje:
+- `updateCameraOcclusion()` (linha ~2279) deixa qualquer parede entre câmera e jogador transparente.
+- `ceilingCutoff = 2.8` em `loadEnvironment` esconde qualquer mesh cuja base esteja acima de 2.8 m — efetivamente apagando tetos.
 
-Sem migração extra de animação: adiciono `sit` ao enum de animações por slug do personagem reaproveitando `bot_animations` (admin cadastra URL de um FBX "sentado" e marca como `sit`) — ou usa o `animation_url` direto da interação se quiser uma animação única por objeto.
+Mudanças:
+- Desligar o fade de paredes: `updateCameraOcclusion()` vira no-op (mantém função para não quebrar chamada no loop, mas só faz `return;`). Sem mais clone de material/`opacity = 0`.
+- Remover o `ceilingCutoff`: tetos ficam visíveis e viram colisores normais (`registerCollidable` já cobre).
+- Restringir zoom da câmera ao interior do recinto: novo helper `clampCameraToCeiling()` chamado a cada frame após `controls.update()`. Faz um raycast de `controls.target` para cima; se acertar um colisor a uma altura `h`, define `controls.maxDistance` dinamicamente de forma que `camera.position.y` nunca ultrapasse `h - 0.3`. Quando não há teto (ar livre), `maxDistance` volta para um valor amplo (ex.: 60) para permitir afastar bastante. Isso resolve "zoom out não consegue afastar dentro do estabelecimento com teto" porque o limite passa a ser geométrico, não um número fixo.
 
-> Para `characters`, vou aproveitar a coluna já existente e cadastrar um `sit_url` opcional via migration adicional (pequena) ou via fallback: se o personagem não tiver clip de sentar, usa `animation_url` da própria interação (sempre tem fallback).
+## 3. Painel "🎯 Interações" não minimiza
 
-## 2. Pipeline 3D (`public/app.js`)
+O HTML já tem `data-panel-min`, `.panel-head` e `.panel-body`, mas `setupFloatingPanels()` em `public/app.js` (~linha 4619) não registra esse painel — só registra `botsAdminPanel`, `mapAdminPanel`, `lightsAdminPanel` e `layersPanel`.
 
-### Carregar interações
-- `loadInteractions(currentMapId)` em `loadInitialAssets`; cache em `interactionsByAssetId`.
-- Realtime: `postgres_changes` em `map_asset_interactions` filtrado por `map_id=currentMapId`.
+Mudança: adicionar `makePanel(document.getElementById("interactionsAdminPanel"))` ao final do bloco. Como o painel já segue a convenção `.panel-head` / `.panel-body` / `[data-panel-min]` / `[data-panel-close]`, basta isso para drag + minimizar + fechar funcionarem.
 
-### Detecção de proximidade
-- No loop de animação, a cada ~150ms checar distância do avatar local até cada interação. Calcula posição mundial: `asset.matrixWorld * (offset)`.
-- Se `dist < trigger_radius` → mostra o botão HTML flutuante daquela interação (3D→2D projetado, igual aos `plate` de nickname).
-- Se já sentado e `kind===sit` → ignora outras interações até levantar.
+Bônus: faço o mesmo para o `radioAdminPanel` (mesma estrutura — também não está registrado).
 
-### Botão flutuante
-- HTML `<button class="interaction-prompt">{icon} {label}</button>` posicionado por `position:fixed` + projeção do `vector3.project(camera)`.
-- Clique → entra no estado sentado (ver abaixo).
-- Estilo: pílula glassmorphism roxa pequena, com leve flutuação/glow.
+## 4. Carregar mapa antes de aparecer dentro
 
-### Estado "sentado"
-- Novo modo do player local: `sittingAt = { interactionId, assetId, animKey }`.
-- Movimento WASD bloqueado enquanto sentado; aparece prompt "Levantar (E)" no mesmo botão.
-- Calcula world-pose do offset e faz:
-  - `entity.group.position.copy(worldPos)`
-  - `entity.group.rotation.y = assetRotY + interactionRotY`
-- Toca clip (`sit`/custom) em loop; se não houver, fica em `idle` parado.
-- Broadcast via canal de presence: `{ sittingAt: interactionId, animKey }` — outros clients reproduzem a mesma pose no avatar remoto (sem rede de física, só "fixa no offset").
+Hoje `enterRoom()` faz:
 
-### Levantar
-- `E` ou clique no botão "Levantar" → restaura controle, volta `idle`, dist mínima `> exit_radius` antes de re-trigger.
+```text
+await Promise.all([loadInitialAssets(), loadInitialChat()]);
+await connectRealtime();
+await radioEnterRoom / interactionsEnterRoom
+hideWorldLoading()
+```
 
-## 3. Painel admin (escondido em "Ferramentas")
+Problema: `loadInitialAssets()` chama `renderAssets()`, que dispara `loader.load(...)` para cada GLB **sem await** — resolve imediato e a tela mostra o jogador no vazio enquanto os GLBs ainda baixam. `loadEnvironment(mapId)` também é fire-and-forget.
 
-Novo botão `🎯 Interações` na barra admin (junto com `📻 Rádio`, `💡 Luzes`, etc.), classe `admin-only`.
+Mudanças:
+- `loadEnvironment(mapId)` vira `async` e retorna uma `Promise` que só resolve quando o `GLTFLoader.load` chama o callback de sucesso/erro (envolver em `new Promise`).
+- `renderAssets()` retorna `Promise.all(pendingLoads)` — cada `loader.load` vira uma promise que resolve no sucesso ou no fallback.
+- `loadInitialAssets()` passa a aguardar `loadEnvironment(currentMapId)` E `renderAssets(...)`.
+- `enterRoom()` e `switchRoom()` aguardam tudo antes de chamar `hideWorldLoading()`. A overlay roxa "Carregando o mundo" só some quando o cenário + GLBs estão prontos. A aba do navegador (favicon/spinner do browser) também para de girar porque não há mais fetches pendentes no momento em que o jogador entra.
 
-Abre `#interactionsAdminPanel` (mesmo estilo glass dos outros painéis), com 2 modos:
+## 5. Onde subir animações (sentar / em pé / etc.)
 
-### Modo lista
-- Lista interações da sala atual agrupadas por asset (nome do GLB).
-- Cada linha: ícone, label, kind, botão "Editar", "Excluir", "Testar (Sentar aqui)".
+Isso é orientação, não mudança de código. As animações FBX vivem na tabela `bot_animations` e são gerenciadas pelo painel **🤖 Bots** (admin) → seção **"📚 Biblioteca de animações FBX"** → botão de upload. Cada FBX vira uma URL pública no Storage.
 
-### Modo edição (form)
-- Seletor de asset:
-  - Dropdown com `map_assets` da sala (mostra nome + thumbnail se houver).
-  - OU "Selecionar no mundo" → entra em modo "clique no objeto"; raycast no canvas resolve o asset clicado.
-- Campos:
-  - Label, ícone, kind, animação (dropdown: idle/sit/wave/dance/custom + URL),
-  - **Painel de ajuste em tempo real** com sliders/inputs numéricos:
-    - `offset_x/y/z` (−3 a +3, step 0.05)
-    - `rotation_y` (−180 a 180, step 5)
-    - `trigger_radius` (0.5 a 5)
-  - Toggle `loop`, `occupancy`.
-- Enquanto edita, o avatar do admin **fica em pré-visualização sentado** no offset atual em tempo real (sem salvar). Mexer no slider move o avatar imediatamente — exatamente como o "Pose Debug" já faz para o offset do personagem.
-- Botões: **Salvar**, **Cancelar**, **Excluir**.
-- Salvar → `supabase.from("map_asset_interactions").upsert(...)`; realtime propaga.
+Depois, no painel **🎯 Interações** (admin), no campo **"Animação (URL FBX)"** da interação, você cola a URL do FBX da biblioteca (ou deixa em branco para usar `idle`). O mesmo FBX serve para sentar, deitar, encostar, dançar — o que diferencia é a categoria escolhida na interação e o offset/rotação que você ajusta nos sliders.
 
-## 4. Animações importadas para objetos / personagens
+Fluxo: subir 1x no painel Bots → reutilizar a URL em quantas interações (e objetos) quiser.
 
-- O admin cadastra clips extras em `bot_animations` (já existe) ou cola URL direto no campo `animation_url` da interação.
-- Loader: reaproveitar `loadCharacterAssets` / `FBXLoader` já presente. Adicionar helper `loadExternalClip(url)` com cache.
-- Quando o avatar entra em interação com `animation_url`, baixa o FBX/GLB, extrai `AnimationClip`, faz `mixer.clipAction(clip).play()` (com retarget já existente em `SkeletonUtils`).
+## Arquivos afetados
 
-## 5. Arquivos afetados
-
-- **Migration**: nova tabela `map_asset_interactions` + RLS + índice por `map_id`. Opcional: `ALTER TABLE characters ADD COLUMN sit_url text`.
-- `public/index.html`: botão admin `🎯 Interações`, `#interactionsAdminPanel`, `#interactionPrompt` flutuante.
-- `public/styles.css`: estilo do botão flutuante, painel admin, highlight do asset selecionado.
 - `public/app.js`:
-  - `loadInteractions()`, cache, realtime.
-  - Loop de proximidade + projeção do botão.
-  - Estado `sittingAt`, broadcast via presence, render remoto.
-  - Raycaster "selecionar asset no mundo".
-  - Painel admin CRUD + sliders em tempo real.
-  - Helper `loadExternalClip` com cache.
+  - Ajustar `camera.far`, remover/relaxar `scene.fog`, novo `clampCameraToCeiling()` no loop.
+  - Neutralizar `updateCameraOcclusion()` e remover `ceilingCutoff` em `loadEnvironment`.
+  - Registrar `interactionsAdminPanel` (e `radioAdminPanel`) em `setupFloatingPanels()`.
+  - Tornar `loadEnvironment` e `renderAssets` aguardáveis; `enterRoom`/`switchRoom` esperam terminar antes de `hideWorldLoading`.
 
-## 6. Detalhes técnicos
-
-- **Sincronização entre clients**: presence payload já existe; só adiciono `sittingAt` e `animKey`. Avatares remotos: se vier `sittingAt`, busca interação no cache, posiciona no offset e toca clip. Sem dead-reckoning de movimento enquanto sentado.
-- **Performance**: checagem de proximidade só contra interações da sala atual (poucas), e apenas a 6–8 Hz. Botão só re-renderiza quando a interação ativa muda.
-- **Conflito com múltiplos pontos próximos**: escolhe o mais próximo; se empate, o de menor `id`.
-- **Occupancy=single**: usa o canal de presence pra ver se outro `sittingAt===id` já está ativo; bloqueia clique com tooltip "Ocupado".
-- **Edge cases**: sair da sala / logout / trocar de sala → força `standUp()` e limpa estado; HUD do prompt some.
-
-## 7. Fora de escopo (deixar pra depois)
-
-- IK real para alinhar mãos/pés no objeto (vamos só posicionar o avatar; o ajuste fino fica nos sliders do admin).
-- Animações de transição (entrar/sair da cadeira); por ora cross-fade simples de 0.2s entre idle ↔ sit.
-- Interações multi-usuário coordenadas (ex: dois sentando no mesmo sofá em slots diferentes) — possível adicionar depois com `slot_index` na tabela.
+Sem alterações em HTML, CSS ou banco.
