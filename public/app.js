@@ -2154,13 +2154,10 @@ async function loadEnvironment(mapId) {
       currentEnvRoot = env;
       applyEnvTransform();
 
-      // Determine "ceiling cutoff" — meshes whose bottom sits above this Y are hidden.
-      const ceilingCutoff = 2.8;
-
+      // Tetos visíveis: nenhuma malha é escondida por altura. Tudo vira colisor
+      // (registerCollidable abaixo) e a câmera é limitada por clampCameraToCeiling().
       env.traverse((node) => {
         if (!node.isMesh) return;
-        const meshBox = new THREE.Box3().setFromObject(node);
-        if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
         node.castShadow = true;
         node.receiveShadow = true;
       });
