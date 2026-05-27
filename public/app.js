@@ -1358,7 +1358,7 @@ async function applyCharacter(entity, slug) {
 // ============ Realtime ============
 async function loadInitialAssets() {
   const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
-  renderAssets((data || []).map(rowToAsset));
+  await renderAssets((data || []).map(rowToAsset));
 }
 
 async function loadInitialChat() {
