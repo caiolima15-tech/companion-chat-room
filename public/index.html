@@ -608,13 +608,9 @@
 
     <div id="worldLoadingOverlay" hidden aria-hidden="true">
       <div class="world-loading-inner">
-        <div class="world-loading-orb">
-          <div class="world-loading-orb-ring"></div>
-          <div class="world-loading-orb-ring world-loading-orb-ring-2"></div>
-          <div class="world-loading-orb-core"></div>
-        </div>
         <div class="world-loading-text">Carregando o mundo</div>
-        <div class="world-loading-sub">Preparando os personagens e a iluminação…</div>
+        <div class="world-loading-bar"><div class="world-loading-bar-fill" id="worldLoadingBarFill"></div></div>
+        <div class="world-loading-sub"><span id="worldLoadingPercent">0%</span> · Preparando o cenário…</div>
       </div>
     </div>
     <button id="interactionPrompt" type="button" hidden></button>
