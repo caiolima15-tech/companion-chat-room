@@ -2212,7 +2212,13 @@ async function loadEnvironment(mapId, opts = {}) {
     );
   });
 
-  await Promise.all([envPromise, assetsPromise.catch(() => {})]);
+  if (waitForAssets) {
+    await Promise.all([envPromise, assetsPromise.catch(() => {})]);
+  } else {
+    await envPromise;
+    // assetsPromise continua em background; erros silenciosos
+    assetsPromise.catch(() => {});
+  }
 }
 
 
