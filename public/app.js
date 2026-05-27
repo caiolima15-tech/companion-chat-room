@@ -2174,13 +2174,14 @@ async function loadEnvironment(mapId, opts = {}) {
 
   const envPromise = new Promise((resolve) => {
     let settled = false;
+    let loadTimeout = null;
     const safeResolve = () => {
       if (settled) return;
       settled = true;
-      clearTimeout(loadTimeout);
+      if (loadTimeout) clearTimeout(loadTimeout);
       resolve();
     };
-    const loadTimeout = setTimeout(() => {
+    loadTimeout = setTimeout(() => {
       console.warn("Cenário demorou demais; liberando entrada e mantendo o carregamento em segundo plano.");
       safeResolve();
     }, 12000);
