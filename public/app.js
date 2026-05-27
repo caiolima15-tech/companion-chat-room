@@ -3708,11 +3708,13 @@ supabase
 
 // ===== Custom maps (admin-created) =====
 async function loadCustomMaps() {
-  const { data, error } = await supabase
-    .from("custom_maps")
-    .select("slug, name, url, mood, bg, thumb, hidden")
-    .order("created_at", { ascending: true });
+  const [{ data, error }, { data: thumbs }] = await Promise.all([
+    supabase.from("custom_maps").select("slug, name, url, mood, bg, thumb, hidden").order("created_at", { ascending: true }),
+    supabase.from("map_thumbnails").select("map_id, thumb_url"),
+  ]);
   if (error) { console.warn("custom_maps load:", error.message); return; }
+  const thumbMap = new Map();
+  for (const t of thumbs || []) thumbMap.set(t.map_id, t.thumb_url);
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
   const overrides = new Map();
   const hiddenBuiltins = new Set();
@@ -3739,7 +3741,18 @@ async function loadCustomMaps() {
       if (!ov) return { ...b };
       return { ...b, ...ov, url: ov.url || b.url, overridden: true };
     });
-  MAPS = [...merged, ...customs];
+  MAPS = [...merged, ...customs].map((m) => ({ ...m, thumbUrl: thumbMap.get(m.id) || null }));
+  // Se o mapa atual foi excluído/oculto, escolhe outro disponível
+  if (!MAPS.some((m) => m.id === currentMapId)) {
+    const next = MAPS[0]?.id || null;
+    if (next) {
+      currentMapId = next;
+      selectedMapId = next;
+      localStorage.setItem("neon-tap-room-map", next);
+    } else {
+      localStorage.removeItem("neon-tap-room-map");
+    }
+  }
   if (typeof renderMapTiles === "function" && mapSelectOverlay && !mapSelectOverlay.hidden) renderMapTiles();
 }
 loadCustomMaps();
