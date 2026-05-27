@@ -638,7 +638,7 @@ input:focus {
   /* Hide desktop world-hud on mobile; reveal via mobile bar — ABOVE the bar */
   .world-hud {
     left: 12px; right: 12px;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(96px + env(safe-area-inset-bottom));
     padding: 10px;
     border-radius: 18px;
     background: rgba(14, 16, 22, 0.55);
@@ -672,7 +672,7 @@ input:focus {
   #emoteCluster {
     position: fixed;
     left: 50%;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(96px + env(safe-area-inset-bottom));
     transform: translate(-50%, 12px);
     display: flex; gap: 10px;
     padding: 10px 14px;
@@ -707,7 +707,7 @@ input:focus {
     border-top: 0;
     position: absolute;
     left: 8px;
-    bottom: calc(76px + env(safe-area-inset-bottom));
+    bottom: calc(96px + env(safe-area-inset-bottom));
     z-index: 35;
     display: grid;
     grid-template-columns: repeat(3, 38px);
