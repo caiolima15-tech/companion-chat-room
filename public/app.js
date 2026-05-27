@@ -5408,8 +5408,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 (function setupWorldLoading() {
   const el = document.getElementById("worldLoadingOverlay");
   if (!el) return;
+  const fill = document.getElementById("worldLoadingBarFill");
+  const pct = document.getElementById("worldLoadingPercent");
   let counter = 0;
   let hideTimer = null;
+  let lastPct = 0;
+  function setPct(p) {
+    p = Math.max(0, Math.min(1, p));
+    lastPct = p;
+    if (fill) fill.style.width = (p * 100).toFixed(0) + "%";
+    if (pct) pct.textContent = (p * 100).toFixed(0) + "%";
+  }
+  window.setWorldLoadingProgress = function (loaded, total) {
+    if (!total || total <= 0) return;
+    const p = loaded / total;
+    if (p >= lastPct) setPct(p);
+  };
   window.showWorldLoading = function (label) {
     counter++;
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
@@ -5417,15 +5431,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const t = el.querySelector(".world-loading-text");
       if (t) t.textContent = label;
     }
+    setPct(0.05); // mostra um traço inicial
     el.hidden = false;
   };
   window.hideWorldLoading = function (force) {
     if (force) counter = 0;
     else counter = Math.max(0, counter - 1);
     if (counter > 0) return;
-    // small delay so the world has a frame to paint
+    setPct(1);
     if (hideTimer) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; }, 250);
+    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; lastPct = 0; }, 300);
   };
 })();
 
