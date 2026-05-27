@@ -3227,6 +3227,7 @@ function animate() {
     camera.position.lerp(f.camera, Math.min(1, delta * 5));
     if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
+  clampCameraToCeiling();
   controls.update();
   updateCameraOcclusion();
   renderer.render(scene, camera);
