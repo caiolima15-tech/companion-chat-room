@@ -2117,8 +2117,21 @@ function applyEnvTransform() {
   updateBoundaryHelper();
 }
 
+let __envLoadToken = 0;
 async function loadEnvironment(mapId) {
-  const map = MAPS.find((m) => m.id === mapId) || MAPS[0];
+  const token = ++__envLoadToken;
+  let map = MAPS.find((m) => m.id === mapId);
+  if (!map) {
+    // Mapa foi excluído / não existe mais — cair pro primeiro disponível.
+    map = MAPS[0];
+    if (!map) {
+      // Sem mapas: limpa cenário e sai.
+      clearEnvironment();
+      currentEnvRoot = null;
+      localStorage.removeItem("neon-tap-room-map");
+      return;
+    }
+  }
   currentMapId = map.id;
   localStorage.setItem("neon-tap-room-map", map.id);
 
@@ -2129,13 +2142,13 @@ async function loadEnvironment(mapId) {
   // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
   const assetsPromise = loadInitialAssets();
 
-
   // Busca o transform salvo pelo admin (não bloqueia o load)
   const transformPromise = fetchMapTransform(map.id);
 
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
+    if (token !== __envLoadToken) { try { await assetsPromise; } catch {} return; }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
@@ -2149,6 +2162,7 @@ async function loadEnvironment(mapId) {
       map.url,
       async (gltf) => {
         try {
+          if (token !== __envLoadToken) return; // outra chamada assumiu
           const env = gltf.scene;
           const box = new THREE.Box3().setFromObject(env);
           const size = box.getSize(new THREE.Vector3());
@@ -2160,13 +2174,13 @@ async function loadEnvironment(mapId) {
           env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
           currentMapTransform = await transformPromise;
+          if (token !== __envLoadToken) return;
           setDarkMode(!!currentMapTransform?.dark_mode);
           applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
           reloadMapLights(currentMapId);
           currentEnvRoot = env;
           applyEnvTransform();
 
-          // Tetos visíveis: nenhuma malha é escondida por altura.
           env.traverse((node) => {
             if (!node.isMesh) return;
             node.castShadow = true;
@@ -2182,12 +2196,10 @@ async function loadEnvironment(mapId) {
       undefined,
       (err) => {
         console.error("Falha carregando cenário:", err);
-        if (map.id !== "bar") {
-          localStorage.removeItem("neon-tap-room-map");
-          loadEnvironment("bar").then(resolve);
-        } else {
-          resolve();
-        }
+        // Não tenta fallback automático para "bar" (pode estar oculto).
+        // Apenas resolve — o jogador entra num cenário vazio mas a UI segue.
+        localStorage.removeItem("neon-tap-room-map");
+        resolve();
       },
     );
   });
