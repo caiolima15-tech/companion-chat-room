@@ -1762,11 +1762,10 @@ async function switchRoom(newMapId) {
       if (idx >= 0 && me) players[idx] = { ...players[idx], x: 50, y: 50 };
     }
 
-    await loadInitialChat();
-    await setupRoomChannels(newMapId);
-    await trackLobby();
-    try { await window.radioEnterRoom?.(newMapId); } catch {}
-    try { await window.interactionsEnterRoom?.(newMapId); } catch {}
+    loadInitialChat().catch(() => {});
+    setupRoomChannels(newMapId).then(() => trackLobby()).catch(() => {});
+    Promise.resolve().then(() => window.radioEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
@@ -2163,12 +2162,13 @@ async function loadEnvironment(mapId, opts = {}) {
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
-    if (token !== __envLoadToken) { try { await assetsPromise; } catch {} return; }
+    if (token !== __envLoadToken) { assetsPromise.catch(() => {}); return; }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
     syncMapAdminPanel();
-    try { await assetsPromise; } catch {}
+    if (waitForAssets) try { await assetsPromise; } catch {}
+    else assetsPromise.catch(() => {});
     return;
   }
 
