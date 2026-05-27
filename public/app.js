@@ -489,6 +489,7 @@ async function enterRoom() {
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
     try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
 
+    document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
