@@ -2125,7 +2125,8 @@ function applyEnvTransform() {
 }
 
 let __envLoadToken = 0;
-async function loadEnvironment(mapId) {
+async function loadEnvironment(mapId, opts = {}) {
+  const waitForAssets = opts.waitForAssets !== false;
   const token = ++__envLoadToken;
   let map = MAPS.find((m) => m.id === mapId);
   if (!map) {
