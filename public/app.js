@@ -4184,7 +4184,7 @@ function renderLightsAdminList() {
     } else {
       controls.maxPolarAngle = Math.PI * 0.47;
       controls.minDistance = 2.5;
-      controls.maxDistance = 11;
+      controls.maxDistance = BASE_MAX_DISTANCE;
     }
     if (freeBtn) freeBtn.innerHTML = `🎥 Câmera Livre: ${on ? "ON" : "OFF"}`;
     if (freeBtn) freeBtn.style.background = on ? "rgba(41,211,189,0.85)" : "rgba(15,23,42,0.85)";
