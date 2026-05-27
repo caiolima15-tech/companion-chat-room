@@ -108,8 +108,18 @@ const authError = document.querySelector("#authError");
 const MAP_WIDTH = 18;
 const MAP_DEPTH = 14;
 const clock = new THREE.Clock();
-const loader = new GLTFLoader();
-const fbxLoader = new FBXLoader();
+const loadingManager = new THREE.LoadingManager();
+loadingManager.onProgress = (url, loaded, total) => {
+  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+};
+loadingManager.onStart = (url, loaded, total) => {
+  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+};
+loadingManager.onLoad = () => {
+  try { window.setWorldLoadingProgress?.(1, 1); } catch {}
+};
+const loader = new GLTFLoader(loadingManager);
+const fbxLoader = new FBXLoader(loadingManager);
 const exporter = new GLTFExporter();
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
