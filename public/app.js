@@ -484,17 +484,20 @@ async function bootstrapSession(user) {
 async function enterRoom() {
   window.showWorldLoading?.("Carregando o mundo");
   try {
-    // Aguarda o cenário (mapa + GLBs) terminar de carregar antes de mostrar a sala.
-    await Promise.all([loadEnvironment(currentMapId), loadInitialChat()]);
-    await connectRealtime();
-    try { await window.radioEnterRoom?.(currentMapId); } catch {}
-    try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
-
+    // Aguarda apenas o cenário (mapa base) terminar para mostrar a sala.
+    // Chat, GLBs colocados, realtime, rádio e interações carregam em segundo plano
+    // — o usuário entra mais rápido e os elementos aparecem progressivamente.
+    await loadEnvironment(currentMapId, { waitForAssets: false });
     document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
   }
+  // Pós-entrada (não bloqueia)
+  loadInitialChat().catch(() => {});
+  connectRealtime().catch(() => {});
+  Promise.resolve().then(() => window.radioEnterRoom?.(currentMapId)).catch(() => {});
+  Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
 }
 
 function randomColor() {
