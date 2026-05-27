@@ -3908,6 +3908,7 @@ async function openMapEdit(mapId) {
     const mood = modal.querySelector("#meMood").value;
     const bg = modal.querySelector("#meBg").value;
     const file = modal.querySelector("#meGlb").files?.[0];
+    const thumbFile = modal.querySelector("#meThumbImg")?.files?.[0];
     const saveBtn = modal.querySelector("#meSave");
     saveBtn.disabled = true;
     status.textContent = "Salvando…";
@@ -3927,6 +3928,20 @@ async function openMapEdit(mapId) {
         { onConflict: "slug" }
       );
       if (error) throw error;
+      if (thumbFile) {
+        status.textContent = "Enviando thumbnail…";
+        const ext = (thumbFile.name.split(".").pop() || "png").toLowerCase();
+        const tpath = `thumbs/${m.id}-${Date.now()}.${ext}`;
+        const { error: tErr } = await supabase.storage.from("map-assets")
+          .upload(tpath, thumbFile, { contentType: thumbFile.type || "image/png", upsert: false });
+        if (tErr) throw tErr;
+        const { data: tpub } = supabase.storage.from("map-assets").getPublicUrl(tpath);
+        const { error: thErr } = await supabase.from("map_thumbnails").upsert(
+          { map_id: m.id, thumb_url: tpub.publicUrl, updated_by: myId, updated_at: new Date().toISOString() },
+          { onConflict: "map_id" }
+        );
+        if (thErr) throw thErr;
+      }
       status.textContent = "Salvo ✓";
       await loadCustomMaps();
       // Se o mapa atual foi editado, recarrega
@@ -3938,14 +3953,34 @@ async function openMapEdit(mapId) {
     }
   };
 
+  modal.querySelector("#meThumbRemove")?.addEventListener("click", async () => {
+    if (!confirm("Remover a imagem de thumbnail?")) return;
+    status.textContent = "Removendo…";
+    try {
+      const { error } = await supabase.from("map_thumbnails").delete().eq("map_id", m.id);
+      if (error) throw error;
+      status.textContent = "Removido ✓";
+      await loadCustomMaps();
+      setTimeout(close, 500);
+    } catch (e) {
+      status.textContent = "Erro: " + (e.message || e);
+    }
+  });
+
+  async function cascadeDeleteMapData(mapId) {
+    const tables = ["map_thumbnails", "map_transforms", "map_lights", "map_radios", "map_assets", "map_bots", "map_asset_interactions"];
+    await Promise.all(tables.map((t) => supabase.from(t).delete().eq("map_id", mapId)));
+  }
+
   modal.querySelector("#meDelete").onclick = async () => {
-    if (!confirm(`Excluir o mapa "${m.name}"? Ele não aparecerá mais no menu.`)) return;
+    if (!confirm(`Excluir o mapa "${m.name}"? Todos os objetos, luzes e configurações dele serão apagados.`)) return;
     const delBtn = modal.querySelector("#meDelete");
     delBtn.disabled = true;
     status.textContent = "Excluindo…";
     try {
+      await cascadeDeleteMapData(m.id);
       if (isBuiltin) {
-        // Built-in: marca como hidden (upsert)
+        // Built-in: marca como hidden (a entrada hardcoded continua existindo no código, mas some da UI)
         const { error } = await supabase.from("custom_maps").upsert(
           { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
           { onConflict: "slug" }
