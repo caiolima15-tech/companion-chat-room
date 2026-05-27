@@ -232,9 +232,9 @@ let selectedMapId = currentMapId;
 // ============ Scene ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
-scene.fog = new THREE.Fog("#0e1117", 16, 36);
+scene.fog = null;
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 camera.position.set(4.6, 4.2, 5.0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
