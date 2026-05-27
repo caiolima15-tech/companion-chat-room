@@ -4741,6 +4741,11 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
     });
   }
 
+  // Interactions panel (já tem .panel-head / .panel-body / data-panel-min/close)
+  makePanel(document.getElementById("interactionsAdminPanel"));
+  // Radio panel idem
+  makePanel(document.getElementById("radioAdminPanel"));
+
   // Pose debug removido
 
 })();
