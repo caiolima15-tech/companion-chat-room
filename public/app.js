@@ -3872,6 +3872,15 @@ async function openMapEdit(mapId) {
           </label>
           <div style="font-size:11px;color:#777;margin-top:6px;word-break:break-all;">Atual: ${m.url || "—"}</div>
         </div>
+        <div style="border:1px dashed #444;border-radius:8px;padding:10px;">
+          <div style="font-size:12px;color:#9aa;margin-bottom:6px;">Thumbnail (imagem) — opcional</div>
+          ${m.thumbUrl ? `<img src="${m.thumbUrl}" alt="" style="width:100%;max-height:120px;object-fit:cover;border-radius:6px;margin-bottom:6px;">` : ""}
+          <label class="file-picker" style="display:block;text-align:center;">
+            <input id="meThumbImg" type="file" accept="image/*">
+            ${m.thumbUrl ? "Trocar imagem" : "Escolher imagem"}
+          </label>
+          ${m.thumbUrl ? `<button id="meThumbRemove" type="button" style="margin-top:6px;background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px;width:100%;">Remover imagem</button>` : ""}
+        </div>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
           ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
