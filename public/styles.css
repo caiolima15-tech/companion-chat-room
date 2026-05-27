@@ -255,7 +255,7 @@ h1 {
 
 .world-hud button,
 .file-picker {
-  min-height: 38px;
+  min-height: 44px;
   border-radius: 7px;
   padding: 9px 12px;
   background: #29313d;
@@ -662,7 +662,7 @@ input:focus {
   .world-hud button,
   .world-hud .file-picker {
     flex: 1 1 calc(50% - 8px);
-    min-height: 40px;
+    min-height: 46px;
     padding: 10px;
     justify-content: center;
     text-align: center;
