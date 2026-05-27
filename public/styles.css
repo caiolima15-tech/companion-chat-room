@@ -430,7 +430,7 @@ h1 {
 .chat-panel {
   position: fixed;
   left: 16px;
-  bottom: 16px;
+  bottom: calc(34px + env(safe-area-inset-bottom));
   width: 360px;
   height: 460px;
   max-height: 70vh;
@@ -638,7 +638,7 @@ input:focus {
   /* Hide desktop world-hud on mobile; reveal via mobile bar — ABOVE the bar */
   .world-hud {
     left: 12px; right: 12px;
-    bottom: calc(96px + env(safe-area-inset-bottom));
+    bottom: calc(122px + env(safe-area-inset-bottom));
     padding: 10px;
     border-radius: 18px;
     background: rgba(14, 16, 22, 0.55);
@@ -672,7 +672,7 @@ input:focus {
   #emoteCluster {
     position: fixed;
     left: 50%;
-    bottom: calc(96px + env(safe-area-inset-bottom));
+    bottom: calc(122px + env(safe-area-inset-bottom));
     transform: translate(-50%, 12px);
     display: flex; gap: 10px;
     padding: 10px 14px;
@@ -707,7 +707,7 @@ input:focus {
     border-top: 0;
     position: absolute;
     left: 8px;
-    bottom: calc(96px + env(safe-area-inset-bottom));
+    bottom: calc(122px + env(safe-area-inset-bottom));
     z-index: 35;
     display: grid;
     grid-template-columns: repeat(3, 38px);
@@ -725,14 +725,14 @@ input:focus {
   .chat-panel {
     position: fixed;
     left: 0; right: 0;
-    bottom: calc(var(--kb-offset, 0px) + env(safe-area-inset-bottom) + 8px);
+    bottom: calc(var(--kb-offset, 0px) + env(safe-area-inset-bottom) + 24px);
     top: auto;
     width: 100%;
     height: 45dvh;
     max-height: 45dvh;
     border-radius: 14px 14px 0 0;
     border: 0;
-    background: rgba(10, 10, 20, 0.42);
+    background: rgba(10, 10, 20, 0.5);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     box-shadow: 0 -8px 24px rgba(0,0,0,0.35);
@@ -805,7 +805,7 @@ input:focus {
     align-items: center;
     gap: 8px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
-    background: rgba(0, 0, 0, 0.28);
+    background: rgba(0, 0, 0, 0.5);
     border-top: 1px solid rgba(255,255,255,0.08);
   }
   .chat-form input {
@@ -856,7 +856,7 @@ input:focus {
     justify-content: center;
     align-items: center;
     gap: 18px;
-    padding: 10px 18px calc(22px + env(safe-area-inset-bottom));
+    padding: 10px 18px calc(34px + env(safe-area-inset-bottom));
     background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -867,8 +867,8 @@ input:focus {
   .mobile-bar button {
     pointer-events: auto;
     flex: 0 0 auto;
-    width: 52px;
-    height: 52px;
+    width: 56px;
+    height: 56px;
     max-width: none;
     border-radius: 50%;
     background:
