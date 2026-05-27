@@ -5423,17 +5423,37 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const pct = document.getElementById("worldLoadingPercent");
   let counter = 0;
   let hideTimer = null;
-  let lastPct = 0;
-  function setPct(p) {
-    p = Math.max(0, Math.min(1, p));
-    lastPct = p;
-    if (fill) fill.style.width = (p * 100).toFixed(0) + "%";
-    if (pct) pct.textContent = (p * 100).toFixed(0) + "%";
+  let tickTimer = null;
+  let displayPct = 0;   // o que aparece na UI
+  let realPct = 0;      // o que o LoadingManager reportou
+  let visible = false;
+
+  function paint() {
+    const v = Math.max(0, Math.min(1, displayPct));
+    if (fill) fill.style.width = (v * 100).toFixed(1) + "%";
+    if (pct) pct.textContent = Math.round(v * 100) + "%";
+  }
+  function startTick() {
+    if (tickTimer) return;
+    tickTimer = setInterval(() => {
+      if (!visible) return;
+      // Alvo: nunca além de 95% até hideWorldLoading; depois corre para 100%.
+      const target = Math.max(realPct, 0.95);
+      if (displayPct < target) {
+        // ease-out: avanço proporcional à distância, com piso pra não travar
+        const delta = Math.max(0.004, (target - displayPct) * 0.05);
+        displayPct = Math.min(target, displayPct + delta);
+        paint();
+      }
+    }, 80);
+  }
+  function stopTick() {
+    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
   }
   window.setWorldLoadingProgress = function (loaded, total) {
     if (!total || total <= 0) return;
     const p = loaded / total;
-    if (p >= lastPct) setPct(p);
+    if (p > realPct) realPct = p;
   };
   window.showWorldLoading = function (label) {
     counter++;
@@ -5442,16 +5462,35 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const t = el.querySelector(".world-loading-text");
       if (t) t.textContent = label;
     }
-    setPct(0.05); // mostra um traço inicial
+    realPct = 0.05;
+    displayPct = 0.05;
+    paint();
     el.hidden = false;
+    visible = true;
+    startTick();
   };
   window.hideWorldLoading = function (force) {
     if (force) counter = 0;
     else counter = Math.max(0, counter - 1);
     if (counter > 0) return;
-    setPct(1);
-    if (hideTimer) clearTimeout(hideTimer);
-    hideTimer = setTimeout(() => { el.hidden = true; hideTimer = null; lastPct = 0; }, 300);
+    realPct = 1;
+    // Corre rápido até 100%
+    const finish = setInterval(() => {
+      displayPct = Math.min(1, displayPct + 0.08);
+      paint();
+      if (displayPct >= 1) {
+        clearInterval(finish);
+        if (hideTimer) clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          el.hidden = true;
+          visible = false;
+          hideTimer = null;
+          displayPct = 0;
+          realPct = 0;
+          stopTick();
+        }, 250);
+      }
+    }, 30);
   };
 })();
 
