@@ -3762,6 +3762,9 @@ supabase
   .on("postgres_changes", { event: "*", schema: "public", table: "custom_maps" }, () => {
     loadCustomMaps();
   })
+  .on("postgres_changes", { event: "*", schema: "public", table: "map_thumbnails" }, () => {
+    loadCustomMaps();
+  })
   .subscribe();
 
 // ===== Admin: criar novo mapa via map select overlay =====
