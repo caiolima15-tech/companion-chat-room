@@ -232,9 +232,9 @@ let selectedMapId = currentMapId;
 // ============ Scene ============
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
-scene.fog = new THREE.Fog("#0e1117", 16, 36);
+scene.fog = null;
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 90);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 camera.position.set(4.6, 4.2, 5.0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -258,7 +258,8 @@ const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 2.5;
-controls.maxDistance = 11;
+controls.maxDistance = 60;
+const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
 
 const stage = new THREE.Group();
@@ -472,7 +473,8 @@ async function bootstrapSession(user) {
 async function enterRoom() {
   window.showWorldLoading?.("Carregando o mundo");
   try {
-    await Promise.all([loadInitialAssets(), loadInitialChat()]);
+    // Aguarda o cenário (mapa + GLBs) terminar de carregar antes de mostrar a sala.
+    await Promise.all([loadEnvironment(currentMapId), loadInitialChat()]);
     await connectRealtime();
     try { await window.radioEnterRoom?.(currentMapId); } catch {}
     try { await window.interactionsEnterRoom?.(currentMapId); } catch {}
@@ -936,7 +938,8 @@ confirmMapButton?.addEventListener("click", async () => {
   const switching = selectedMapId !== currentMapId;
 
   if (switching) {
-    loadEnvironment(selectedMapId);
+    window.showWorldLoading?.("Carregando o mundo");
+    await loadEnvironment(selectedMapId);
     const myEntity = playerEntities.get(myId);
     if (myEntity) {
       myEntity.group.position.set(0, 0, 0);
@@ -1357,7 +1360,7 @@ async function applyCharacter(entity, slug) {
 // ============ Realtime ============
 async function loadInitialAssets() {
   const { data } = await supabase.from("map_assets").select("*").eq("map_id", currentMapId).order("created_at");
-  renderAssets((data || []).map(rowToAsset));
+  await renderAssets((data || []).map(rowToAsset));
 }
 
 async function loadInitialChat() {
@@ -2112,8 +2115,8 @@ async function loadEnvironment(mapId) {
   applyLightingForMood(map.mood);
   clearEnvironment();
   currentEnvRoot = null;
-  // Recarrega GLBs colocados que pertencem a este mapa
-  loadInitialAssets();
+  // Recarrega GLBs colocados que pertencem a este mapa (em paralelo com o env)
+  const assetsPromise = loadInitialAssets();
 
 
   // Busca o transform salvo pelo admin (não bloqueia o load)
@@ -2121,63 +2124,64 @@ async function loadEnvironment(mapId) {
 
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
-    (async () => {
-      currentMapTransform = await transformPromise;
-      setDarkMode(!!currentMapTransform?.dark_mode);
-      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-      reloadMapLights(currentMapId);
-      syncMapAdminPanel();
-    })();
+    currentMapTransform = await transformPromise;
+    setDarkMode(!!currentMapTransform?.dark_mode);
+    applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+    reloadMapLights(currentMapId);
+    syncMapAdminPanel();
+    try { await assetsPromise; } catch {}
     return;
   }
 
-  loader.load(
-    map.url,
+  const envPromise = new Promise((resolve) => {
+    loader.load(
+      map.url,
+      async (gltf) => {
+        try {
+          const env = gltf.scene;
+          const box = new THREE.Box3().setFromObject(env);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
+          const currentSize = Math.max(size.x, size.z);
+          const baseScale = currentSize > 0 ? targetSize / currentSize : 1;
+          currentEnvBaseScale = baseScale;
+          env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
-    async (gltf) => {
-      const env = gltf.scene;
-      const box = new THREE.Box3().setFromObject(env);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const targetSize = Math.max(MAP_WIDTH, MAP_DEPTH) * 1.05;
-      const currentSize = Math.max(size.x, size.z);
-      const baseScale = currentSize > 0 ? targetSize / currentSize : 1;
-      currentEnvBaseScale = baseScale;
-      env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
+          currentMapTransform = await transformPromise;
+          setDarkMode(!!currentMapTransform?.dark_mode);
+          applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+          reloadMapLights(currentMapId);
+          currentEnvRoot = env;
+          applyEnvTransform();
 
-      currentMapTransform = await transformPromise;
-      setDarkMode(!!currentMapTransform?.dark_mode);
-      applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-      // Recarrega luzes custom desse mapa
-      reloadMapLights(currentMapId);
-      currentEnvRoot = env;
-      applyEnvTransform();
+          // Tetos visíveis: nenhuma malha é escondida por altura.
+          env.traverse((node) => {
+            if (!node.isMesh) return;
+            node.castShadow = true;
+            node.receiveShadow = true;
+          });
+          registerCollidable(env);
+          envGroup.add(env);
+          syncMapAdminPanel();
+        } finally {
+          resolve();
+        }
+      },
+      undefined,
+      (err) => {
+        console.error("Falha carregando cenário:", err);
+        if (map.id !== "bar") {
+          localStorage.removeItem("neon-tap-room-map");
+          loadEnvironment("bar").then(resolve);
+        } else {
+          resolve();
+        }
+      },
+    );
+  });
 
-      // Determine "ceiling cutoff" — meshes whose bottom sits above this Y are hidden.
-      const ceilingCutoff = 2.8;
-
-      env.traverse((node) => {
-        if (!node.isMesh) return;
-        const meshBox = new THREE.Box3().setFromObject(node);
-        if (meshBox.min.y > ceilingCutoff) { node.visible = false; return; }
-        node.castShadow = true;
-        node.receiveShadow = true;
-      });
-      // Toda malha visível do cenário é sólido (chão + parede automático).
-      registerCollidable(env);
-      envGroup.add(env);
-      // Atualiza painel admin se aberto
-      syncMapAdminPanel();
-    },
-    undefined,
-    (err) => {
-      console.error("Falha carregando cenário:", err);
-      if (map.id !== "bar") {
-        localStorage.removeItem("neon-tap-room-map");
-        loadEnvironment("bar");
-      }
-    },
-  );
+  await Promise.all([envPromise, assetsPromise.catch(() => {})]);
 }
 
 
@@ -2277,25 +2281,41 @@ function setMeshFaded(mesh, faded) {
 }
 
 function updateCameraOcclusion() {
-  _fadedNow.clear();
-  const entity = myId ? playerEntities.get(myId) : null;
-  if (entity && occluderMeshes.length) {
-    _occFrom.copy(camera.position);
-    _occDir.set(entity.group.position.x, entity.group.position.y + 1.1, entity.group.position.z).sub(_occFrom);
-    const dist = _occDir.length();
-    _occDir.normalize();
-    _occRay.set(_occFrom, _occDir);
-    _occRay.far = dist;
-    const hits = _occRay.intersectObjects(occluderMeshes, false);
-    for (const h of hits) {
-      if (h.distance < dist - 0.4) _fadedNow.add(h.object);
-    }
+  // Paredes não somem mais. Restaura qualquer mesh que ainda esteja fadeada
+  // de versões anteriores e sai. O clamping da câmera contra teto é feito
+  // separadamente em clampCameraToCeiling().
+  if (_fadedPrev.size) {
+    for (const m of _fadedPrev) setMeshFaded(m, false);
+    _fadedPrev.clear();
   }
-  // Apply / restore
-  for (const m of _fadedNow) if (!_fadedPrev.has(m)) setMeshFaded(m, true);
-  for (const m of _fadedPrev) if (!_fadedNow.has(m)) setMeshFaded(m, false);
-  _fadedPrev.clear();
-  for (const m of _fadedNow) _fadedPrev.add(m);
+}
+
+// Limita o zoom-out para que a câmera não atravesse o teto do recinto.
+// Se houver mesh acima do alvo, calcula a distância máxima possível ao longo
+// do vetor câmera→alvo de forma que camera.position.y <= ceilingY - margem.
+const _ceilRay = new THREE.Raycaster();
+const _ceilOrigin = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+function clampCameraToCeiling() {
+  if (window.__freeCameraMode) return;
+  if (!colliderMeshes.length) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  _ceilOrigin.copy(controls.target);
+  _ceilRay.set(_ceilOrigin, _up);
+  _ceilRay.far = 50;
+  const hits = _ceilRay.intersectObjects(colliderMeshes, false);
+  let ceilingY = Infinity;
+  for (const h of hits) { if (h.point.y > controls.target.y + 0.5 && h.point.y < ceilingY) ceilingY = h.point.y; }
+  if (!isFinite(ceilingY)) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const margin = 0.3;
+  const maxY = ceilingY - margin;
+  // direção câmera→alvo (normalizada)
+  const dy = camera.position.y - controls.target.y;
+  const dist = camera.position.distanceTo(controls.target);
+  if (dy <= 0 || dist < 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const sinElev = dy / dist; // componente vertical do vetor unitário
+  if (sinElev <= 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  const maxDist = (maxY - controls.target.y) / sinElev;
+  controls.maxDistance = Math.max(controls.minDistance + 0.1, Math.min(BASE_MAX_DISTANCE, maxDist));
 }
 
 
@@ -2754,6 +2774,7 @@ function renderAssets(assets = []) {
       assetObjects.delete(id);
     }
   }
+  const pending = [];
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
@@ -2762,43 +2783,47 @@ function renderAssets(assets = []) {
       if (object.userData.baseScale)
         object.scale.setScalar(object.userData.baseScale * asset.scale);
       object.updateMatrixWorld(true);
-      // Reaplica colisão (posição/rotação podem ter mudado, então re-registra)
       unregisterCollidable(object);
       registerCollidable(object);
       continue;
     }
-    loader.load(
-      asset.url,
-      (gltf) => {
-        const object = gltf.scene;
-        object.name = asset.name;
-        normalizeImportedObject(object, asset.scale);
-        object.position.set(asset.x, asset.y, asset.z);
-        object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-        object.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-        scene.add(object);
-        object.updateMatrixWorld(true);
-        registerCollidable(object);
-        assetObjects.set(asset.id, object);
-      },
-      undefined,
-      () => {
-        const fallback = makeFallbackAsset(asset.name, asset.scale);
-        fallback.position.set(asset.x, asset.y, asset.z);
-        fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-        scene.add(fallback);
-        fallback.updateMatrixWorld(true);
-        registerCollidable(fallback);
-        assetObjects.set(asset.id, fallback);
-      },
-    );
+    pending.push(new Promise((resolve) => {
+      loader.load(
+        asset.url,
+        (gltf) => {
+          const object = gltf.scene;
+          object.name = asset.name;
+          normalizeImportedObject(object, asset.scale);
+          object.position.set(asset.x, asset.y, asset.z);
+          object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+          object.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scene.add(object);
+          object.updateMatrixWorld(true);
+          registerCollidable(object);
+          assetObjects.set(asset.id, object);
+          resolve();
+        },
+        undefined,
+        () => {
+          const fallback = makeFallbackAsset(asset.name, asset.scale);
+          fallback.position.set(asset.x, asset.y, asset.z);
+          fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+          scene.add(fallback);
+          fallback.updateMatrixWorld(true);
+          registerCollidable(fallback);
+          assetObjects.set(asset.id, fallback);
+          resolve();
+        },
+      );
+    }));
   }
   updateAssetList(assets);
+  return Promise.all(pending);
 }
 
 function normalizeImportedObject(object, scale = 1) {
@@ -3213,6 +3238,7 @@ function animate() {
     camera.position.lerp(f.camera, Math.min(1, delta * 5));
     if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
+  clampCameraToCeiling();
   controls.update();
   updateCameraOcclusion();
   renderer.render(scene, camera);
@@ -4183,7 +4209,7 @@ function renderLightsAdminList() {
     } else {
       controls.maxPolarAngle = Math.PI * 0.47;
       controls.minDistance = 2.5;
-      controls.maxDistance = 11;
+      controls.maxDistance = BASE_MAX_DISTANCE;
     }
     if (freeBtn) freeBtn.innerHTML = `🎥 Câmera Livre: ${on ? "ON" : "OFF"}`;
     if (freeBtn) freeBtn.style.background = on ? "rgba(41,211,189,0.85)" : "rgba(15,23,42,0.85)";
@@ -4725,6 +4751,11 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
       m.textContent = hidden ? "−" : "+";
     });
   }
+
+  // Interactions panel (já tem .panel-head / .panel-body / data-panel-min/close)
+  makePanel(document.getElementById("interactionsAdminPanel"));
+  // Radio panel idem
+  makePanel(document.getElementById("radioAdminPanel"));
 
   // Pose debug removido
 
