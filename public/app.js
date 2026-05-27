@@ -488,6 +488,7 @@ async function enterRoom() {
     // Chat, GLBs colocados, realtime, rádio e interações carregam em segundo plano
     // — o usuário entra mais rápido e os elementos aparecem progressivamente.
     await loadEnvironment(currentMapId, { waitForAssets: false });
+    if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
