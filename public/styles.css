@@ -1635,44 +1635,30 @@ button[data-variant="primary"] {
   text-align: center;
   padding: 0 24px;
 }
-.world-loading-orb {
-  position: relative;
-  width: 130px;
-  height: 130px;
+.world-loading-bar {
+  width: min(420px, 80vw);
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.4);
 }
-.world-loading-orb-core {
-  position: absolute;
-  inset: 28%;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #ddd6fe, #8b5cf6 60%, #4c1d95);
-  box-shadow:
-    0 0 30px rgba(167, 139, 250, 0.9),
-    0 0 70px rgba(139, 92, 246, 0.6),
-    0 0 120px rgba(108, 92, 231, 0.4);
-  animation: world-orb-pulse 1.6s ease-in-out infinite;
+.world-loading-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #a78bfa, #f0abfc, #c4b5fd);
+  border-radius: 999px;
+  transition: width 200ms ease-out;
+  box-shadow: 0 0 18px rgba(167,139,250,0.7);
 }
-.world-loading-orb-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(167, 139, 250, 0.55);
-  border-top-color: #f0abfc;
-  border-right-color: #c4b5fd;
-  animation: world-orb-spin 1.8s linear infinite;
-  box-shadow: 0 0 28px rgba(167, 139, 250, 0.45);
-}
-.world-loading-orb-ring-2 {
-  inset: 14%;
-  border-color: rgba(196, 181, 253, 0.3);
-  border-top-color: #a78bfa;
-  animation: world-orb-spin 2.6s linear infinite reverse;
-}
-@keyframes world-orb-spin {
-  to { transform: rotate(360deg); }
-}
-@keyframes world-orb-pulse {
-  0%, 100% { transform: scale(0.9); box-shadow: 0 0 22px rgba(167,139,250,0.7), 0 0 50px rgba(139,92,246,0.5), 0 0 100px rgba(108,92,231,0.35); }
-  50% { transform: scale(1.08); box-shadow: 0 0 40px rgba(196,181,253,1), 0 0 90px rgba(139,92,246,0.8), 0 0 160px rgba(108,92,231,0.55); }
+
+/* Esconde o mundo 3D até o usuário entrar pela primeira vez em uma sala */
+body:not(.world-ready) #worldCanvas,
+body:not(.world-ready) #hud,
+body:not(.world-ready) #radioHud,
+body:not(.world-ready) #interactionPrompt {
+  display: none !important;
 }
 .world-loading-text {
   font-size: 22px;
