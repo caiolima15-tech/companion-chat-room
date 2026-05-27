@@ -958,14 +958,9 @@ confirmMapButton?.addEventListener("click", async () => {
   const alreadyInRoom = !!playerEntities.get(myId);
   const switching = selectedMapId !== currentMapId;
 
-  if (switching) {
-    window.showWorldLoading?.("Carregando o mundo");
-    await loadEnvironment(selectedMapId);
-    const myEntity = playerEntities.get(myId);
-    if (myEntity) {
-      myEntity.group.position.set(0, 0, 0);
-      if (me) { me.x = 50; me.y = 50; }
-    }
+  if (switching && !alreadyInRoom) {
+    currentMapId = selectedMapId;
+    localStorage.setItem("neon-tap-room-map", selectedMapId);
   }
   closeMapSelect();
   if (!alreadyInRoom) {
@@ -1757,6 +1752,15 @@ async function switchRoom(newMapId) {
 
     currentMapId = newMapId;
     localStorage.setItem("neon-tap-room-map", newMapId);
+
+    await loadEnvironment(newMapId, { waitForAssets: false });
+    const myEntity = playerEntities.get(myId);
+    if (myEntity) {
+      myEntity.group.position.set(0, 0, 0);
+      if (me) { me.x = 50; me.y = 50; }
+      const idx = players.findIndex((p) => p.id === myId);
+      if (idx >= 0 && me) players[idx] = { ...players[idx], x: 50, y: 50 };
+    }
 
     await loadInitialChat();
     await setupRoomChannels(newMapId);
