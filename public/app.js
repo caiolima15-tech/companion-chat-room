@@ -600,6 +600,7 @@ let previewMixer = null, previewClock = null, previewRaf = null;
 let previewCharObj = null, previewGround = null, previewRing = null;
 let previewSmoke = null;
 let previewLoadToken = 0;
+let previewBodySize = null; // tamanho (Vector3) do avatar atual, para reenquadrar no resize
 
 function initPreviewScene() {
   if (previewRenderer || !previewCanvas) return;
