@@ -1982,7 +1982,7 @@ async function setupGlobalSecondaryChannels() {
       .channel("room-characters")
       .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
         await loadCharactersCatalog();
-        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
       })
       .subscribe();
   }
