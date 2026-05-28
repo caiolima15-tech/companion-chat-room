@@ -6278,6 +6278,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .order("created_at", { ascending: true });
     if (error) { console.warn("[interactions] load", error); return; }
     interactions = data || [];
+    window.__mapInteractions = interactions;
+    window.dispatchEvent(new CustomEvent("interactions:updated"));
     renderAdmin();
   }
 
@@ -6532,6 +6534,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <option value="sit" ${draft.kind === "sit" ? "selected" : ""}>Sentar</option>
             <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
             <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
+            <option value="football" ${draft.kind === "football" ? "selected" : ""}>⚽ Bola de futebol</option>
           </select>
         </div>
         <div class="ie-row"><label>Animação (URL FBX)</label>
