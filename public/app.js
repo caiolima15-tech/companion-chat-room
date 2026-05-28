@@ -3775,9 +3775,11 @@ function exportCharacter() {
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
+  // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
+  if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (myId && !window.__freeCameraMode) {
+  if (myId && !window.__freeCameraMode && !window.__footballMode) {
     const entity = playerEntities.get(myId);
     if (entity) {
       const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
@@ -3792,12 +3794,18 @@ function animate() {
     camera.position.lerp(f.camera, Math.min(1, delta * 5));
     if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
-  clampCameraToCeiling();
-  controls.update();
-  updateCameraOcclusion();
+  if (window.__footballMode) {
+    // Câmera 3ª pessoa controlada pelo módulo de futebol.
+    if (window.__footballCamera) { try { window.__footballCamera(delta); } catch {} }
+  } else {
+    clampCameraToCeiling();
+    controls.update();
+    updateCameraOcclusion();
+  }
   renderer.render(scene, camera);
   updateNameplates();
 }
+
 
 // ============ Event wiring ============
 window.addEventListener("resize", resize);
