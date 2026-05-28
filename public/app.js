@@ -7127,13 +7127,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function doKick(strong) {
     const ent = myEntity();
     if (!ent) return;
-    if (ownerId !== myId) {
-      if (ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE + 0.3) claimBall();
-      else return;
-    }
+    // chute só funciona se o jogador estiver com a posse da bola
+    if (ownerId !== myId || !held) return;
     const dir = aimDir(ent).clone();
-    const power = strong ? (10 + charge * 12) : (6 + charge * 5);
-    const up = strong ? (3.5 + charge * 3.5) : (2.2 + charge * 2);
+    const power = strong ? (11 + charge * 14) : (6 + charge * 5);
+    // chutes fortes sobem bem mais alto que os fracos
+    const up = strong ? (6.5 + charge * 7.5) : (2.2 + charge * 2);
     // posiciona a bola um pouco à frente do pé para sair limpa
     const R = ballRadius();
     ballPos.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST + 0.15);
@@ -7146,6 +7145,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     broadcastKick(strong);
     broadcastState(true);
   }
+
 
   let lastFbMoveSent = 0;
   function handleFootballMovement(delta, ent) {
