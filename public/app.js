@@ -1458,6 +1458,12 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
     if (target) target.click();
+    if (item.hasAttribute("data-dock-toggle") && target) {
+      setTimeout(() => {
+        const on = /\bON\b/i.test(target.textContent || "");
+        item.setAttribute("aria-pressed", on ? "true" : "false");
+      }, 0);
+    }
     if (panelSel) {
       const panel = document.querySelector(panelSel);
       setTimeout(() => {
