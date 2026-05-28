@@ -1738,7 +1738,8 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          const stripRootPosition = (slot === "kickWeak" || slot === "kickStrong");
+          const retarg = retargetClipToBones(clip, targetBones, { stripRootPosition }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
