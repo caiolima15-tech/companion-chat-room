@@ -667,6 +667,29 @@ function resizePreview() {
   previewRenderer.setSize(w, h, false);
   previewCamera.aspect = w / h;
   previewCamera.updateProjectionMatrix();
+  reframePreview();
+}
+
+// Enquadra o avatar com a câmera nivelada: corpo inteiro visível e a BASE (pés/y=0)
+// bem embaixo, logo acima do nome. Robusto ao aspect (recalcula em todo resize).
+function reframePreview() {
+  if (!previewCamera || !previewControls || !previewBodySize) return;
+  const size = previewBodySize;
+  const vFov = (previewCamera.fov * Math.PI) / 180;
+  const aspect = Math.max(previewCamera.aspect, 0.0001);
+  const tan = Math.tan(vFov / 2);
+  // halfH = metade da altura visível (em unidades de mundo) no plano do alvo.
+  // Garante caber o corpo todo em altura e largura, com folga.
+  const halfH = Math.max((size.y * 0.62), (size.x * 0.58) / aspect, 0.4);
+  const dist = halfH / tan;
+  // Câmera nivelada (mesma altura do alvo). Cy controla onde a base cai na tela:
+  // ground (y=0) ficará a ~12% do fundo do quadro → logo acima do nome.
+  const Cy = halfH * 0.76;
+  previewControls.target.set(0, Cy, 0);
+  previewCamera.position.set(0, Cy, dist);
+  previewControls.minDistance = Math.max(dist * 0.5, 0.4);
+  previewControls.maxDistance = dist * 2.4;
+  previewControls.update();
 }
 
 function previewLoop() {
