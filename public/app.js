@@ -7115,20 +7115,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function applyKickPose(ent, on) {
     const ch = ent?.character;
     if (!ch) return;
+    // NÃO mexer em position — só na rotação X, sempre relativa a 0 (sem capturar valor atual,
+    // o que acumulava drift e inclinava o personagem com o tempo).
     if (on) {
-      if (ent.__kickBase == null) {
-        ent.__kickBase = { y: ch.position.y, z: ch.position.z, rotX: ch.rotation.x };
-      }
-      const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
-      ent.__kickTargetY = ent.__kickBase.y + (kp.offY || 0);
-      ent.__kickTargetZ = ent.__kickBase.z + (kp.offFwd || 0);
-      ent.__kickTargetRotX = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
-    } else if (ent.__kickBase) {
-      ent.__kickTargetY = ent.__kickBase.y;
-      ent.__kickTargetZ = ent.__kickBase.z;
-      ent.__kickTargetRotX = ent.__kickBase.rotX;
-      // libera depois que o lerp converge (no próximo frame)
-      setTimeout(() => { ent.__kickBase = null; ent.__kickTargetY = ent.__kickTargetZ = ent.__kickTargetRotX = null; }, 250);
+      const kp = window.__kickPose || { rotX: 0 };
+      ent.__kickTargetRotX = (kp.rotX || 0) * (Math.PI / 180);
+      ent.__kickTargetY = null;
+      ent.__kickTargetZ = null;
+    } else {
+      ent.__kickTargetRotX = 0;
+      ent.__kickTargetY = null;
+      ent.__kickTargetZ = null;
+      setTimeout(() => {
+        if (ent && !ent.__fbKicking) ent.__kickTargetRotX = null;
+      }, 300);
     }
   }
 
@@ -7207,12 +7207,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
-    // Lerp suave do pose-debug do chute (sem teleporte)
+    // Lerp suave APENAS da rotação X do pose-debug do chute (nunca mexer em position).
     const ch = ent.character;
-    if (ch && ent.__kickTargetY != null) {
+    if (ch && ent.__kickTargetRotX != null) {
       const t = Math.min(1, delta * 10);
-      ch.position.y += (ent.__kickTargetY - ch.position.y) * t;
-      ch.position.z += (ent.__kickTargetZ - ch.position.z) * t;
       ch.rotation.x += (ent.__kickTargetRotX - ch.rotation.x) * t;
     }
     ent.target.copy(ent.group.position);
