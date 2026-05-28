@@ -756,22 +756,6 @@ async function loadPreviewCharacter(character) {
     if (previewGround) previewGround.position.y = 0;
     if (previewRing) previewRing.position.y = 0.002;
 
-    // Câmera NIVELADA (sem inclinar para baixo) e mirando alto no corpo: assim a
-    // base/pés ficam lá embaixo no quadro (logo acima do nome) e o avatar aparece
-    // inteiro. Aproxima o suficiente para preencher a tela (apenas uma folga no topo).
-    const vFov = (previewCamera.fov * Math.PI) / 180;
-    const frameH = size.y * 1.14; // altura enquadrada (folga no topo)
-    const fitH = (frameH * 0.5) / Math.tan(vFov / 2);
-    const fitW = (size.x * 0.5) / Math.tan(vFov / 2) / Math.max(previewCamera.aspect, 0.0001);
-    const dist = Math.max(fitH, fitW, 1.0);
-    const aimY = size.y * 0.55; // mira acima do meio → empurra a base para baixo
-    previewControls.target.set(0, aimY, 0);
-    previewCamera.position.set(0, aimY, dist); // mesma altura do alvo = olhar horizontal
-    previewControls.minDistance = Math.max(dist * 0.45, 0.5);
-    previewControls.maxDistance = dist * 2.6;
-    previewControls.update();
-
-
     previewMixer = new THREE.AnimationMixer(obj);
     const idleClip = clips.idle || Object.values(clips)[0];
     if (idleClip && idleClip.tracks.length) previewMixer.clipAction(idleClip).reset().play();
@@ -780,6 +764,11 @@ async function loadPreviewCharacter(character) {
     previewMixer.update(0);
     const posed = measure(obj);
     if (isFinite(posed.min.y)) obj.position.y -= posed.min.y;
+
+    // Guarda o tamanho e reenquadra (recalcula no resize, robusto ao aspect do canvas).
+    resizePreview();
+    previewBodySize = (posed && isFinite(posed.min.y) ? posed : box).getSize(new THREE.Vector3());
+    reframePreview();
   } catch (e) {
     console.warn("[preview] falha ao carregar personagem", e);
   } finally {
