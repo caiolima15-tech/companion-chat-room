@@ -1661,11 +1661,13 @@ function collectBoneNames(root) {
 
 // Renomeia tracks de um clip para casar com os bones do alvo.
 // Mantém os tracks originais da animação: o eixo do avatar fica como veio no GLB.
-// opts.stripRootPosition: remove as faixas de POSIÇÃO de todos os ossos (mantém só
-// rotações). Usado nos chutes para travar o personagem "no lugar" — sem isso o
-// deslocamento embutido do Hips (Mixamo) puxa o corpo pra baixo e ele afunda.
+// opts.stripRootPosition: remove TODAS as faixas de POSIÇÃO (mantém só rotações).
+// opts.stripHipRotation: remove a faixa de ROTAÇÃO do osso Hips. Usado nos chutes
+// para evitar que o Hips role o corpo inteiro 90° (deitado) durante o clipe.
 function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   const stripRootPosition = !!opts.stripRootPosition;
+  const stripHipRotation = !!opts.stripHipRotation;
+  const isHipName = (n) => /^(mixamorig:?)?hips?$/i.test(n);
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -1674,6 +1676,7 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
     const boneName = t.name.slice(0, dot);
     const prop = t.name.slice(dot);
     if (stripRootPosition && prop === ".position") continue;
+    if (stripHipRotation && isHipName(boneName) && prop === ".quaternion") continue;
     let candidate = boneName;
     if (!targetBoneNames.has(candidate) && candidate.startsWith("mixamorig")) {
       candidate = candidate.replace(/^mixamorig:?/, "");
@@ -1757,8 +1760,8 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const stripRootPosition = (slot === "kickWeak" || slot === "kickStrong");
-          const retarg = retargetClipToBones(clip, targetBones, { stripRootPosition }) || clip.clone();
+          const isKick = (slot === "kickWeak" || slot === "kickStrong");
+          const retarg = retargetClipToBones(clip, targetBones, { stripRootPosition: isKick, stripHipRotation: isKick }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
@@ -6797,13 +6800,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 (function footballModule() {
   const BALL_RADIUS = 0.18;
   const BALL_DIAMETER = BALL_RADIUS * 2;
-  const GRAVITY = -11.5;
-  const DRIBBLE_DIST = 0.6;
-  const PICKUP_RANGE = 0.95;
-  const CAPTURE_RANGE = 1.1;
+  const GRAVITY = -14.0;
+  const DRIBBLE_DIST = 0.45;       // bola mais colada ao pé
+  const DRIBBLE_SIDE = 0.08;       // leve deslocamento lateral (pé dominante)
+  const PICKUP_RANGE = 0.85;
+  const CAPTURE_RANGE = 1.0;
   const WALK_SPEED = 2.3;
   const RUN_SPEED = 4.4;
   const CHARGE_TIME = 1.0;
+  const KICK_COOLDOWN = 0.9;       // segundos sem auto-pickup após chutar
 
   const loader = new GLTFLoader();
 
@@ -6837,6 +6842,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let ballInner = null;      // malha interna (escala aplicada por scale_mul)
   let ballScale = 1;         // multiplicador atual de tamanho
   let stillTime = 0;         // tempo parada (para auto-reset)
+  let pickupCooldown = 0;    // bloqueia auto-pickup logo após chute
+  let dribblePhase = 0;      // fase do "toque" para drible com pequenos avanços
 
   function ensureBall() {
     if (ballGroup || loadingBall) return;
@@ -7053,18 +7060,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const slot = strong ? "kickStrong" : "kickWeak";
     const act = ent.actions[slot];
     if (!act) return;
-    if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.08);
-    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.08); } catch {} ent.emoteAction = null; }
+    if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.12);
+    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.12); } catch {} ent.emoteAction = null; }
     ent.currentAction = null;
     act.reset();
     act.setLoop(THREE.LoopOnce, 1);
-    act.clampWhenFinished = true;
-    act.fadeIn(0.05).play();
+    act.clampWhenFinished = false;          // não congela na última pose
+    act.fadeIn(0.08).play();
     ent.__fbKicking = true;
     applyKickPose(ent, true);
     const dur = (act.getClip?.().duration || 0.6) * 1000;
+    const endIn = Math.min(dur, 900);
     clearTimeout(ent.__fbKickT);
-    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; applyKickPose(ent, false); }, Math.min(dur, 850));
+    // antes do fim: começa a sair do chute suavemente
+    ent.__fbKickT = setTimeout(() => {
+      try { act.fadeOut(0.22); } catch {}
+      applyKickPose(ent, false);
+      ent.__fbKicking = false;
+      // o próximo frame de handleFootballMovement já vai dar fadeIn em walk/idle
+    }, Math.max(60, endIn - 180));
   }
 
   // Ajuste fino do personagem durante o chute (não afundar / alinhar o pé na bola).
@@ -7109,11 +7123,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       else return;
     }
     const dir = aimDir(ent).clone();
-    const power = strong ? (9 + charge * 9) : (5.5 + charge * 4);
-    const up = strong ? (3.2 + charge * 3) : (2.0 + charge * 2);
+    const power = strong ? (10 + charge * 12) : (6 + charge * 5);
+    const up = strong ? (3.5 + charge * 3.5) : (2.2 + charge * 2);
+    // posiciona a bola um pouco à frente do pé para sair limpa
+    const R = ballRadius();
+    ballPos.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST + 0.15);
+    ballPos.y = groundHeightAt(ballPos, ballPos.y) + R + 0.02;
     ballVel.set(dir.x * power, up, dir.z * power);
     held = false;
-    ballPos.addScaledVector(dir, 0.2);
+    pickupCooldown = KICK_COOLDOWN;
+    stillTime = 0;
     playKickAnim(ent, strong);
     broadcastKick(strong);
     broadcastState(true);
@@ -7167,28 +7186,83 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   }
 
+  const _prevPlayerPos = new THREE.Vector3();
+  let _hasPrevPlayerPos = false;
+  const _ballPrev = new THREE.Vector3();
+
   function simulateOwned(delta, ent) {
     const R = ballRadius();
+    if (pickupCooldown > 0) pickupCooldown = Math.max(0, pickupCooldown - delta);
+
+    // velocidade do jogador (XZ) — usada pra simular toques no drible
+    let playerVx = 0, playerVz = 0, playerSpeed = 0;
+    if (_hasPrevPlayerPos) {
+      playerVx = (ent.group.position.x - _prevPlayerPos.x) / Math.max(1e-4, delta);
+      playerVz = (ent.group.position.z - _prevPlayerPos.z) / Math.max(1e-4, delta);
+      playerSpeed = Math.hypot(playerVx, playerVz);
+    }
+    _prevPlayerPos.copy(ent.group.position);
+    _hasPrevPlayerPos = true;
+
     if (held) {
       const dir = aimDir(ent);
-      const target = _v1.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST);
+      // ponto base: bem à frente do pé, com pequeno offset lateral
+      const right = _v2.set(dir.z, 0, -dir.x);
+      const target = _v1.copy(ent.group.position)
+        .addScaledVector(dir, DRIBBLE_DIST)
+        .addScaledVector(right, DRIBBLE_SIDE);
+      // pequenos "toques": quando corre, a bola adianta um pouco em ciclos
+      if (playerSpeed > 0.3) {
+        dribblePhase += delta * (4 + playerSpeed * 1.2);
+        const push = Math.max(0, Math.sin(dribblePhase)) * Math.min(0.18, playerSpeed * 0.04);
+        target.addScaledVector(dir, push);
+      } else {
+        dribblePhase = 0;
+      }
       target.y = groundHeightAt(target, ballPos.y) + R;
-      ballPos.lerp(target, Math.min(1, delta * 12));
-      ballVel.set(0, 0, 0);
+      ballPos.lerp(target, Math.min(1, delta * 18));
+      // velocidade efetiva pra rotação visual = velocidade do jogador
+      ballVel.set(playerVx, 0, playerVz);
       stillTime = 0;
     } else {
       ballVel.y += GRAVITY * delta;
+      _ballPrev.copy(ballPos);
       ballPos.addScaledVector(ballVel, delta);
+
+      // Colisão XZ contra paredes/objetos: reflete horizontalmente
+      const horizMoved = Math.hypot(ballPos.x - _ballPrev.x, ballPos.z - _ballPrev.z);
+      if (horizMoved > 0.001 && collidesAt(_ballPrev, ballPos)) {
+        // calcula normal aproximada amostrando offset perpendicular
+        const moveX = ballPos.x - _ballPrev.x;
+        const moveZ = ballPos.z - _ballPrev.z;
+        // tenta separar eixos pra decidir qual refletir
+        const tryX = _ballPrev.clone(); tryX.x = ballPos.x;
+        const tryZ = _ballPrev.clone(); tryZ.z = ballPos.z;
+        const hitX = collidesAt(_ballPrev, tryX);
+        const hitZ = collidesAt(_ballPrev, tryZ);
+        if (hitX) ballVel.x = -ballVel.x * 0.55;
+        if (hitZ) ballVel.z = -ballVel.z * 0.55;
+        if (!hitX && !hitZ) { ballVel.x = -ballVel.x * 0.55; ballVel.z = -ballVel.z * 0.55; }
+        ballPos.copy(_ballPrev);
+        ballPos.x += ballVel.x * delta;
+        ballPos.z += ballVel.z * delta;
+      }
+
+      // Chão: quique
       const gy = groundHeightAt(ballPos, ballPos.y) + R;
       if (ballPos.y <= gy) {
         ballPos.y = gy;
-        if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.5;
+        if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.55;
         if (Math.abs(ballVel.y) < 0.8) ballVel.y = 0;
-        const f = Math.pow(0.18, delta);
+        // atrito de rolagem (só quando no chão)
+        const rolling = ballVel.y === 0;
+        const f = Math.pow(rolling ? 0.35 : 0.92, delta);
         ballVel.x *= f; ballVel.z *= f;
-        if (Math.hypot(ballVel.x, ballVel.z) < 0.15) { ballVel.x = 0; ballVel.z = 0; }
+        if (Math.hypot(ballVel.x, ballVel.z) < 0.12) { ballVel.x = 0; ballVel.z = 0; }
       }
-      if (footballActive && ent && ballVel.lengthSq() < 2.0 &&
+      // Auto-pickup: só depois do cooldown e se a bola estiver lenta
+      if (pickupCooldown === 0 && footballActive && ent &&
+          ballVel.lengthSq() < 1.5 &&
           ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
         held = true;
       }
