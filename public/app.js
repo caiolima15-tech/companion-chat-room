@@ -3059,10 +3059,22 @@ function renderAssetEditor(asset) {
 }
 
 // ============ Chat UI ============
+const CHAT_MSG_TTL_MS = 30 * 60 * 1000; // 30 minutos
+function purgeOldChatMessages() {
+  if (!chatLog) return;
+  const cutoff = Date.now() - CHAT_MSG_TTL_MS;
+  chatLog.querySelectorAll("[data-ts]").forEach((el) => {
+    const ts = Number(el.getAttribute("data-ts")) || 0;
+    if (ts && ts < cutoff) el.remove();
+  });
+}
+setInterval(purgeOldChatMessages, 60_000);
+
 function addSystemLine(text) {
   const item = document.createElement("div");
   item.className = "system-line";
   item.textContent = text;
+  item.setAttribute("data-ts", String(Date.now()));
   chatLog.appendChild(item);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -3070,6 +3082,7 @@ function addMessage(message) {
   const item = document.createElement("div");
   const isSelf = message.user_id && myId && message.user_id === myId;
   item.className = "chat-item" + (isSelf ? " is-self" : "");
+  item.setAttribute("data-ts", String(Date.now()));
   const avatarStyle = message.avatar_url
     ? `background-image:url('${escapeHtml(message.avatar_url)}')`
     : `background:${escapeHtml(message.color || '#6c5ce7')}`;
