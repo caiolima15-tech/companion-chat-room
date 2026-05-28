@@ -6718,8 +6718,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
       return;
     }
+    if (t.classList.contains("ie-ball-here")) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (!ent?.group) return alert("Seu avatar não está pronto.");
+      editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
+      editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
+      editingDraft.offset_y = 0;
+      renderAdmin();
+      window.__footballSetPreview?.(editingDraft);
+      addSystemLine?.("Bola posicionada na sua posição atual.");
+      return;
+    }
     if (t.classList.contains("ie-save")) {
-      if (!editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
+      const isFootball = editingDraft.kind === "football";
+      if (!isFootball && !editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
       const payload = {
         asset_id: editingDraft.asset_id,
         map_id: currentMapId,
