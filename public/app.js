@@ -961,17 +961,43 @@ async function handleAvatarUpload(file) {
     if (upErr) throw upErr;
     const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
     const baseUrl = pub.publicUrl;
-    const { data: inserted, error: dbErr } = await supabase
-      .from("user_avatars")
-      .insert({ user_id: me.id, name, base_url: baseUrl })
-      .select()
-      .single();
-    if (dbErr) throw dbErr;
-    userAvatars = [inserted, ...userAvatars];
-    avatarCreatorStatus.style.color = "#29d3bd";
-    avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
-    selectedCharacterSlug = `user:${inserted.id}`;
-    renderCharacterTiles();
+
+    if (_editingAvatarId) {
+      // Edição: substitui o GLB do avatar atual (mesmo slug user:<id>).
+      const { data: updated, error: dbErr } = await supabase
+        .from("user_avatars")
+        .update({ base_url: baseUrl })
+        .eq("id", _editingAvatarId)
+        .select()
+        .single();
+      if (dbErr) throw dbErr;
+      userAvatars = userAvatars.map((a) => (a.id === _editingAvatarId ? updated : a));
+      // Limpa o cache para recarregar a nova versão no preview e na sala.
+      characterCache.delete(`user:${_editingAvatarId}`);
+      selectedCharacterSlug = `user:${_editingAvatarId}`;
+      avatarCreatorStatus.style.color = "#29d3bd";
+      avatarCreatorStatus.textContent = "Pronto! Avatar atualizado.";
+      // Atualiza meu personagem na sala, se eu já estiver usando este avatar.
+      const myEntity = playerEntities.get(myId);
+      if (myEntity && me?.character_slug === `user:${_editingAvatarId}`) {
+        myEntity.characterSlug = null;
+        myEntity.pendingCharacterSlug = null;
+        applyCharacter(myEntity, `user:${_editingAvatarId}`);
+      }
+    } else {
+      const { data: inserted, error: dbErr } = await supabase
+        .from("user_avatars")
+        .insert({ user_id: me.id, name, base_url: baseUrl })
+        .select()
+        .single();
+      if (dbErr) throw dbErr;
+      userAvatars = [inserted, ...userAvatars];
+      selectedCharacterSlug = `user:${inserted.id}`;
+      avatarCreatorStatus.style.color = "#29d3bd";
+      avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
+    }
+    _editingAvatarId = null;
+    refreshCharacterCarousel();
     updateEnterButtonState();
     setTimeout(closeAvatarCreator, 900);
   } catch (err) {
