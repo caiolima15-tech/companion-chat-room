@@ -735,15 +735,9 @@ const avatarDropzone = document.querySelector("#avatarDropzone");
 
 const avatarCreatorFrame = document.querySelector("#avatarCreatorFrame");
 const avatarCreatorLoader = document.querySelector("#avatarCreatorLoader");
-const avatarCreatorSave = document.querySelector("#avatarCreatorSave");
 let _avaturnReady = false;
 let _avaturnSaving = false;
 
-function setAvaturnSaveEnabled(enabled) {
-  if (!avatarCreatorSave) return;
-  avatarCreatorSave.disabled = !enabled;
-  avatarCreatorSave.style.opacity = enabled ? "1" : "0.5";
-}
 function hideAvaturnLoader() {
   if (!avatarCreatorLoader) return;
   avatarCreatorLoader.style.opacity = "0";
@@ -758,16 +752,14 @@ function openAvatarCreator() {
   avatarCreatorFile.value = "";
   _avaturnReady = false;
   _avaturnSaving = false;
-  setAvaturnSaveEnabled(false);
   if (avatarCreatorLoader) {
     avatarCreatorLoader.style.display = "flex";
     avatarCreatorLoader.style.opacity = "1";
   }
-  // Failsafe: se nenhum handshake chegar em 8s, habilita o botão mesmo assim
+  // Failsafe: se nenhum handshake chegar em 8s, esconde o loader mesmo assim
   setTimeout(() => {
     if (!_avaturnReady) {
       _avaturnReady = true;
-      setAvaturnSaveEnabled(true);
       hideAvaturnLoader();
     }
   }, 8000);
