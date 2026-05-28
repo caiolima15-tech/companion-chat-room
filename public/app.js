@@ -951,8 +951,23 @@ async function handleAvatarUpload(file) {
   avatarCreatorStatus.style.color = "";
   avatarCreatorStatus.textContent = "Enviando avatar…";
   try {
+    // Garante uma sessão válida antes do upload — o fluxo do Avaturn pode demorar
+    // e o token de acesso pode expirar, fazendo a RLS do storage (auth.uid()) falhar.
+    let authedId = null;
+    const { data: userData } = await supabase.auth.getUser();
+    authedId = userData?.user?.id || null;
+    if (!authedId) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      authedId = refreshed?.user?.id || null;
+    }
+    if (!authedId) {
+      throw new Error("Sua sessão expirou. Faça login novamente para salvar o avatar.");
+    }
+    // Usa o ID autenticado real no caminho do storage (igual à política de RLS).
+    const ownerId = authedId;
+    if (ownerId !== me.id) me.id = ownerId;
     const ext = "glb";
-    const path = `user-avatars/${me.id}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const path = `user-avatars/${ownerId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error: upErr } = await supabase.storage.from("characters").upload(path, file, {
       cacheControl: "31536000",
       upsert: false,
