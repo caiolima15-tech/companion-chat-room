@@ -7090,7 +7090,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }, Math.max(60, endIn - 180));
   }
 
-  // Ajuste fino do personagem durante o chute (não afundar / alinhar o pé na bola).
+  // Ajuste fino opcional durante o chute. Por padrão NÃO mexe na posição do
+  // personagem para evitar teleporte — a animação de chute já cuida do corpo.
+  // Os sliders do Pose Debug ainda funcionam, mas com transição suave.
   function applyKickPose(ent, on) {
     const ch = ent?.character;
     if (!ch) return;
@@ -7099,16 +7101,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ent.__kickBase = { y: ch.position.y, z: ch.position.z, rotX: ch.rotation.x };
       }
       const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
-      ch.position.y = ent.__kickBase.y + (kp.offY || 0);
-      ch.position.z = ent.__kickBase.z + (kp.offFwd || 0);
-      ch.rotation.x = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
+      ent.__kickTargetY = ent.__kickBase.y + (kp.offY || 0);
+      ent.__kickTargetZ = ent.__kickBase.z + (kp.offFwd || 0);
+      ent.__kickTargetRotX = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
     } else if (ent.__kickBase) {
-      ch.position.y = ent.__kickBase.y;
-      ch.position.z = ent.__kickBase.z;
-      ch.rotation.x = ent.__kickBase.rotX;
-      ent.__kickBase = null;
+      ent.__kickTargetY = ent.__kickBase.y;
+      ent.__kickTargetZ = ent.__kickBase.z;
+      ent.__kickTargetRotX = ent.__kickBase.rotX;
+      // libera depois que o lerp converge (no próximo frame)
+      setTimeout(() => { ent.__kickBase = null; ent.__kickTargetY = ent.__kickTargetZ = ent.__kickTargetRotX = null; }, 250);
     }
   }
+
   window.__fbApplyKickPoseLive = function () {
     const ent = myEntity();
     if (ent && ent.__fbKicking) applyKickPose(ent, true);
@@ -7127,13 +7131,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function doKick(strong) {
     const ent = myEntity();
     if (!ent) return;
-    if (ownerId !== myId) {
-      if (ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE + 0.3) claimBall();
-      else return;
-    }
+    // chute só funciona se o jogador estiver com a posse da bola
+    if (ownerId !== myId || !held) return;
     const dir = aimDir(ent).clone();
-    const power = strong ? (10 + charge * 12) : (6 + charge * 5);
-    const up = strong ? (3.5 + charge * 3.5) : (2.2 + charge * 2);
+    const power = strong ? (11 + charge * 14) : (6 + charge * 5);
+    // chutes fortes sobem bem mais alto que os fracos
+    const up = strong ? (6.5 + charge * 7.5) : (2.2 + charge * 2);
     // posiciona a bola um pouco à frente do pé para sair limpa
     const R = ballRadius();
     ballPos.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST + 0.15);
@@ -7146,6 +7149,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     broadcastKick(strong);
     broadcastState(true);
   }
+
 
   let lastFbMoveSent = 0;
   function handleFootballMovement(delta, ent) {
@@ -7184,7 +7188,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
+    // Lerp suave do pose-debug do chute (sem teleporte)
+    const ch = ent.character;
+    if (ch && ent.__kickTargetY != null) {
+      const t = Math.min(1, delta * 10);
+      ch.position.y += (ent.__kickTargetY - ch.position.y) * t;
+      ch.position.z += (ent.__kickTargetZ - ch.position.z) * t;
+      ch.rotation.x += (ent.__kickTargetRotX - ch.rotation.x) * t;
+    }
     ent.target.copy(ent.group.position);
+
     if (me && myId) {
       const pct = percentFromWorld(ent.group.position.x, ent.group.position.z);
       me.x = pct.x; me.y = pct.y;
@@ -7311,6 +7324,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     if (footballActive && ent) handleFootballMovement(delta, ent);
 
+    // habilita o botão de chute apenas quando o jogador estiver com a bola
+    if (footballActive) {
+      const kickBtn = document.getElementById("fbKick");
+      if (kickBtn) {
+        const has = (ownerId === myId) && held;
+        kickBtn.classList.toggle("is-disabled", !has);
+        kickBtn.style.opacity = has ? "" : "0.4";
+        kickBtn.style.pointerEvents = has ? "" : "none";
+      }
+    }
+
+
     if (ownerId === myId) {
       simulateOwned(delta, ent);
       broadcastState(false);
@@ -7390,10 +7415,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!charging) return;
     const strong = charge >= 0.5;
     charging = false;
-    doKick(strong);
+    // só chuta de fato se tiver a posse da bola
+    if (ownerId === myId && held) doKick(strong);
     charge = 0;
     updateForceBar();
   }
+
 
   function updateForceBar() {
     const fill = document.getElementById("fbForceFill");
