@@ -1,0 +1,1 @@
+ALTER TABLE public.map_asset_interactions ALTER COLUMN asset_id DROP NOT NULL;

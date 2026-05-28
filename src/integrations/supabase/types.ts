@@ -216,7 +216,7 @@ export type Database = {
         Row: {
           animation_key: string
           animation_url: string | null
-          asset_id: string
+          asset_id: string | null
           created_at: string
           created_by: string | null
           exit_radius: number
@@ -238,7 +238,7 @@ export type Database = {
         Insert: {
           animation_key?: string
           animation_url?: string | null
-          asset_id: string
+          asset_id?: string | null
           created_at?: string
           created_by?: string | null
           exit_radius?: number
@@ -260,7 +260,7 @@ export type Database = {
         Update: {
           animation_key?: string
           animation_url?: string | null
-          asset_id?: string
+          asset_id?: string | null
           created_at?: string
           created_by?: string | null
           exit_radius?: number
