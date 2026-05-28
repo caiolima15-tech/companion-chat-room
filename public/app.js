@@ -7074,16 +7074,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   function simulateOwned(delta, ent) {
+    const R = ballRadius();
     if (held) {
       const dir = aimDir(ent);
       const target = _v1.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST);
-      target.y = groundHeightAt(target, ballPos.y) + BALL_RADIUS;
+      target.y = groundHeightAt(target, ballPos.y) + R;
       ballPos.lerp(target, Math.min(1, delta * 12));
       ballVel.set(0, 0, 0);
+      stillTime = 0;
     } else {
       ballVel.y += GRAVITY * delta;
       ballPos.addScaledVector(ballVel, delta);
-      const gy = groundHeightAt(ballPos, ballPos.y) + BALL_RADIUS;
+      const gy = groundHeightAt(ballPos, ballPos.y) + R;
       if (ballPos.y <= gy) {
         ballPos.y = gy;
         if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.5;
@@ -7096,8 +7098,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
         held = true;
       }
+      // Segurança: posição inválida (NaN), bola muito longe ou parada há muito tempo → reseta no spawn.
+      const bad = !isFinite(ballPos.x) || !isFinite(ballPos.y) || !isFinite(ballPos.z);
+      const sp = spawnWorldPos(activeInter);
+      const farAway = sp ? (Math.hypot(ballPos.x - sp.x, ballPos.z - sp.z) > 60) : false;
+      if (ballVel.lengthSq() < 0.02 && !footballActive) stillTime += delta; else if (footballActive) stillTime = 0;
+      if (bad || farAway || stillTime > 25) {
+        resetBallToSpawn();
+        stillTime = 0;
+        broadcastState(true);
+      }
     }
   }
+
 
   const spinAxis = new THREE.Vector3(1, 0, 0);
   window.__footballFrame = function (delta) {
