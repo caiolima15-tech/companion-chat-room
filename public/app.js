@@ -733,18 +733,81 @@ const avatarCreatorName = document.querySelector("#avatarCreatorName");
 const avatarCreatorStatus = document.querySelector("#avatarCreatorStatus");
 const avatarDropzone = document.querySelector("#avatarDropzone");
 
+const avatarCreatorFrame = document.querySelector("#avatarCreatorFrame");
+const avatarCreatorLoader = document.querySelector("#avatarCreatorLoader");
+const avatarCreatorSave = document.querySelector("#avatarCreatorSave");
+let _avaturnReady = false;
+let _avaturnSaving = false;
+
+function setAvaturnSaveEnabled(enabled) {
+  if (!avatarCreatorSave) return;
+  avatarCreatorSave.disabled = !enabled;
+  avatarCreatorSave.style.opacity = enabled ? "1" : "0.5";
+}
+function hideAvaturnLoader() {
+  if (!avatarCreatorLoader) return;
+  avatarCreatorLoader.style.opacity = "0";
+  setTimeout(() => { if (avatarCreatorLoader) avatarCreatorLoader.style.display = "none"; }, 400);
+}
+
 function openAvatarCreator() {
   if (!avatarCreatorOverlay) return;
   avatarCreatorStatus.textContent = "";
   avatarCreatorStatus.style.color = "";
   avatarCreatorName.value = "";
   avatarCreatorFile.value = "";
+  _avaturnReady = false;
+  _avaturnSaving = false;
+  setAvaturnSaveEnabled(false);
+  if (avatarCreatorLoader) {
+    avatarCreatorLoader.style.display = "flex";
+    avatarCreatorLoader.style.opacity = "1";
+  }
+  // Failsafe: se nenhum handshake chegar em 8s, habilita o botão mesmo assim
+  setTimeout(() => {
+    if (!_avaturnReady) {
+      _avaturnReady = true;
+      setAvaturnSaveEnabled(true);
+      hideAvaturnLoader();
+    }
+  }, 8000);
   avatarCreatorOverlay.hidden = false;
 }
 function closeAvatarCreator() {
   if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
 }
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
+
+// Botão nosso: dispara export pro iframe do Avaturn via postMessage.
+// O listener de mensagens (mais abaixo) captura o GLB resultante.
+avatarCreatorSave?.addEventListener("click", () => {
+  if (_avaturnSaving) return;
+  if (!avatarCreatorFrame?.contentWindow) return;
+  _avaturnSaving = true;
+  avatarCreatorStatus.style.color = "";
+  avatarCreatorStatus.textContent = "Exportando avatar…";
+  // Variações conhecidas/heurísticas — o Avaturn aceita uma delas dependendo do build
+  const commands = [
+    { type: "avaturn_export" },
+    { eventName: "export" },
+    { action: "export" },
+    { command: "export" },
+    { type: "exportAvatar" },
+    "export",
+  ];
+  for (const cmd of commands) {
+    try { avatarCreatorFrame.contentWindow.postMessage(cmd, "*"); } catch {}
+  }
+  // Se em 12s nada voltar, libera o botão pra tentar de novo
+  setTimeout(() => {
+    if (_avaturnSaving) {
+      _avaturnSaving = false;
+      avatarCreatorStatus.style.color = "#f26868";
+      avatarCreatorStatus.textContent = "Não consegui exportar automaticamente. Clique em 'Next' dentro do editor.";
+    }
+  }, 12000);
+});
+
 
 async function handleAvatarUpload(file) {
   if (!file) return;
