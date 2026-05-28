@@ -7005,6 +7005,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (savedFootballPos) {
         ent.group.position.copy(savedFootballPos);
       }
+      // garante postura em pé (sem inclinações remanescentes de chutes/pose debug)
+      ent.__fbKicking = false;
+      ent.__kickTargetRotX = null;
+      if (ent.character) ent.character.rotation.x = 0;
       const d = _v1.copy(camera.position).sub(ent.group.position);
       camYaw = Math.atan2(d.x, d.z);
     }
@@ -7026,6 +7030,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) {
       savedFootballPos = ent.group.position.clone();
       if (savedNormalPos) ent.group.position.copy(savedNormalPos);
+      // garante postura em pé ao sair do modo futebol
+      ent.__fbKicking = false;
+      ent.__kickTargetRotX = null;
+      if (ent.character) ent.character.rotation.x = 0;
     }
     const hud = document.getElementById("footballHud");
     if (hud) {
@@ -7475,13 +7483,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       kick.addEventListener("pointerdown", down);
       kick.addEventListener("pointerup", up);
       kick.addEventListener("pointercancel", up);
-    }
-    const run = document.getElementById("fbRun");
-    if (run) {
-      run.addEventListener("pointerdown", () => { runHeld = true; run.classList.add("is-active"); });
-      const off = () => { runHeld = false; run.classList.remove("is-active"); };
-      run.addEventListener("pointerup", off);
-      run.addEventListener("pointercancel", off);
     }
     const exit = document.getElementById("fbExit");
     if (exit) exit.addEventListener("click", () => exitFootball());
