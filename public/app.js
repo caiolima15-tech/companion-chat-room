@@ -6842,6 +6842,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let ballInner = null;      // malha interna (escala aplicada por scale_mul)
   let ballScale = 1;         // multiplicador atual de tamanho
   let stillTime = 0;         // tempo parada (para auto-reset)
+  let pickupCooldown = 0;    // bloqueia auto-pickup logo após chute
+  let dribblePhase = 0;      // fase do "toque" para drible com pequenos avanços
 
   function ensureBall() {
     if (ballGroup || loadingBall) return;
