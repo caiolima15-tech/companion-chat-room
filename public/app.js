@@ -690,7 +690,12 @@ async function loadPreviewCharacter(character) {
   const token = ++previewLoadToken;
   if (previewCharObj) { previewScene.remove(previewCharObj); previewCharObj = null; }
   previewMixer = null;
-  if (charStageLoader) charStageLoader.hidden = false;
+  // Mesma fumaça 3D usada ao carregar o avatar na sala (em vez do spinner HTML).
+  if (charStageLoader) charStageLoader.hidden = true;
+  if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+  previewSmoke = createLoadingSmoke();
+  previewSmoke.position.set(0, 0.35, 0);
+  previewScene.add(previewSmoke);
   try {
     const { base, clips } = await loadCharacterAssets(character);
     if (token !== previewLoadToken) return;
