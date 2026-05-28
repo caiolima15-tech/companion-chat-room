@@ -548,17 +548,16 @@ async function loadUserAvatars() {
 
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
-  characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
+  // Nome do usuário é pré-estabelecido na conta. Só pedimos para definir quando
+  // ainda não existe (contas antigas / criadas sem nome).
+  const hasName = !!(me?.name && me.name !== "Visitante");
+  const nickWrap = document.querySelector("#characterNickWrap");
+  if (nickWrap) nickWrap.hidden = hasName;
+  characterNicknameInput.value = hasName ? "" : "";
   selectedCharacterSlug =
     me?.character_slug ||
     charactersCatalog.find((c) => c.base_url)?.slug ||
     (userAvatars[0] ? `user:${userAvatars[0].id}` : null);
-  const label = document.querySelector("#currentAccountLabel");
-  if (label) {
-    supabase.auth.getUser().then(({ data }) => {
-      label.textContent = data?.user?.email ? `Conectado como ${data.user.email}` : "";
-    });
-  }
   characterSelectOverlay.hidden = false;
   initPreviewScene();
   refreshCharacterCarousel();
