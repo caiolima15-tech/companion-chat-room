@@ -13,6 +13,9 @@ const SHARED_ANIM_LIBRARY = {
   jump: "/assets/animations/jump.fbx",
   dance: "/assets/animations/dance.fbx",
   wave: "/assets/animations/wave.fbx",
+  // Modo futebol — exportar do Mixamo em FBX "Without Skin" (só animação).
+  kickWeak: "/assets/animations/kickweak.fbx",
+  kickStrong: "/assets/animations/kickstrong.fbx",
 };
 const sharedAnimSourceCache = new Map(); // url -> Promise<Object3D scene with .animations>
 function loadSharedAnimSource(url) {
