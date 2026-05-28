@@ -6987,6 +6987,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const hud = document.getElementById("footballHud");
     if (hud) hud.hidden = false;
+    const kp = document.getElementById("kickPosePanel");
+    if (kp) kp.hidden = !document.body.classList.contains("is-admin");
     document.body.classList.add("football-on");
   }
   function exitFootball() {
@@ -6999,9 +7001,37 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     updateForceBar();
     const hud = document.getElementById("footballHud");
     if (hud) hud.hidden = true;
+    const kp = document.getElementById("kickPosePanel");
+    if (kp) kp.hidden = true;
     document.body.classList.remove("football-on");
   }
   window.__footballExit = exitFootball;
+
+  // Pose Debug do chute (painel admin no HUD de futebol)
+  (function wireKickPosePanel() {
+    const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
+    const elY = document.getElementById("kpY");
+    const elFwd = document.getElementById("kpFwd");
+    const elRot = document.getElementById("kpRot");
+    if (!elY || !elFwd || !elRot) return;
+    const elYV = document.getElementById("kpYVal");
+    const elFwdV = document.getElementById("kpFwdVal");
+    const elRotV = document.getElementById("kpRotVal");
+    function sync() {
+      elY.value = kp.offY ?? 0; elFwd.value = kp.offFwd ?? 0; elRot.value = kp.rotX ?? 0;
+      elYV.textContent = (kp.offY ?? 0).toFixed(2);
+      elFwdV.textContent = (kp.offFwd ?? 0).toFixed(2);
+      elRotV.textContent = String(kp.rotX ?? 0);
+    }
+    sync();
+    elY.addEventListener("input", () => { kp.offY = Number(elY.value); elYV.textContent = kp.offY.toFixed(2); window.__fbApplyKickPoseLive?.(); });
+    elFwd.addEventListener("input", () => { kp.offFwd = Number(elFwd.value); elFwdV.textContent = kp.offFwd.toFixed(2); window.__fbApplyKickPoseLive?.(); });
+    elRot.addEventListener("input", () => { kp.rotX = Number(elRot.value); elRotV.textContent = String(kp.rotX); window.__fbApplyKickPoseLive?.(); });
+    document.getElementById("kpTestWeak")?.addEventListener("click", () => window.__fbTestKick?.(false));
+    document.getElementById("kpTestStrong")?.addEventListener("click", () => window.__fbTestKick?.(true));
+    document.getElementById("kpSave")?.addEventListener("click", () => { window.__saveKickPose?.(); addSystemLine?.("Pose do chute salva."); });
+  })();
+
 
   const joy = { active: false, x: 0, y: 0, id: null };
   let runHeld = false;
