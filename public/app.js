@@ -7162,7 +7162,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const camFwd = _v1.copy(_head).sub(camera.position); camFwd.y = 0;
     if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
     camFwd.normalize();
-    const camRight = _v2.set(camFwd.z, 0, -camFwd.x);
+    const camRight = _v2.set(-camFwd.z, 0, camFwd.x);
     let moving = false;
     if (mag > 0.08) {
       const dir = new THREE.Vector3()
