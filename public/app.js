@@ -732,16 +732,18 @@ async function loadPreviewCharacter(character) {
     if (previewGround) previewGround.position.y = 0;
     if (previewRing) previewRing.position.y = 0.002;
 
-    // Enquadra o corpo inteiro com a câmera mais alta (na altura do meio do corpo)
-    // e mirando no centro do corpo. Permite aproximar bem mais (minDistance menor).
+    // Câmera NIVELADA (sem inclinar para baixo) e mirando alto no corpo: assim a
+    // base/pés ficam lá embaixo no quadro (logo acima do nome) e o avatar aparece
+    // inteiro. Aproxima o suficiente para preencher a tela (apenas uma folga no topo).
     const vFov = (previewCamera.fov * Math.PI) / 180;
-    const fitH = (size.y * 0.5) / Math.tan(vFov / 2);
+    const frameH = size.y * 1.14; // altura enquadrada (folga no topo)
+    const fitH = (frameH * 0.5) / Math.tan(vFov / 2);
     const fitW = (size.x * 0.5) / Math.tan(vFov / 2) / Math.max(previewCamera.aspect, 0.0001);
-    const dist = Math.max(fitH, fitW, 1.2) * 1.08;
-    const midY = size.y * 0.52; // pés em 0 → meio do corpo
-    previewControls.target.set(0, midY, 0);
-    previewCamera.position.set(0, midY + size.y * 0.18, dist);
-    previewControls.minDistance = Math.max(dist * 0.3, 0.6);
+    const dist = Math.max(fitH, fitW, 1.0);
+    const aimY = size.y * 0.55; // mira acima do meio → empurra a base para baixo
+    previewControls.target.set(0, aimY, 0);
+    previewCamera.position.set(0, aimY, dist); // mesma altura do alvo = olhar horizontal
+    previewControls.minDistance = Math.max(dist * 0.45, 0.5);
     previewControls.maxDistance = dist * 2.6;
     previewControls.update();
 
