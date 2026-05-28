@@ -739,7 +739,10 @@ async function loadPreviewCharacter(character) {
   } catch (e) {
     console.warn("[preview] falha ao carregar personagem", e);
   } finally {
-    if (token === previewLoadToken && charStageLoader) charStageLoader.hidden = true;
+    if (token === previewLoadToken) {
+      if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+      if (charStageLoader) charStageLoader.hidden = true;
+    }
   }
 }
 
