@@ -1019,6 +1019,7 @@ async function handleAvatarUpload(file) {
 
     if (_editingAvatarId) {
       // Edição: substitui o GLB do avatar atual (mesmo slug user:<id>).
+      const oldBaseUrl = userAvatars.find((a) => a.id === _editingAvatarId)?.base_url || null;
       const { data: updated, error: dbErr } = await supabase
         .from("user_avatars")
         .update({ base_url: baseUrl })
@@ -1026,6 +1027,14 @@ async function handleAvatarUpload(file) {
         .select()
         .single();
       if (dbErr) throw dbErr;
+      // Remove o GLB antigo do storage para não deixar arquivos órfãos.
+      if (oldBaseUrl && oldBaseUrl !== baseUrl) {
+        const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
+        if (oldPath) {
+          supabase.storage.from("characters").remove([oldPath])
+            .catch((e) => console.warn("[avatar] falha ao remover GLB antigo", e));
+        }
+      }
       userAvatars = userAvatars.map((a) => (a.id === _editingAvatarId ? updated : a));
       // Limpa o cache para recarregar a nova versão no preview e na sala.
       characterCache.delete(`user:${_editingAvatarId}`);
