@@ -498,9 +498,11 @@ async function enterRoom() {
     if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
     // Garante que todos os painéis admin comecem fechados ao entrar
-    document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => { if (p) p.hidden = true; });
+    document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => { if (p) { p.hidden = true; p.style.display = ""; } });
     const _dock = document.querySelector("#adminDock");
     if (_dock) { _dock.hidden = true; _dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false")); }
+    const _shield = document.querySelector("#adminShortcut");
+    if (_shield) _shield.setAttribute("aria-pressed", "false");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
@@ -718,8 +720,8 @@ function exitRoomToLobby() {
     dock.hidden = true;
     dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
   }
-  document.querySelectorAll(".floating-panel, #lightsAdminPanel, #layersPanel, #mapAdminPanel").forEach((p) => {
-    if (p) p.hidden = true;
+  document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => {
+    if (p) { p.hidden = true; p.style.display = ""; }
   });
 }
 
@@ -1180,6 +1182,10 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
   setDock(false);
 
   // Delegação: cada barra do dock clica no botão original correspondente
+  const ALL_PANEL_SELECTORS = [
+    "#lightsAdminPanel", "#layersPanel", "#botsAdminPanel",
+    "#radioAdminPanel", "#interactionsAdminPanel", "#mapAdminPanel",
+  ];
   dock.addEventListener("click", (ev) => {
     const item = ev.target.closest(".admin-dock-item");
     if (!item) return;
@@ -1187,11 +1193,21 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
       document.querySelector("#glbInput")?.click();
       return;
     }
+    const panelSel = item.getAttribute("data-dock-panel");
+    // Antes de abrir uma ferramenta, fecha todas as outras (uma de cada vez)
+    if (panelSel) {
+      for (const sel of ALL_PANEL_SELECTORS) {
+        if (sel === panelSel) continue;
+        const other = document.querySelector(sel);
+        if (other && !other.hidden) other.hidden = true;
+      }
+      dock.querySelectorAll("[data-dock-panel]").forEach((b) => {
+        if (b !== item) b.setAttribute("aria-pressed", "false");
+      });
+    }
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
     if (target) target.click();
-    // Sincroniza aria-pressed do painel correspondente (após o clique)
-    const panelSel = item.getAttribute("data-dock-panel");
     if (panelSel) {
       const panel = document.querySelector(panelSel);
       setTimeout(() => {
@@ -1199,6 +1215,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
       }, 0);
     }
   });
+
 
   // Quando um painel é fechado pelos seus próprios botões internos (×/−),
   // remove o destaque da barra correspondente no dock.
