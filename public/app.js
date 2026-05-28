@@ -3425,7 +3425,7 @@ function renderAssetEditor(asset) {
     <div class="asset-slider">
       <span class="asset-slider-label">${label}</span>
       <input type="range" data-asset-field="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
-      <span class="asset-slider-value">${Number(value).toFixed(2)}</span>
+      <input type="number" class="asset-slider-value" data-asset-num="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${Number(value).toFixed(2)}" />
     </div>`;
   const deg = (r) => (r * 180) / Math.PI;
   return `
@@ -3946,11 +3946,11 @@ assetList.addEventListener("click", (event) => {
 });
 
 assetList.addEventListener("input", (event) => {
-  const input = event.target.closest("input[data-asset-field]");
+  const input = event.target.closest("input[data-asset-field], input[data-asset-num]");
   if (!input || !isAdmin) return;
   const asset = currentAssets.find((item) => item.id === input.dataset.assetId);
   if (!asset) return;
-  const field = input.dataset.assetField;
+  const field = input.dataset.assetField || input.dataset.assetNum;
   let value = parseFloat(input.value);
   if (Number.isNaN(value)) return;
   const patch = {};
@@ -3959,9 +3959,12 @@ assetList.addEventListener("input", (event) => {
   } else {
     patch[field] = value;
   }
-  // Atualiza valor exibido ao lado
-  const valueEl = input.parentElement?.querySelector(".asset-slider-value");
-  if (valueEl) valueEl.textContent = value.toFixed(2);
+  // Mantém os dois controles (barra + número) em sincronia
+  const wrap = input.parentElement;
+  const range = wrap?.querySelector("input[type=range]");
+  const num = wrap?.querySelector("input[type=number]");
+  if (input === range && num && document.activeElement !== num) num.value = value.toFixed(2);
+  if (input === num && range) range.value = value;
   // Atualiza cache local pra render imediato e evita reset do slider
   Object.assign(asset, patch);
   // Render local imediato
@@ -4751,7 +4754,10 @@ function lightControlRow(row) {
   const icon = isSun ? "☀️" : "🔦";
   const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
     <label style="display:block;margin:2px 0;font-size:11px;">
-      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <span style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <span>${label}</span>
+        <input type="number" class="num-edit" data-numkey="${key}" min="${min}" max="${max}" step="${step}" value="${Number(val)}">
+      </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
   return `
@@ -4802,8 +4808,18 @@ function renderLightsAdminList() {
       inp.addEventListener("input", () => {
         const key = inp.dataset.key;
         const num = parseFloat(inp.value);
-        const labelSpan = card.querySelector(`[data-val="${key}"]`);
-        if (labelSpan) labelSpan.textContent = inp.value;
+        const numEl = card.querySelector(`input[data-numkey="${key}"]`);
+        if (numEl && document.activeElement !== numEl) numEl.value = inp.value;
+        scheduleLightSave(id, { [key]: num });
+      });
+    });
+    card.querySelectorAll("input[data-numkey]").forEach((numEl) => {
+      numEl.addEventListener("input", () => {
+        const key = numEl.dataset.numkey;
+        const num = parseFloat(numEl.value);
+        if (Number.isNaN(num)) return;
+        const range = card.querySelector(`input[type=range][data-key="${key}"]`);
+        if (range) range.value = num;
         scheduleLightSave(id, { [key]: num });
       });
     });
@@ -5158,7 +5174,10 @@ async function deleteBot(id) {
 function botControlRow(row) {
   const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
     <label style="display:block;margin:2px 0;font-size:11px;">
-      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <span style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <span>${label}</span>
+        <input type="number" class="num-edit" data-numkey="${key}" min="${min}" max="${max}" step="${step}" value="${Number(val)}">
+      </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
   const charOpts = charactersCatalog.map(c =>
@@ -5201,12 +5220,17 @@ function renderBotsAdminList() {
     card.querySelectorAll("input[type=range]").forEach(inp => {
       inp.addEventListener("input", () => {
         const k = inp.dataset.key; const v = parseFloat(inp.value);
-        const s = card.querySelector(`[data-val="${k}"]`);
-        if (s) {
-          if (k === "rotation_y") s.textContent = (v * 180 / Math.PI).toFixed(0) + "°";
-          else if (k === "scale") s.textContent = v.toFixed(2) + "×";
-          else s.textContent = v.toFixed(2);
-        }
+        const numEl = card.querySelector(`input[data-numkey="${k}"]`);
+        if (numEl && document.activeElement !== numEl) numEl.value = inp.value;
+        scheduleBotSave(id, { [k]: v });
+      });
+    });
+    card.querySelectorAll("input[data-numkey]").forEach(numEl => {
+      numEl.addEventListener("input", () => {
+        const k = numEl.dataset.numkey; const v = parseFloat(numEl.value);
+        if (Number.isNaN(v)) return;
+        const range = card.querySelector(`input[type=range][data-key="${k}"]`);
+        if (range) range.value = v;
         scheduleBotSave(id, { [k]: v });
       });
     });
@@ -6519,7 +6543,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       <label class="ie-slider">
         <span class="ie-label">${label}</span>
         <input type="range" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0)}">
-        <span class="ie-val">${Number(draft[field] || 0).toFixed(2)}</span>
+        <input type="number" class="ie-val" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0).toFixed(2)}">
       </label>`;
 
     editorEl.innerHTML = `
@@ -6589,9 +6613,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (el.type === "range" || el.type === "number") val = Number(el.value);
     else val = el.value;
     editingDraft[field] = val;
-    // Atualiza valor visual no slider
+    // Mantém barra e número em sincronia
     if (el.type === "range") {
-      const v = el.parentElement?.querySelector(".ie-val"); if (v) v.textContent = Number(val).toFixed(2);
+      const num = el.parentElement?.querySelector("input[type=number][data-field]");
+      if (num && document.activeElement !== num) num.value = Number(val).toFixed(2);
+    } else if (el.type === "number") {
+      const range = el.parentElement?.querySelector("input[type=range][data-field]");
+      if (range) range.value = val;
     }
     // Preview ao vivo: se já sentamos para testar, atualiza pose
     if (currentSit && (editingId === currentSit.id || editingId === "new")) {
