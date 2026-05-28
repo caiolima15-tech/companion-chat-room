@@ -6928,10 +6928,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     act.clampWhenFinished = true;
     act.fadeIn(0.05).play();
     ent.__fbKicking = true;
+    applyKickPose(ent, true);
     const dur = (act.getClip?.().duration || 0.6) * 1000;
     clearTimeout(ent.__fbKickT);
-    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; }, Math.min(dur, 850));
+    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; applyKickPose(ent, false); }, Math.min(dur, 850));
   }
+
+  // Ajuste fino do personagem durante o chute (não afundar / alinhar o pé na bola).
+  function applyKickPose(ent, on) {
+    const ch = ent?.character;
+    if (!ch) return;
+    if (on) {
+      if (ent.__kickBase == null) {
+        ent.__kickBase = { y: ch.position.y, z: ch.position.z, rotX: ch.rotation.x };
+      }
+      const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
+      ch.position.y = ent.__kickBase.y + (kp.offY || 0);
+      ch.position.z = ent.__kickBase.z + (kp.offFwd || 0);
+      ch.rotation.x = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
+    } else if (ent.__kickBase) {
+      ch.position.y = ent.__kickBase.y;
+      ch.position.z = ent.__kickBase.z;
+      ch.rotation.x = ent.__kickBase.rotX;
+      ent.__kickBase = null;
+    }
+  }
+  window.__fbApplyKickPoseLive = function () {
+    const ent = myEntity();
+    if (ent && ent.__fbKicking) applyKickPose(ent, true);
+  };
+  window.__fbTestKick = function (strong) {
+    const ent = myEntity();
+    if (ent) playKickAnim(ent, !!strong);
+  };
+
 
   function aimDir(ent) {
     _v1.set(Math.sin(ent.group.rotation.y), 0, Math.cos(ent.group.rotation.y));
