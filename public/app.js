@@ -1435,6 +1435,14 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
       document.querySelector("#glbInput")?.click();
       return;
     }
+    if (item.id === "adminDockAssets") {
+      const panel = document.querySelector("#assetDock");
+      if (panel) {
+        panel.hidden = !panel.hidden;
+        item.setAttribute("aria-pressed", panel.hidden ? "false" : "true");
+      }
+      return;
+    }
     const panelSel = item.getAttribute("data-dock-panel");
     // Antes de abrir uma ferramenta, fecha todas as outras (uma de cada vez)
     if (panelSel) {
