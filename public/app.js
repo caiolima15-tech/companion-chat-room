@@ -751,6 +751,11 @@ async function loadPreviewCharacter(character) {
     previewMixer = new THREE.AnimationMixer(obj);
     const idleClip = clips.idle || Object.values(clips)[0];
     if (idleClip && idleClip.tracks.length) previewMixer.clipAction(idleClip).reset().play();
+    // Gambiarra anti-flutuação: aplica o 1º frame da idle e recola os pés na base,
+    // pois a pose animada pode diferir da pose medida (variando por tamanho/avatar).
+    previewMixer.update(0);
+    const posed = measure(obj);
+    if (isFinite(posed.min.y)) obj.position.y -= posed.min.y;
   } catch (e) {
     console.warn("[preview] falha ao carregar personagem", e);
   } finally {
