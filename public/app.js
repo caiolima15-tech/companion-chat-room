@@ -6770,6 +6770,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function myEntity() { return (myId && playerEntities.get(myId)) || null; }
 
+  let ballInner = null;      // malha interna (escala aplicada por scale_mul)
+  let ballScale = 1;         // multiplicador atual de tamanho
+  let stillTime = 0;         // tempo parada (para auto-reset)
+
   function ensureBall() {
     if (ballGroup || loadingBall) return;
     loadingBall = true;
@@ -6786,19 +6790,42 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
       ballGroup = new THREE.Group();
       ballGroup.add(inner);
+      ballGroup.scale.setScalar(ballScale);
       ballGroup.visible = false;
+      ballInner = inner;
       scene.add(ballGroup);
     }, undefined, (e) => { loadingBall = false; console.warn("[football] ball load", e); });
   }
 
-  function interWorldPos(inter) {
-    if (!inter) return null;
-    const obj = assetObjects.get(inter.asset_id);
-    if (!obj) return null;
-    obj.updateMatrixWorld(true);
-    const local = new THREE.Vector3(inter.offset_x || 0, inter.offset_y || 0, inter.offset_z || 0);
-    return local.applyMatrix4(obj.matrixWorld);
+  // Posição de spawn ABSOLUTA no mundo (offset_x/z = mundo, offset_y = altura extra).
+  // Aceita preview ao vivo do editor admin.
+  function spawnWorldPos(inter) {
+    const src = window.__footballEditPreview || inter;
+    if (!src) return null;
+    const x = Number(src.offset_x) || 0;
+    const z = Number(src.offset_z) || 0;
+    const extraY = Number(src.offset_y) || 0;
+    const p = new THREE.Vector3(x, 0, z);
+    p.y = groundHeightAt(p, 2) + ballRadius() + extraY;
+    return p;
   }
+
+  function ballRadius() { return BALL_RADIUS * ballScale; }
+
+  function applyBallScale(mul) {
+    ballScale = Math.max(0.2, Number(mul) || 1);
+    if (ballGroup) ballGroup.scale.setScalar(ballScale);
+  }
+
+  function resetBallToSpawn() {
+    const sp = spawnWorldPos(activeInter);
+    if (!sp) return;
+    ballPos.copy(sp);
+    ballVel.set(0, 0, 0);
+    held = false;
+    ballPlaced = true;
+  }
+
 
   function setupBallChannel(mapId) {
     if (ballChannelMapId === mapId) return;
