@@ -7324,6 +7324,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     if (footballActive && ent) handleFootballMovement(delta, ent);
 
+    // habilita o botão de chute apenas quando o jogador estiver com a bola
+    if (footballActive) {
+      const kickBtn = document.getElementById("fbKick");
+      if (kickBtn) {
+        const has = (ownerId === myId) && held;
+        kickBtn.classList.toggle("is-disabled", !has);
+        kickBtn.style.opacity = has ? "" : "0.4";
+        kickBtn.style.pointerEvents = has ? "" : "none";
+      }
+    }
+
+
     if (ownerId === myId) {
       simulateOwned(delta, ent);
       broadcastState(false);
