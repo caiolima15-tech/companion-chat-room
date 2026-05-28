@@ -937,13 +937,26 @@ body.in-world #mobileEmoteBtn,
 body.in-world #mobileChatBtn { display: inline-flex; }
 
 
-/* Botão escudo só aparece para admin */
-body.is-admin #adminHideToggle { display: flex !important; }
+/* Escudo antigo desativado — usamos só o #adminShortcut + #adminDock */
+#adminHideToggle { display: none !important; }
 
-/* Quando o admin clica no escudo, escondemos toda interface admin
-   (exceto o próprio escudo, para poder reabrir) */
+/* Esconder os gatilhos antigos do topo: tudo agora vive no #adminDock.
+   Mantemos no DOM porque o dock dispara click neles. */
+body #darkModeToggle,
+body #lightsAdminToggle,
+body #layersToggleBtn,
+body #botsToggleBtn,
+body #radioToggleBtn,
+body #interactionsToggleBtn,
+body #mapAdminToggle,
+body #manageCharactersButton,
+body #placeButton,
+body label.file-picker.admin-only,
+body .asset-dock.admin-only {
+  display: none !important;
+}
+
 body.admin-ui-hidden .admin-only { display: none !important; }
-body.admin-ui-hidden #adminHideToggle { display: flex !important; }
 
 /* Auth + logout additions */
 .logout-btn {
