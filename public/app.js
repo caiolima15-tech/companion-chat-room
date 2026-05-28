@@ -6991,6 +6991,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   };
 
 
+  let savedNormalPos = null;   // posição do modo normal preservada ao entrar no futebol
+  let savedFootballPos = null;  // última posição usada no modo futebol
   function enterFootball() {
     if (footballActive) return;
     footballActive = true;
@@ -6998,11 +7000,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     controls.enabled = false;
     const ent = myEntity();
     if (ent) {
+      // guarda posição normal e restaura (ou inicia) posição do modo futebol
+      savedNormalPos = ent.group.position.clone();
+      if (savedFootballPos) {
+        ent.group.position.copy(savedFootballPos);
+      }
       const d = _v1.copy(camera.position).sub(ent.group.position);
       camYaw = Math.atan2(d.x, d.z);
     }
     const hud = document.getElementById("footballHud");
-    if (hud) hud.hidden = false;
+    if (hud) { hud.hidden = false; requestAnimationFrame(() => hud.classList.add("is-visible")); }
     const kp = document.getElementById("kickPosePanel");
     if (kp) kp.hidden = !document.body.classList.contains("is-admin");
     document.body.classList.add("football-on");
@@ -7015,8 +7022,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     charging = false; charge = 0;
     if (held && ownerId === myId) { held = false; broadcastState(true); }
     updateForceBar();
+    const ent = myEntity();
+    if (ent) {
+      savedFootballPos = ent.group.position.clone();
+      if (savedNormalPos) ent.group.position.copy(savedNormalPos);
+    }
     const hud = document.getElementById("footballHud");
-    if (hud) hud.hidden = true;
+    if (hud) {
+      hud.classList.remove("is-visible");
+      setTimeout(() => { hud.hidden = true; }, 280);
+    }
     const kp = document.getElementById("kickPosePanel");
     if (kp) kp.hidden = true;
     document.body.classList.remove("football-on");
