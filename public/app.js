@@ -2097,7 +2097,11 @@ async function trackLobby() {
 
 // === Trocar de sala em runtime ===
 async function switchRoom(newMapId) {
-  if (newMapId === currentRoomChannelsMapId) return;
+  if (newMapId === currentRoomChannelsMapId) {
+    // Já estamos nessa sala — só garante que o mundo volte a aparecer.
+    document.body.classList.add("world-ready");
+    return;
+  }
   window.showWorldLoading?.("Carregando o mundo");
   try { await window.radioLeaveRoom?.(); } catch {}
   try { await window.interactionsLeaveRoom?.(); } catch {}
