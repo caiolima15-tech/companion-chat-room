@@ -6987,6 +6987,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const hud = document.getElementById("footballHud");
     if (hud) hud.hidden = false;
+    const kp = document.getElementById("kickPosePanel");
+    if (kp) kp.hidden = !window.__isAdmin;
     document.body.classList.add("football-on");
   }
   function exitFootball() {
