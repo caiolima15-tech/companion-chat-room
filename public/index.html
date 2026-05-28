@@ -219,6 +219,19 @@
 
           <button id="adminHideToggle" type="button" title="Ocultar/mostrar interface admin" aria-label="Alternar interface admin" style="position:absolute;top:12px;right:64px;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,200,80,0.5);background:rgba(15,23,42,0.85);color:#fff;font-size:20px;cursor:pointer;display:none;align-items:center;justify-content:center;z-index:31;box-shadow:0 6px 20px rgba(0,0,0,0.4);">🛡️</button>
 
+          <aside id="adminDock" class="admin-dock admin-only" hidden aria-label="Ferramentas de admin">
+            <button type="button" class="admin-dock-item" data-dock-target="#darkModeToggle"><span class="admin-dock-icon">🌑</span>Escuro</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#lightsAdminToggle" data-dock-panel="#lightsAdminPanel"><span class="admin-dock-icon">💡</span>Luzes do mapa</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#layersToggleBtn" data-dock-panel="#layersPanel"><span class="admin-dock-icon">🗂️</span>Camadas</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#botsToggleBtn" data-dock-panel="#botsAdminPanel"><span class="admin-dock-icon">🤖</span>Bots</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#radioToggleBtn" data-dock-panel="#radioAdminPanel"><span class="admin-dock-icon">📻</span>Rádio</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#interactionsToggleBtn" data-dock-panel="#interactionsAdminPanel"><span class="admin-dock-icon">🎯</span>Interações</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#mapAdminToggle" data-dock-panel="#mapAdminPanel"><span class="admin-dock-icon">🗺️</span>Editar mapa</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#manageCharactersButton"><span class="admin-dock-icon">🧑</span>Personagens</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#placeButton"><span class="admin-dock-icon">📦</span>Colocar GLB</button>
+            <button type="button" class="admin-dock-item" id="adminDockImportGlb"><span class="admin-dock-icon">⬆️</span>Importar GLB</button>
+          </aside>
+
           <input id="replaceMapGlbInput" type="file" accept=".glb,model/gltf-binary" hidden>
 
         </div>
