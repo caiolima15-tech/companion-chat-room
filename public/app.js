@@ -230,6 +230,25 @@ function applyPoseDebugToMe() {
 }
 // Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
+// ============ Pose debug do CHUTE (ajuste fino enquanto a animação de chute toca) ============
+// Aplicado no objeto interno do personagem (entity.character) somente durante o chute.
+const KICK_POSE_KEY = "neon-tap-room-kick-pose";
+function loadKickPose() {
+  try {
+    const raw = localStorage.getItem(KICK_POSE_KEY);
+    if (raw) return { offY: 0, offFwd: 0, rotX: 0, ...JSON.parse(raw) };
+  } catch {}
+  return { offY: 0, offFwd: 0, rotX: 0 };
+}
+const kickPose = loadKickPose();
+function saveKickPose() {
+  try { localStorage.setItem(KICK_POSE_KEY, JSON.stringify(kickPose)); } catch {}
+}
+window.__kickPose = kickPose;
+window.__saveKickPose = saveKickPose;
+
+
+
 const assetObjects = new Map();
 const keyState = new Set();
 
