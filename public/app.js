@@ -7186,28 +7186,83 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   }
 
+  const _prevPlayerPos = new THREE.Vector3();
+  let _hasPrevPlayerPos = false;
+  const _ballPrev = new THREE.Vector3();
+
   function simulateOwned(delta, ent) {
     const R = ballRadius();
+    if (pickupCooldown > 0) pickupCooldown = Math.max(0, pickupCooldown - delta);
+
+    // velocidade do jogador (XZ) — usada pra simular toques no drible
+    let playerVx = 0, playerVz = 0, playerSpeed = 0;
+    if (_hasPrevPlayerPos) {
+      playerVx = (ent.group.position.x - _prevPlayerPos.x) / Math.max(1e-4, delta);
+      playerVz = (ent.group.position.z - _prevPlayerPos.z) / Math.max(1e-4, delta);
+      playerSpeed = Math.hypot(playerVx, playerVz);
+    }
+    _prevPlayerPos.copy(ent.group.position);
+    _hasPrevPlayerPos = true;
+
     if (held) {
       const dir = aimDir(ent);
-      const target = _v1.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST);
+      // ponto base: bem à frente do pé, com pequeno offset lateral
+      const right = _v2.set(dir.z, 0, -dir.x);
+      const target = _v1.copy(ent.group.position)
+        .addScaledVector(dir, DRIBBLE_DIST)
+        .addScaledVector(right, DRIBBLE_SIDE);
+      // pequenos "toques": quando corre, a bola adianta um pouco em ciclos
+      if (playerSpeed > 0.3) {
+        dribblePhase += delta * (4 + playerSpeed * 1.2);
+        const push = Math.max(0, Math.sin(dribblePhase)) * Math.min(0.18, playerSpeed * 0.04);
+        target.addScaledVector(dir, push);
+      } else {
+        dribblePhase = 0;
+      }
       target.y = groundHeightAt(target, ballPos.y) + R;
-      ballPos.lerp(target, Math.min(1, delta * 12));
-      ballVel.set(0, 0, 0);
+      ballPos.lerp(target, Math.min(1, delta * 18));
+      // velocidade efetiva pra rotação visual = velocidade do jogador
+      ballVel.set(playerVx, 0, playerVz);
       stillTime = 0;
     } else {
       ballVel.y += GRAVITY * delta;
+      _ballPrev.copy(ballPos);
       ballPos.addScaledVector(ballVel, delta);
+
+      // Colisão XZ contra paredes/objetos: reflete horizontalmente
+      const horizMoved = Math.hypot(ballPos.x - _ballPrev.x, ballPos.z - _ballPrev.z);
+      if (horizMoved > 0.001 && collidesAt(_ballPrev, ballPos)) {
+        // calcula normal aproximada amostrando offset perpendicular
+        const moveX = ballPos.x - _ballPrev.x;
+        const moveZ = ballPos.z - _ballPrev.z;
+        // tenta separar eixos pra decidir qual refletir
+        const tryX = _ballPrev.clone(); tryX.x = ballPos.x;
+        const tryZ = _ballPrev.clone(); tryZ.z = ballPos.z;
+        const hitX = collidesAt(_ballPrev, tryX);
+        const hitZ = collidesAt(_ballPrev, tryZ);
+        if (hitX) ballVel.x = -ballVel.x * 0.55;
+        if (hitZ) ballVel.z = -ballVel.z * 0.55;
+        if (!hitX && !hitZ) { ballVel.x = -ballVel.x * 0.55; ballVel.z = -ballVel.z * 0.55; }
+        ballPos.copy(_ballPrev);
+        ballPos.x += ballVel.x * delta;
+        ballPos.z += ballVel.z * delta;
+      }
+
+      // Chão: quique
       const gy = groundHeightAt(ballPos, ballPos.y) + R;
       if (ballPos.y <= gy) {
         ballPos.y = gy;
-        if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.5;
+        if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.55;
         if (Math.abs(ballVel.y) < 0.8) ballVel.y = 0;
-        const f = Math.pow(0.18, delta);
+        // atrito de rolagem (só quando no chão)
+        const rolling = ballVel.y === 0;
+        const f = Math.pow(rolling ? 0.35 : 0.92, delta);
         ballVel.x *= f; ballVel.z *= f;
-        if (Math.hypot(ballVel.x, ballVel.z) < 0.15) { ballVel.x = 0; ballVel.z = 0; }
+        if (Math.hypot(ballVel.x, ballVel.z) < 0.12) { ballVel.x = 0; ballVel.z = 0; }
       }
-      if (footballActive && ent && ballVel.lengthSq() < 2.0 &&
+      // Auto-pickup: só depois do cooldown e se a bola estiver lenta
+      if (pickupCooldown === 0 && footballActive && ent &&
+          ballVel.lengthSq() < 1.5 &&
           ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
         held = true;
       }
