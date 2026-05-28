@@ -3527,6 +3527,7 @@ function moveToWorld(point) {
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
+  if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
   if (!keyState.size) return;
@@ -3568,6 +3569,11 @@ function updatePlayerAnimation(delta) {
   const walkSpeed = 1.4;
   const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
+    // Modo futebol (jogador local): o módulo posiciona/anima; aqui só atualiza o mixer.
+    if (entity.player?.id === myId && window.__footballMode) {
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     // Sit override (local player only): trava no assento, sem terreno, sem walk
     if (entity.player?.id === myId && window.__sittingInteraction) {
       const s = window.__sittingInteraction;
