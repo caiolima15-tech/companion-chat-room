@@ -1435,6 +1435,14 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
       document.querySelector("#glbInput")?.click();
       return;
     }
+    if (item.id === "adminDockAssets") {
+      const panel = document.querySelector("#assetDock");
+      if (panel) {
+        panel.hidden = !panel.hidden;
+        item.setAttribute("aria-pressed", panel.hidden ? "false" : "true");
+      }
+      return;
+    }
     const panelSel = item.getAttribute("data-dock-panel");
     // Antes de abrir uma ferramenta, fecha todas as outras (uma de cada vez)
     if (panelSel) {
@@ -1450,6 +1458,12 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
     if (target) target.click();
+    if (item.hasAttribute("data-dock-toggle") && target) {
+      setTimeout(() => {
+        const on = /\bON\b/i.test(target.textContent || "");
+        item.setAttribute("aria-pressed", on ? "true" : "false");
+      }, 0);
+    }
     if (panelSel) {
       const panel = document.querySelector(panelSel);
       setTimeout(() => {
