@@ -6613,9 +6613,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (el.type === "range" || el.type === "number") val = Number(el.value);
     else val = el.value;
     editingDraft[field] = val;
-    // Atualiza valor visual no slider
+    // Mantém barra e número em sincronia
     if (el.type === "range") {
-      const v = el.parentElement?.querySelector(".ie-val"); if (v) v.textContent = Number(val).toFixed(2);
+      const num = el.parentElement?.querySelector("input[type=number][data-field]");
+      if (num && document.activeElement !== num) num.value = Number(val).toFixed(2);
+    } else if (el.type === "number") {
+      const range = el.parentElement?.querySelector("input[type=range][data-field]");
+      if (range) range.value = val;
     }
     // Preview ao vivo: se já sentamos para testar, atualiza pose
     if (currentSit && (editingId === currentSit.id || editingId === "new")) {
