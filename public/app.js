@@ -89,7 +89,7 @@ const emoteWaveButton = document.querySelector("#emoteWave");
 
 // Character select overlay
 const characterSelectOverlay = document.querySelector("#characterSelectOverlay");
-const characterGrid = document.querySelector("#characterGrid");
+
 const characterNicknameInput = document.querySelector("#characterNickname");
 const enterRoomButton = document.querySelector("#enterRoomButton");
 const characterSelectError = document.querySelector("#characterSelectError");
