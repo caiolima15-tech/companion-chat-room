@@ -720,8 +720,8 @@ function exitRoomToLobby() {
     dock.hidden = true;
     dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
   }
-  document.querySelectorAll(".floating-panel, #lightsAdminPanel, #layersPanel, #mapAdminPanel").forEach((p) => {
-    if (p) p.hidden = true;
+  document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => {
+    if (p) { p.hidden = true; p.style.display = ""; }
   });
 }
 
