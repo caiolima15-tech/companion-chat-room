@@ -1262,8 +1262,7 @@ body.admin-ui-hidden .admin-only { display: none !important; }
 .char-stage {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
-  max-height: 62vh;
+  min-height: 320px;
   border-radius: 16px;
   overflow: hidden;
   background:
