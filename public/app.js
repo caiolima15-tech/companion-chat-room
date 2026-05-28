@@ -809,8 +809,17 @@ charDeleteBtn?.addEventListener("click", async () => {
   const c = currentPreviewChar();
   if (!c?.isUserAvatar) return;
   if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
+  const oldBaseUrl = userAvatars.find((a) => a.id === c.userAvatarId)?.base_url || null;
   const { error } = await supabase.from("user_avatars").delete().eq("id", c.userAvatarId);
   if (error) { alert("Não foi possível excluir: " + error.message); return; }
+  // Remove o GLB do storage para não deixar arquivos órfãos.
+  if (oldBaseUrl) {
+    const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
+    if (oldPath) {
+      supabase.storage.from("characters").remove([oldPath])
+        .catch((e) => console.warn("[avatar] falha ao remover GLB excluído", e));
+    }
+  }
   if (selectedCharacterSlug === c.slug) selectedCharacterSlug = null;
   userAvatars = userAvatars.filter((a) => a.id !== c.userAvatarId);
   refreshCharacterCarousel();
