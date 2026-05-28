@@ -6329,6 +6329,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     let bestDist = Infinity;
     const pos = entity.group.position;
     for (const inter of interactions) {
+      if (inter.kind === "football") continue; // tratado pelo módulo de futebol
       const pose = computeSeatPose(inter);
       if (!pose) continue;
       const d = Math.hypot(pose.worldPos.x - pos.x, pose.worldPos.z - pos.z);
