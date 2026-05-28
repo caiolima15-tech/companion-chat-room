@@ -1993,7 +1993,7 @@ async function setupGlobalSecondaryChannels() {
       .channel("room-user-avatars")
       .on("postgres_changes", { event: "*", schema: "public", table: "user_avatars" }, async () => {
         await loadUserAvatars();
-        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
       })
       .subscribe();
   }
