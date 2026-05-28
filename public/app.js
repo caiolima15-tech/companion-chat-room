@@ -1642,7 +1642,11 @@ function collectBoneNames(root) {
 
 // Renomeia tracks de um clip para casar com os bones do alvo.
 // Mantém os tracks originais da animação: o eixo do avatar fica como veio no GLB.
-function retargetClipToBones(clip, targetBoneNames) {
+// opts.stripRootPosition: remove as faixas de POSIÇÃO de todos os ossos (mantém só
+// rotações). Usado nos chutes para travar o personagem "no lugar" — sem isso o
+// deslocamento embutido do Hips (Mixamo) puxa o corpo pra baixo e ele afunda.
+function retargetClipToBones(clip, targetBoneNames, opts = {}) {
+  const stripRootPosition = !!opts.stripRootPosition;
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -1650,6 +1654,7 @@ function retargetClipToBones(clip, targetBoneNames) {
     if (dot < 0) { tracks.push(t); continue; }
     const boneName = t.name.slice(0, dot);
     const prop = t.name.slice(dot);
+    if (stripRootPosition && prop === ".position") continue;
     let candidate = boneName;
     if (!targetBoneNames.has(candidate) && candidate.startsWith("mixamorig")) {
       candidate = candidate.replace(/^mixamorig:?/, "");
