@@ -7152,8 +7152,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const sp = Math.hypot(ballVel.x, ballVel.z);
     if (sp > 0.05) {
       spinAxis.set(ballVel.z, 0, -ballVel.x).normalize();
-      ballGroup.rotateOnWorldAxis(spinAxis, (sp / BALL_RADIUS) * delta);
+      ballGroup.rotateOnWorldAxis(spinAxis, (sp / ballRadius()) * delta);
     }
+
   };
 
   window.__footballCamera = function (delta) {
