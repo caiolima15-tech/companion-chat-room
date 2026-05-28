@@ -47,13 +47,15 @@
             <button id="emoteWave" type="button" title="Acenar (2)">👋</button>
           </div>
           <div id="footballHud" class="football-hud" hidden aria-label="Controles de futebol">
-            <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
+            <button id="fbExit" type="button" class="fb-exit">Sair ✕</button>
+            <div class="fb-left">
+              <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
+              <button id="fbRun" type="button" class="fb-run">CORRER</button>
+            </div>
             <div class="fb-actions">
               <div id="fbForceWrap" class="fb-force"><div id="fbForceFill" class="fb-force-fill"></div></div>
               <button id="fbKick" type="button" class="fb-kick">CHUTE</button>
-              <button id="fbRun" type="button" class="fb-run">CORRER</button>
             </div>
-            <button id="fbExit" type="button" class="fb-exit">Sair ✕</button>
             <div id="kickPosePanel" class="kick-pose admin-only" hidden>
               <div class="kp-title">⚽ Pose do chute (admin)</div>
               <label class="kp-row">Altura (Y) <span id="kpYVal">0.00</span>
