@@ -374,9 +374,35 @@ h1 {
 }
 
 .asset-slider-value {
+  width: 100%;
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: #f8fafc;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 5px;
+  padding: 3px 4px;
+  font-size: 0.74rem;
+}
+.asset-slider-value:focus {
+  outline: none;
+  border-color: var(--teal);
+}
+/* Campos numéricos editáveis (luzes, bots) */
+.num-edit {
+  width: 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #f8fafc;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 5px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.num-edit:focus {
+  outline: none;
+  border-color: #8a7dff;
 }
 
 .asset-actions button {
