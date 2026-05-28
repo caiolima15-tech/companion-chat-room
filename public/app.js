@@ -985,8 +985,10 @@ window.addEventListener("message", async (event) => {
     const blob = await res.blob();
     const file = new File([blob], `avaturn-${Date.now()}.glb`, { type: "model/gltf-binary" });
     await handleAvatarUpload(file);
+    _avaturnSaving = false;
   } catch (err) {
     console.error("Falha ao importar avatar do Avaturn", err);
+    _avaturnSaving = false;
     if (avatarCreatorStatus) {
       avatarCreatorStatus.style.color = "#f26868";
       avatarCreatorStatus.textContent = `Erro ao importar: ${err.message || err}`;
