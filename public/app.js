@@ -13,6 +13,9 @@ const SHARED_ANIM_LIBRARY = {
   jump: "/assets/animations/jump.fbx",
   dance: "/assets/animations/dance.fbx",
   wave: "/assets/animations/wave.fbx",
+  // Modo futebol — exportar do Mixamo em FBX "Without Skin" (só animação).
+  kickWeak: "/assets/animations/kickweak.fbx",
+  kickStrong: "/assets/animations/kickstrong.fbx",
 };
 const sharedAnimSourceCache = new Map(); // url -> Promise<Object3D scene with .animations>
 function loadSharedAnimSource(url) {
@@ -1698,7 +1701,7 @@ function loadCharacterAssets(character) {
     });
     const targetBones = collectBoneNames(base);
     const clips = {};
-    const animSlots = ["idle", "walk", "run", "dance", "wave"];
+    const animSlots = ["idle", "walk", "run", "dance", "wave", "kickWeak", "kickStrong"];
 
     // 1) Animações embutidas no próprio GLB (prioridade máxima)
     if (base.animations?.length) {
@@ -1811,6 +1814,10 @@ async function applyCharacter(entity, slug) {
         action.setLoop(THREE.LoopOnce, 1);
         // clampWhenFinished=true mantém o último frame durante o fadeOut,
         // evitando o snap pro bind pose ("enterrado") entre wave→idle.
+        action.clampWhenFinished = true;
+      } else if (name === "kickWeak" || name === "kickStrong") {
+        // Chute toca uma vez; o módulo de futebol controla o retorno pra idle/walk.
+        action.setLoop(THREE.LoopOnce, 1);
         action.clampWhenFinished = true;
       }
       entity.actions[name] = action;
