@@ -1394,9 +1394,8 @@ body.admin-ui-hidden .admin-only { display: none !important; }
 /* Mobile / telas baixas: garante que os botões criar/editar e entrar fiquem
    sempre visíveis, sem serem empurrados para fora pela prévia 3D. */
 @media (max-width: 640px), (max-height: 760px) {
-  .char-overlay { padding: 8px; }
-  .char-card { padding: 16px; gap: 12px; max-height: 98vh; }
-  .char-stage { max-height: 46vh; aspect-ratio: auto; height: 46vh; }
+  .char-overlay { padding: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .char-card { padding: 14px; gap: 10px; }
   .char-stage-actions { flex-wrap: nowrap; }
   .char-secondary-btn { flex: 1 1 0; font-size: 0.86rem; padding: 0 6px; }
 }
