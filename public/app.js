@@ -970,6 +970,15 @@ avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
 
 
+// Converte uma URL pública do Storage de volta para o caminho interno do bucket.
+function storagePathFromPublicUrl(url, bucket) {
+  if (!url) return null;
+  const marker = `/object/public/${bucket}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length).split("?")[0]);
+}
+
 async function handleAvatarUpload(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".glb")) {
