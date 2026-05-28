@@ -7005,6 +7005,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (savedFootballPos) {
         ent.group.position.copy(savedFootballPos);
       }
+      // garante postura em pé (sem inclinações remanescentes de chutes/pose debug)
+      ent.__fbKicking = false;
+      ent.__kickTargetRotX = null;
+      if (ent.character) ent.character.rotation.x = 0;
       const d = _v1.copy(camera.position).sub(ent.group.position);
       camYaw = Math.atan2(d.x, d.z);
     }
@@ -7026,6 +7030,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) {
       savedFootballPos = ent.group.position.clone();
       if (savedNormalPos) ent.group.position.copy(savedNormalPos);
+      // garante postura em pé ao sair do modo futebol
+      ent.__fbKicking = false;
+      ent.__kickTargetRotX = null;
+      if (ent.character) ent.character.rotation.x = 0;
     }
     const hud = document.getElementById("footballHud");
     if (hud) {
