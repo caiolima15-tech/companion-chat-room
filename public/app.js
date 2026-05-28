@@ -1815,6 +1815,10 @@ async function applyCharacter(entity, slug) {
         // clampWhenFinished=true mantém o último frame durante o fadeOut,
         // evitando o snap pro bind pose ("enterrado") entre wave→idle.
         action.clampWhenFinished = true;
+      } else if (name === "kickWeak" || name === "kickStrong") {
+        // Chute toca uma vez; o módulo de futebol controla o retorno pra idle/walk.
+        action.setLoop(THREE.LoopOnce, 1);
+        action.clampWhenFinished = true;
       }
       entity.actions[name] = action;
     }
