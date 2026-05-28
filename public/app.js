@@ -710,7 +710,6 @@ async function loadPreviewCharacter(character) {
     obj.updateMatrixWorld(true);
     box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
     if (previewGround) previewGround.position.y = 0;
     if (previewRing) previewRing.position.y = 0.002;
 
