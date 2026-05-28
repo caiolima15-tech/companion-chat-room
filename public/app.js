@@ -2334,8 +2334,16 @@ function notifyLeaveAndUntrack() {
 }
 window.addEventListener("pagehide", notifyLeaveAndUntrack);
 window.addEventListener("beforeunload", notifyLeaveAndUntrack);
+// Só sai da sala depois de um tempo longo em segundo plano (AFK real).
+let _afkLeaveTimer = null;
+const AFK_LEAVE_MS = 5 * 60 * 1000; // 5 minutos
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") notifyLeaveAndUntrack();
+  if (document.visibilityState === "hidden") {
+    if (_afkLeaveTimer) clearTimeout(_afkLeaveTimer);
+    _afkLeaveTimer = setTimeout(() => { notifyLeaveAndUntrack(); }, AFK_LEAVE_MS);
+  } else {
+    if (_afkLeaveTimer) { clearTimeout(_afkLeaveTimer); _afkLeaveTimer = null; }
+  }
 });
 
 
