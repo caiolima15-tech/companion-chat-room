@@ -798,7 +798,19 @@ charDeleteBtn?.addEventListener("click", async () => {
 
 enterRoomButton?.addEventListener("click", async () => {
   if (!me || !selectedCharacterSlug) return;
-  const newName = (characterNicknameInput.value || "").trim() || "Visitante";
+  const nickWrap = document.querySelector("#characterNickWrap");
+  const needsName = nickWrap && !nickWrap.hidden;
+  let newName = me.name && me.name !== "Visitante" ? me.name : "";
+  if (needsName) {
+    newName = (characterNicknameInput.value || "").trim();
+    if (!newName) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Digite seu nome de usuário para continuar.";
+      characterNicknameInput.focus();
+      return;
+    }
+  }
+  if (!newName) newName = "Visitante";
   const character = findCharacterBySlug(selectedCharacterSlug);
   if (!character?.base_url) {
     characterSelectError.hidden = false;
