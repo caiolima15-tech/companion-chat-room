@@ -7476,13 +7476,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       kick.addEventListener("pointerup", up);
       kick.addEventListener("pointercancel", up);
     }
-    const run = document.getElementById("fbRun");
-    if (run) {
-      run.addEventListener("pointerdown", () => { runHeld = true; run.classList.add("is-active"); });
-      const off = () => { runHeld = false; run.classList.remove("is-active"); };
-      run.addEventListener("pointerup", off);
-      run.addEventListener("pointercancel", off);
-    }
     const exit = document.getElementById("fbExit");
     if (exit) exit.addEventListener("click", () => exitFootball());
   }

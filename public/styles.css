@@ -2143,7 +2143,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   border-radius:50%;
   background:radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95), rgba(255,255,255,0.55) 60%, rgba(255,255,255,0.35));
   box-shadow:0 6px 14px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.7); }
-.fb-actions { position:absolute; right:18px; bottom:140px; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.fb-actions { position:absolute; right:18px; bottom:60px; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
 .fb-kick-row { display:flex; align-items:flex-end; gap:10px; }
 .fb-force { width:14px; height:96px; border-radius:8px;
   background:linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
@@ -2161,12 +2161,6 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%);
   touch-action:none; transition: transform .12s ease, opacity .2s ease; }
 .fb-kick:active { transform:scale(0.94); }
-.fb-run { height:36px; padding:0 16px; border-radius:18px; cursor:pointer; touch-action:none;
-  border:1px solid rgba(255,255,255,0.4); color:#fff; font:700 12px system-ui; letter-spacing:0.5px;
-  background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04));
-  backdrop-filter: blur(12px) saturate(150%); -webkit-backdrop-filter: blur(12px) saturate(150%);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 6px 14px rgba(0,0,0,0.35); }
-.fb-run.is-active { background:linear-gradient(135deg, rgba(37,99,235,0.85), rgba(29,78,216,0.85)); border-color: rgba(147,197,253,0.7); }
 .fb-exit { padding:8px 14px; border-radius:14px; cursor:pointer;
   border:1px solid rgba(255,255,255,0.35); color:#fff; font:700 12px system-ui;
   background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.04));
