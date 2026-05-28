@@ -876,6 +876,8 @@ enterRoomButton?.addEventListener("click", async () => {
   // Se já estávamos na sala, atualiza meu próprio entity
   const myEntity = playerEntities.get(myId);
   if (myEntity) {
+    // Reexibe o mundo (trocar personagem removeu a classe ao voltar pro lobby).
+    document.body.classList.add("world-ready");
     // Marca a versão da troca ANTES de qualquer await — assim, qualquer evento
     // antigo (presence/profiles) que chegar depois é descartado.
     myCharacterVersion = bumpCharacterVersion(myId, Date.now());
