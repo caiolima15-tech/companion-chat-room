@@ -5220,12 +5220,17 @@ function renderBotsAdminList() {
     card.querySelectorAll("input[type=range]").forEach(inp => {
       inp.addEventListener("input", () => {
         const k = inp.dataset.key; const v = parseFloat(inp.value);
-        const s = card.querySelector(`[data-val="${k}"]`);
-        if (s) {
-          if (k === "rotation_y") s.textContent = (v * 180 / Math.PI).toFixed(0) + "°";
-          else if (k === "scale") s.textContent = v.toFixed(2) + "×";
-          else s.textContent = v.toFixed(2);
-        }
+        const numEl = card.querySelector(`input[data-numkey="${k}"]`);
+        if (numEl && document.activeElement !== numEl) numEl.value = inp.value;
+        scheduleBotSave(id, { [k]: v });
+      });
+    });
+    card.querySelectorAll("input[data-numkey]").forEach(numEl => {
+      numEl.addEventListener("input", () => {
+        const k = numEl.dataset.numkey; const v = parseFloat(numEl.value);
+        if (Number.isNaN(v)) return;
+        const range = card.querySelector(`input[type=range][data-key="${k}"]`);
+        if (range) range.value = v;
         scheduleBotSave(id, { [k]: v });
       });
     });
