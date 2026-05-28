@@ -230,6 +230,25 @@ function applyPoseDebugToMe() {
 }
 // Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
+// ============ Pose debug do CHUTE (ajuste fino enquanto a animação de chute toca) ============
+// Aplicado no objeto interno do personagem (entity.character) somente durante o chute.
+const KICK_POSE_KEY = "neon-tap-room-kick-pose";
+function loadKickPose() {
+  try {
+    const raw = localStorage.getItem(KICK_POSE_KEY);
+    if (raw) return { offY: 0, offFwd: 0, rotX: 0, ...JSON.parse(raw) };
+  } catch {}
+  return { offY: 0, offFwd: 0, rotX: 0 };
+}
+const kickPose = loadKickPose();
+function saveKickPose() {
+  try { localStorage.setItem(KICK_POSE_KEY, JSON.stringify(kickPose)); } catch {}
+}
+window.__kickPose = kickPose;
+window.__saveKickPose = saveKickPose;
+
+
+
 const assetObjects = new Map();
 const keyState = new Set();
 
@@ -1642,7 +1661,11 @@ function collectBoneNames(root) {
 
 // Renomeia tracks de um clip para casar com os bones do alvo.
 // Mantém os tracks originais da animação: o eixo do avatar fica como veio no GLB.
-function retargetClipToBones(clip, targetBoneNames) {
+// opts.stripRootPosition: remove as faixas de POSIÇÃO de todos os ossos (mantém só
+// rotações). Usado nos chutes para travar o personagem "no lugar" — sem isso o
+// deslocamento embutido do Hips (Mixamo) puxa o corpo pra baixo e ele afunda.
+function retargetClipToBones(clip, targetBoneNames, opts = {}) {
+  const stripRootPosition = !!opts.stripRootPosition;
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -1650,6 +1673,7 @@ function retargetClipToBones(clip, targetBoneNames) {
     if (dot < 0) { tracks.push(t); continue; }
     const boneName = t.name.slice(0, dot);
     const prop = t.name.slice(dot);
+    if (stripRootPosition && prop === ".position") continue;
     let candidate = boneName;
     if (!targetBoneNames.has(candidate) && candidate.startsWith("mixamorig")) {
       candidate = candidate.replace(/^mixamorig:?/, "");
@@ -1733,7 +1757,8 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const retarg = retargetClipToBones(clip, targetBones) || clip.clone();
+          const stripRootPosition = (slot === "kickWeak" || slot === "kickStrong");
+          const retarg = retargetClipToBones(clip, targetBones, { stripRootPosition }) || clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
@@ -6546,6 +6571,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <input type="number" class="ie-val" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0).toFixed(2)}">
       </label>`;
 
+    if (draft.kind === "football") {
+      editorEl.innerHTML = `
+        <div class="interact-editor">
+          <div class="ie-row"><label>Tipo</label>
+            <select data-field="kind">
+              <option value="sit" ${draft.kind === "sit" ? "selected" : ""}>Sentar</option>
+              <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
+              <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
+              <option value="football" selected>⚽ Bola de futebol</option>
+            </select>
+          </div>
+          <div class="ie-row"><label>Rótulo</label><input type="text" data-field="label" value="${_esc(draft.label)}" maxlength="40"></div>
+          <div class="ie-row"><label>Ícone</label><input type="text" data-field="icon" value="${_esc(draft.icon)}" maxlength="4" style="width:64px"></div>
+          <div class="ie-row"><button type="button" class="ie-ball-here primary" style="width:100%">📍 Colocar bola na minha posição</button></div>
+          <fieldset class="ie-fs"><legend>Posição da bola (mundo)</legend>
+            ${slider("X", "offset_x", -40, 40, 0.1)}
+            ${slider("Altura (Y)", "offset_y", 0, 4, 0.05)}
+            ${slider("Z", "offset_z", -40, 40, 0.1)}
+          </fieldset>
+          <fieldset class="ie-fs"><legend>Tamanho da bola</legend>
+            ${slider("Escala", "scale_mul", 0.3, 4, 0.05)}
+          </fieldset>
+          <fieldset class="ie-fs"><legend>Aproximação (ativa o modo futebol)</legend>
+            ${slider("Raio (m)", "trigger_radius", 1, 10, 0.1)}
+          </fieldset>
+          <div class="ie-actions">
+            <button type="button" class="ie-save primary">Salvar</button>
+            <button type="button" class="ie-cancel">Cancelar</button>
+          </div>
+        </div>`;
+      window.__footballSetPreview?.(draft);
+      return;
+    }
+
     editorEl.innerHTML = `
       <div class="interact-editor">
         <div class="ie-row"><label>Objeto</label>
@@ -6584,6 +6643,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       </div>`;
   }
 
+
   // Delegação de eventos
   listEl?.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-act]"); if (!btn) return;
@@ -6613,6 +6673,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (el.type === "range" || el.type === "number") val = Number(el.value);
     else val = el.value;
     editingDraft[field] = val;
+    // Trocar o tipo re-renderiza (editor do futebol é diferente)
+    if (field === "kind") {
+      if (val === "football") {
+        if (editingDraft.label === "Sentar" || !editingDraft.label) editingDraft.label = "Jogar futebol";
+        if (editingDraft.icon === "💺" || !editingDraft.icon) editingDraft.icon = "⚽";
+        if (!editingDraft.scale_mul) editingDraft.scale_mul = 1;
+        if (!editingDraft.trigger_radius || editingDraft.trigger_radius < 1) editingDraft.trigger_radius = 3;
+      }
+      renderAdmin();
+      return;
+    }
     // Mantém barra e número em sincronia
     if (el.type === "range") {
       const num = el.parentElement?.querySelector("input[type=number][data-field]");
@@ -6620,6 +6691,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     } else if (el.type === "number") {
       const range = el.parentElement?.querySelector("input[type=range][data-field]");
       if (range) range.value = val;
+    }
+    // Preview ao vivo da bola de futebol
+    if (editingDraft.kind === "football") {
+      window.__footballSetPreview?.(editingDraft);
+      return;
     }
     // Preview ao vivo: se já sentamos para testar, atualiza pose
     if (currentSit && (editingId === currentSit.id || editingId === "new")) {
@@ -6632,6 +6708,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   });
 
+
   editorEl?.addEventListener("click", async (e) => {
     const t = e.target;
     if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; renderAdmin(); return; }
@@ -6641,8 +6718,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
       return;
     }
+    if (t.classList.contains("ie-ball-here")) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (!ent?.group) return alert("Seu avatar não está pronto.");
+      editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
+      editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
+      editingDraft.offset_y = 0;
+      renderAdmin();
+      window.__footballSetPreview?.(editingDraft);
+      addSystemLine?.("Bola posicionada na sua posição atual.");
+      return;
+    }
     if (t.classList.contains("ie-save")) {
-      if (!editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
+      const isFootball = editingDraft.kind === "football";
+      if (!isFootball && !editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
       const payload = {
         asset_id: editingDraft.asset_id,
         map_id: currentMapId,
@@ -6745,6 +6834,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function myEntity() { return (myId && playerEntities.get(myId)) || null; }
 
+  let ballInner = null;      // malha interna (escala aplicada por scale_mul)
+  let ballScale = 1;         // multiplicador atual de tamanho
+  let stillTime = 0;         // tempo parada (para auto-reset)
+
   function ensureBall() {
     if (ballGroup || loadingBall) return;
     loadingBall = true;
@@ -6761,19 +6854,42 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
       ballGroup = new THREE.Group();
       ballGroup.add(inner);
+      ballGroup.scale.setScalar(ballScale);
       ballGroup.visible = false;
+      ballInner = inner;
       scene.add(ballGroup);
     }, undefined, (e) => { loadingBall = false; console.warn("[football] ball load", e); });
   }
 
-  function interWorldPos(inter) {
-    if (!inter) return null;
-    const obj = assetObjects.get(inter.asset_id);
-    if (!obj) return null;
-    obj.updateMatrixWorld(true);
-    const local = new THREE.Vector3(inter.offset_x || 0, inter.offset_y || 0, inter.offset_z || 0);
-    return local.applyMatrix4(obj.matrixWorld);
+  // Posição de spawn ABSOLUTA no mundo (offset_x/z = mundo, offset_y = altura extra).
+  // Aceita preview ao vivo do editor admin.
+  function spawnWorldPos(inter) {
+    const src = window.__footballEditPreview || inter;
+    if (!src) return null;
+    const x = Number(src.offset_x) || 0;
+    const z = Number(src.offset_z) || 0;
+    const extraY = Number(src.offset_y) || 0;
+    const p = new THREE.Vector3(x, 0, z);
+    p.y = groundHeightAt(p, 2) + ballRadius() + extraY;
+    return p;
   }
+
+  function ballRadius() { return BALL_RADIUS * ballScale; }
+
+  function applyBallScale(mul) {
+    ballScale = Math.max(0.2, Number(mul) || 1);
+    if (ballGroup) ballGroup.scale.setScalar(ballScale);
+  }
+
+  function resetBallToSpawn() {
+    const sp = spawnWorldPos(activeInter);
+    if (!sp) return;
+    ballPos.copy(sp);
+    ballVel.set(0, 0, 0);
+    held = false;
+    ballPlaced = true;
+  }
+
 
   function setupBallChannel(mapId) {
     if (ballChannelMapId === mapId) return;
@@ -6839,13 +6955,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     activeInter = list[0] || null;
     setupBallChannel(activeInter ? currentMapId : null);
     if (activeInter) {
+      applyBallScale(activeInter.scale_mul);
       ensureBall();
+      ballPlaced = false; // recoloca no novo spawn no próximo frame
     } else if (ballGroup) {
       ballGroup.visible = false;
       if (footballActive) exitFootball();
     }
   }
   window.addEventListener("interactions:updated", refreshBall);
+
+  // Preview ao vivo do editor admin (posição/tamanho da bola enquanto arrasta sliders).
+  window.__footballSetPreview = function (draft) {
+    window.__footballEditPreview = draft || null;
+    if (draft) {
+      applyBallScale(draft.scale_mul);
+      if (ownerId == null || ownerId === myId) resetBallToSpawn();
+    }
+  };
+
 
   function enterFootball() {
     if (footballActive) return;
@@ -6903,10 +7031,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     act.clampWhenFinished = true;
     act.fadeIn(0.05).play();
     ent.__fbKicking = true;
+    applyKickPose(ent, true);
     const dur = (act.getClip?.().duration || 0.6) * 1000;
     clearTimeout(ent.__fbKickT);
-    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; }, Math.min(dur, 850));
+    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; applyKickPose(ent, false); }, Math.min(dur, 850));
   }
+
+  // Ajuste fino do personagem durante o chute (não afundar / alinhar o pé na bola).
+  function applyKickPose(ent, on) {
+    const ch = ent?.character;
+    if (!ch) return;
+    if (on) {
+      if (ent.__kickBase == null) {
+        ent.__kickBase = { y: ch.position.y, z: ch.position.z, rotX: ch.rotation.x };
+      }
+      const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
+      ch.position.y = ent.__kickBase.y + (kp.offY || 0);
+      ch.position.z = ent.__kickBase.z + (kp.offFwd || 0);
+      ch.rotation.x = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
+    } else if (ent.__kickBase) {
+      ch.position.y = ent.__kickBase.y;
+      ch.position.z = ent.__kickBase.z;
+      ch.rotation.x = ent.__kickBase.rotX;
+      ent.__kickBase = null;
+    }
+  }
+  window.__fbApplyKickPoseLive = function () {
+    const ent = myEntity();
+    if (ent && ent.__fbKicking) applyKickPose(ent, true);
+  };
+  window.__fbTestKick = function (strong) {
+    const ent = myEntity();
+    if (ent) playKickAnim(ent, !!strong);
+  };
+
 
   function aimDir(ent) {
     _v1.set(Math.sin(ent.group.rotation.y), 0, Math.cos(ent.group.rotation.y));
@@ -6980,16 +7138,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   function simulateOwned(delta, ent) {
+    const R = ballRadius();
     if (held) {
       const dir = aimDir(ent);
       const target = _v1.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST);
-      target.y = groundHeightAt(target, ballPos.y) + BALL_RADIUS;
+      target.y = groundHeightAt(target, ballPos.y) + R;
       ballPos.lerp(target, Math.min(1, delta * 12));
       ballVel.set(0, 0, 0);
+      stillTime = 0;
     } else {
       ballVel.y += GRAVITY * delta;
       ballPos.addScaledVector(ballVel, delta);
-      const gy = groundHeightAt(ballPos, ballPos.y) + BALL_RADIUS;
+      const gy = groundHeightAt(ballPos, ballPos.y) + R;
       if (ballPos.y <= gy) {
         ballPos.y = gy;
         if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.5;
@@ -7002,8 +7162,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
         held = true;
       }
+      // Segurança: posição inválida (NaN), bola muito longe ou parada há muito tempo → reseta no spawn.
+      const bad = !isFinite(ballPos.x) || !isFinite(ballPos.y) || !isFinite(ballPos.z);
+      const sp = spawnWorldPos(activeInter);
+      const farAway = sp ? (Math.hypot(ballPos.x - sp.x, ballPos.z - sp.z) > 60) : false;
+      if (ballVel.lengthSq() < 0.02 && !footballActive) stillTime += delta; else if (footballActive) stillTime = 0;
+      if (bad || farAway || stillTime > 25) {
+        resetBallToSpawn();
+        stillTime = 0;
+        broadcastState(true);
+      }
     }
   }
+
 
   const spinAxis = new THREE.Vector3(1, 0, 0);
   window.__footballFrame = function (delta) {
@@ -7013,9 +7184,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const ent = myEntity();
     if (!ballPlaced && ownerId == null) {
-      const sp = interWorldPos(activeInter);
-      if (sp) { ballPos.copy(sp); ballPos.y = groundHeightAt(sp, sp.y) + BALL_RADIUS; ballPlaced = true; }
+      const sp = spawnWorldPos(activeInter);
+      if (sp) { ballPos.copy(sp); ballPlaced = true; }
     }
+
 
     const distToBall = ent ? ballPos.distanceTo(ent.group.position) : Infinity;
     const actR = Math.max(activeInter.trigger_radius || 2, 2);
@@ -7044,8 +7216,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const sp = Math.hypot(ballVel.x, ballVel.z);
     if (sp > 0.05) {
       spinAxis.set(ballVel.z, 0, -ballVel.x).normalize();
-      ballGroup.rotateOnWorldAxis(spinAxis, (sp / BALL_RADIUS) * delta);
+      ballGroup.rotateOnWorldAxis(spinAxis, (sp / ballRadius()) * delta);
     }
+
   };
 
   window.__footballCamera = function (delta) {
