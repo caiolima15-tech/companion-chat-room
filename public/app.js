@@ -7403,10 +7403,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!charging) return;
     const strong = charge >= 0.5;
     charging = false;
-    doKick(strong);
+    // só chuta de fato se tiver a posse da bola
+    if (ownerId === myId && held) doKick(strong);
     charge = 0;
     updateForceBar();
   }
+
 
   function updateForceBar() {
     const fill = document.getElementById("fbForceFill");
