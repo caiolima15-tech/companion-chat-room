@@ -6571,6 +6571,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <input type="number" class="ie-val" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0).toFixed(2)}">
       </label>`;
 
+    if (draft.kind === "football") {
+      editorEl.innerHTML = `
+        <div class="interact-editor">
+          <div class="ie-row"><label>Tipo</label>
+            <select data-field="kind">
+              <option value="sit" ${draft.kind === "sit" ? "selected" : ""}>Sentar</option>
+              <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
+              <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
+              <option value="football" selected>⚽ Bola de futebol</option>
+            </select>
+          </div>
+          <div class="ie-row"><label>Rótulo</label><input type="text" data-field="label" value="${_esc(draft.label)}" maxlength="40"></div>
+          <div class="ie-row"><label>Ícone</label><input type="text" data-field="icon" value="${_esc(draft.icon)}" maxlength="4" style="width:64px"></div>
+          <div class="ie-row"><button type="button" class="ie-ball-here primary" style="width:100%">📍 Colocar bola na minha posição</button></div>
+          <fieldset class="ie-fs"><legend>Posição da bola (mundo)</legend>
+            ${slider("X", "offset_x", -40, 40, 0.1)}
+            ${slider("Altura (Y)", "offset_y", 0, 4, 0.05)}
+            ${slider("Z", "offset_z", -40, 40, 0.1)}
+          </fieldset>
+          <fieldset class="ie-fs"><legend>Tamanho da bola</legend>
+            ${slider("Escala", "scale_mul", 0.3, 4, 0.05)}
+          </fieldset>
+          <fieldset class="ie-fs"><legend>Aproximação (ativa o modo futebol)</legend>
+            ${slider("Raio (m)", "trigger_radius", 1, 10, 0.1)}
+          </fieldset>
+          <div class="ie-actions">
+            <button type="button" class="ie-save primary">Salvar</button>
+            <button type="button" class="ie-cancel">Cancelar</button>
+          </div>
+        </div>`;
+      window.__footballSetPreview?.(draft);
+      return;
+    }
+
     editorEl.innerHTML = `
       <div class="interact-editor">
         <div class="ie-row"><label>Objeto</label>
@@ -6608,6 +6642,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         </div>
       </div>`;
   }
+
 
   // Delegação de eventos
   listEl?.addEventListener("click", async (e) => {
