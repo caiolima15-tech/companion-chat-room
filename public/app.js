@@ -7188,7 +7188,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
+    // Lerp suave do pose-debug do chute (sem teleporte)
+    const ch = ent.character;
+    if (ch && ent.__kickTargetY != null) {
+      const t = Math.min(1, delta * 10);
+      ch.position.y += (ent.__kickTargetY - ch.position.y) * t;
+      ch.position.z += (ent.__kickTargetZ - ch.position.z) * t;
+      ch.rotation.x += (ent.__kickTargetRotX - ch.rotation.x) * t;
+    }
     ent.target.copy(ent.group.position);
+
     if (me && myId) {
       const pct = percentFromWorld(ent.group.position.x, ent.group.position.z);
       me.x = pct.x; me.y = pct.y;
