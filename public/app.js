@@ -3527,6 +3527,7 @@ function moveToWorld(point) {
   trackMe(false).catch(() => {});
 }
 function applyHeldMovement() {
+  if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
   if (!keyState.size) return;
@@ -3568,6 +3569,11 @@ function updatePlayerAnimation(delta) {
   const walkSpeed = 1.4;
   const runSpeed = 3.2;
   for (const entity of playerEntities.values()) {
+    // Modo futebol (jogador local): o módulo posiciona/anima; aqui só atualiza o mixer.
+    if (entity.player?.id === myId && window.__footballMode) {
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     // Sit override (local player only): trava no assento, sem terreno, sem walk
     if (entity.player?.id === myId && window.__sittingInteraction) {
       const s = window.__sittingInteraction;
@@ -3775,9 +3781,11 @@ function exportCharacter() {
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
+  // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
+  if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (myId && !window.__freeCameraMode) {
+  if (myId && !window.__freeCameraMode && !window.__footballMode) {
     const entity = playerEntities.get(myId);
     if (entity) {
       const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
@@ -3792,12 +3800,18 @@ function animate() {
     camera.position.lerp(f.camera, Math.min(1, delta * 5));
     if (controls.target.distanceTo(f.target) < 0.05) window.__focusLerp = null;
   }
-  clampCameraToCeiling();
-  controls.update();
-  updateCameraOcclusion();
+  if (window.__footballMode) {
+    // Câmera 3ª pessoa controlada pelo módulo de futebol.
+    if (window.__footballCamera) { try { window.__footballCamera(delta); } catch {} }
+  } else {
+    clampCameraToCeiling();
+    controls.update();
+    updateCameraOcclusion();
+  }
   renderer.render(scene, camera);
   updateNameplates();
 }
+
 
 // ============ Event wiring ============
 window.addEventListener("resize", resize);
@@ -6264,6 +6278,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .order("created_at", { ascending: true });
     if (error) { console.warn("[interactions] load", error); return; }
     interactions = data || [];
+    window.__mapInteractions = interactions;
+    window.dispatchEvent(new CustomEvent("interactions:updated"));
     renderAdmin();
   }
 
@@ -6313,6 +6329,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     let bestDist = Infinity;
     const pos = entity.group.position;
     for (const inter of interactions) {
+      if (inter.kind === "football") continue; // tratado pelo módulo de futebol
       const pose = computeSeatPose(inter);
       if (!pose) continue;
       const d = Math.hypot(pose.worldPos.x - pos.x, pose.worldPos.z - pos.z);
@@ -6518,6 +6535,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <option value="sit" ${draft.kind === "sit" ? "selected" : ""}>Sentar</option>
             <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
             <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
+            <option value="football" ${draft.kind === "football" ? "selected" : ""}>⚽ Bola de futebol</option>
           </select>
         </div>
         <div class="ie-row"><label>Animação (URL FBX)</label>
@@ -6655,3 +6673,463 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }, true);
 })();
 
+
+// ============================================================
+// ⚽ Módulo de Futebol (multiplayer, bola compartilhada)
+// ============================================================
+(function footballModule() {
+  const BALL_RADIUS = 0.18;
+  const BALL_DIAMETER = BALL_RADIUS * 2;
+  const GRAVITY = -11.5;
+  const DRIBBLE_DIST = 0.6;
+  const PICKUP_RANGE = 0.95;
+  const CAPTURE_RANGE = 1.1;
+  const WALK_SPEED = 2.3;
+  const RUN_SPEED = 4.4;
+  const CHARGE_TIME = 1.0;
+
+  const loader = new GLTFLoader();
+
+  let ballGroup = null;
+  let loadingBall = false;
+  const ballPos = new THREE.Vector3();
+  const ballVel = new THREE.Vector3();
+  let ballPlaced = false;
+
+  let ownerId = null;
+  let ownerClaimTs = 0;
+  let held = false;
+  let remoteHeld = false;
+  let remoteBall = null;
+
+  let activeInter = null;
+  let ballChannel = null;
+  let ballChannelMapId = null;
+  let lastBroadcast = 0;
+
+  let footballActive = false;
+  let camYaw = 0, camPitch = 0.5, camDist = 4.6;
+  let charging = false, charge = 0;
+
+  const _v1 = new THREE.Vector3();
+  const _v2 = new THREE.Vector3();
+  const _head = new THREE.Vector3();
+
+  function myEntity() { return (myId && playerEntities.get(myId)) || null; }
+
+  function ensureBall() {
+    if (ballGroup || loadingBall) return;
+    loadingBall = true;
+    loader.load("/assets/ball.glb", (gltf) => {
+      const inner = gltf.scene;
+      const box = new THREE.Box3().setFromObject(inner);
+      const size = box.getSize(new THREE.Vector3());
+      const maxd = Math.max(size.x, size.y, size.z) || 1;
+      inner.scale.setScalar(BALL_DIAMETER / maxd);
+      inner.updateMatrixWorld(true);
+      const box2 = new THREE.Box3().setFromObject(inner);
+      const c = box2.getCenter(new THREE.Vector3());
+      inner.position.sub(c);
+      inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
+      ballGroup = new THREE.Group();
+      ballGroup.add(inner);
+      ballGroup.visible = false;
+      scene.add(ballGroup);
+    }, undefined, (e) => { loadingBall = false; console.warn("[football] ball load", e); });
+  }
+
+  function interWorldPos(inter) {
+    if (!inter) return null;
+    const obj = assetObjects.get(inter.asset_id);
+    if (!obj) return null;
+    obj.updateMatrixWorld(true);
+    const local = new THREE.Vector3(inter.offset_x || 0, inter.offset_y || 0, inter.offset_z || 0);
+    return local.applyMatrix4(obj.matrixWorld);
+  }
+
+  function setupBallChannel(mapId) {
+    if (ballChannelMapId === mapId) return;
+    if (ballChannel) { try { supabase.removeChannel(ballChannel); } catch {} ballChannel = null; }
+    ballChannelMapId = mapId;
+    ownerId = null; ownerClaimTs = 0; held = false; remoteHeld = false; remoteBall = null;
+    ballPlaced = false; ballVel.set(0, 0, 0);
+    if (!mapId) return;
+    ballChannel = supabase
+      .channel("ball:" + mapId, { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "state" }, ({ payload }) => {
+        if (!payload) return;
+        if (payload.owner && payload.owner !== myId) {
+          if ((payload.ts || 0) >= ownerClaimTs) { ownerId = payload.owner; ownerClaimTs = payload.ts || ownerClaimTs; }
+          remoteHeld = !!payload.held;
+          remoteBall = {
+            pos: new THREE.Vector3(payload.x, payload.y, payload.z),
+            vel: new THREE.Vector3(payload.vx || 0, payload.vy || 0, payload.vz || 0),
+          };
+          ballPlaced = true;
+        }
+      })
+      .on("broadcast", { event: "claim" }, ({ payload }) => {
+        if (!payload || payload.id === myId) return;
+        if ((payload.ts || 0) > ownerClaimTs) {
+          ownerId = payload.id; ownerClaimTs = payload.ts; remoteHeld = true;
+        }
+      })
+      .on("broadcast", { event: "kick" }, ({ payload }) => {
+        if (!payload || payload.id === myId) return;
+        const ent = playerEntities.get(payload.id);
+        if (ent) playKickAnim(ent, !!payload.strong);
+      })
+      .subscribe();
+  }
+
+  function broadcastState(force) {
+    if (!ballChannel) return;
+    const now = performance.now();
+    if (!force && now - lastBroadcast < 50) return;
+    lastBroadcast = now;
+    ballChannel.send({
+      type: "broadcast", event: "state",
+      payload: {
+        owner: ownerId, held, ts: ownerClaimTs,
+        x: ballPos.x, y: ballPos.y, z: ballPos.z,
+        vx: ballVel.x, vy: ballVel.y, vz: ballVel.z,
+      },
+    }).catch(() => {});
+  }
+
+  function claimBall() {
+    ownerId = myId; ownerClaimTs = Date.now(); held = true; remoteBall = null;
+    ballChannel?.send({ type: "broadcast", event: "claim", payload: { id: myId, ts: ownerClaimTs } }).catch(() => {});
+  }
+
+  function broadcastKick(strong) {
+    ballChannel?.send({ type: "broadcast", event: "kick", payload: { id: myId, strong } }).catch(() => {});
+  }
+
+  function refreshBall() {
+    const list = (window.__mapInteractions || []).filter((i) => i.kind === "football");
+    activeInter = list[0] || null;
+    setupBallChannel(activeInter ? currentMapId : null);
+    if (activeInter) {
+      ensureBall();
+    } else if (ballGroup) {
+      ballGroup.visible = false;
+      if (footballActive) exitFootball();
+    }
+  }
+  window.addEventListener("interactions:updated", refreshBall);
+
+  function enterFootball() {
+    if (footballActive) return;
+    footballActive = true;
+    window.__footballMode = true;
+    controls.enabled = false;
+    const ent = myEntity();
+    if (ent) {
+      const d = _v1.copy(camera.position).sub(ent.group.position);
+      camYaw = Math.atan2(d.x, d.z);
+    }
+    const hud = document.getElementById("footballHud");
+    if (hud) hud.hidden = false;
+    document.body.classList.add("football-on");
+  }
+  function exitFootball() {
+    if (!footballActive) return;
+    footballActive = false;
+    window.__footballMode = false;
+    controls.enabled = true;
+    charging = false; charge = 0;
+    if (held && ownerId === myId) { held = false; broadcastState(true); }
+    updateForceBar();
+    const hud = document.getElementById("footballHud");
+    if (hud) hud.hidden = true;
+    document.body.classList.remove("football-on");
+  }
+  window.__footballExit = exitFootball;
+
+  const joy = { active: false, x: 0, y: 0, id: null };
+  let runHeld = false;
+
+  function readInput() {
+    let ix = joy.active ? joy.x : 0;
+    let iy = joy.active ? joy.y : 0;
+    if (keyState.has("w") || keyState.has("arrowup")) iy += 1;
+    if (keyState.has("s") || keyState.has("arrowdown")) iy -= 1;
+    if (keyState.has("a") || keyState.has("arrowleft")) ix -= 1;
+    if (keyState.has("d") || keyState.has("arrowright")) ix += 1;
+    const len = Math.hypot(ix, iy);
+    if (len > 1) { ix /= len; iy /= len; }
+    return { ix, iy, mag: Math.min(1, len) };
+  }
+
+  function playKickAnim(ent, strong) {
+    if (!ent?.actions) return;
+    const slot = strong ? "kickStrong" : "kickWeak";
+    const act = ent.actions[slot];
+    if (!act) return;
+    if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.08);
+    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.08); } catch {} ent.emoteAction = null; }
+    ent.currentAction = null;
+    act.reset();
+    act.setLoop(THREE.LoopOnce, 1);
+    act.clampWhenFinished = true;
+    act.fadeIn(0.05).play();
+    ent.__fbKicking = true;
+    const dur = (act.getClip?.().duration || 0.6) * 1000;
+    clearTimeout(ent.__fbKickT);
+    ent.__fbKickT = setTimeout(() => { ent.__fbKicking = false; }, Math.min(dur, 850));
+  }
+
+  function aimDir(ent) {
+    _v1.set(Math.sin(ent.group.rotation.y), 0, Math.cos(ent.group.rotation.y));
+    return _v1;
+  }
+
+  function doKick(strong) {
+    const ent = myEntity();
+    if (!ent) return;
+    if (ownerId !== myId) {
+      if (ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE + 0.3) claimBall();
+      else return;
+    }
+    const dir = aimDir(ent).clone();
+    const power = strong ? (9 + charge * 9) : (5.5 + charge * 4);
+    const up = strong ? (3.2 + charge * 3) : (2.0 + charge * 2);
+    ballVel.set(dir.x * power, up, dir.z * power);
+    held = false;
+    ballPos.addScaledVector(dir, 0.2);
+    playKickAnim(ent, strong);
+    broadcastKick(strong);
+    broadcastState(true);
+  }
+
+  let lastFbMoveSent = 0;
+  function handleFootballMovement(delta, ent) {
+    const { ix, iy, mag } = readInput();
+    _head.copy(ent.group.position); _head.y += 1.4;
+    const camFwd = _v1.copy(_head).sub(camera.position); camFwd.y = 0;
+    if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
+    camFwd.normalize();
+    const camRight = _v2.set(camFwd.z, 0, -camFwd.x);
+    let moving = false;
+    if (mag > 0.08) {
+      const dir = new THREE.Vector3()
+        .addScaledVector(camFwd, iy)
+        .addScaledVector(camRight, ix);
+      if (dir.lengthSq() > 1e-5) {
+        dir.normalize();
+        const running = runHeld || mag > 0.92;
+        const speed = running ? RUN_SPEED : WALK_SPEED;
+        const step = speed * delta * (running ? 1 : Math.max(0.5, mag));
+        const before = ent.group.position.clone();
+        const cand = before.clone().addScaledVector(dir, step);
+        if (!collidesAt(before, cand)) {
+          ent.group.position.x = cand.x;
+          ent.group.position.z = cand.z;
+        }
+        ent.group.rotation.y = Math.atan2(dir.x, dir.z);
+        moving = true;
+        if (!ent.__fbKicking) setPlayerAction(ent, running && ent.actions?.run ? "run" : "walk");
+        me && (me.running = running);
+      }
+    }
+    if (!moving) {
+      ent.group.rotation.y = Math.atan2(camFwd.x, camFwd.z);
+      if (!ent.__fbKicking) setPlayerAction(ent, "idle");
+      me && (me.running = false);
+    }
+    const gy = groundHeightAt(ent.group.position, ent.group.position.y);
+    ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
+    ent.target.copy(ent.group.position);
+    if (me && myId) {
+      const pct = percentFromWorld(ent.group.position.x, ent.group.position.z);
+      me.x = pct.x; me.y = pct.y;
+      const idx = players.findIndex((p) => p.id === myId);
+      if (idx >= 0) players[idx] = { ...players[idx], ...me };
+      const now = performance.now();
+      if (now - lastFbMoveSent > 90) { lastFbMoveSent = now; trackMe(false).catch(() => {}); }
+    }
+  }
+
+  function simulateOwned(delta, ent) {
+    if (held) {
+      const dir = aimDir(ent);
+      const target = _v1.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST);
+      target.y = groundHeightAt(target, ballPos.y) + BALL_RADIUS;
+      ballPos.lerp(target, Math.min(1, delta * 12));
+      ballVel.set(0, 0, 0);
+    } else {
+      ballVel.y += GRAVITY * delta;
+      ballPos.addScaledVector(ballVel, delta);
+      const gy = groundHeightAt(ballPos, ballPos.y) + BALL_RADIUS;
+      if (ballPos.y <= gy) {
+        ballPos.y = gy;
+        if (ballVel.y < 0) ballVel.y = -ballVel.y * 0.5;
+        if (Math.abs(ballVel.y) < 0.8) ballVel.y = 0;
+        const f = Math.pow(0.18, delta);
+        ballVel.x *= f; ballVel.z *= f;
+        if (Math.hypot(ballVel.x, ballVel.z) < 0.15) { ballVel.x = 0; ballVel.z = 0; }
+      }
+      if (footballActive && ent && ballVel.lengthSq() < 2.0 &&
+          ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
+        held = true;
+      }
+    }
+  }
+
+  const spinAxis = new THREE.Vector3(1, 0, 0);
+  window.__footballFrame = function (delta) {
+    if (!activeInter || !ballGroup) {
+      if (footballActive) exitFootball();
+      return;
+    }
+    const ent = myEntity();
+    if (!ballPlaced && ownerId == null) {
+      const sp = interWorldPos(activeInter);
+      if (sp) { ballPos.copy(sp); ballPos.y = groundHeightAt(sp, sp.y) + BALL_RADIUS; ballPlaced = true; }
+    }
+
+    const distToBall = ent ? ballPos.distanceTo(ent.group.position) : Infinity;
+    const actR = Math.max(activeInter.trigger_radius || 2, 2);
+    if (ent && !footballActive && distToBall <= actR) enterFootball();
+    if (footballActive && distToBall > actR * 3 + 4 && !charging && ownerId !== myId) exitFootball();
+
+    if (charging) { charge = Math.min(1, charge + delta / CHARGE_TIME); updateForceBar(); }
+
+    if (footballActive && ent) handleFootballMovement(delta, ent);
+
+    if (ownerId === myId) {
+      simulateOwned(delta, ent);
+      broadcastState(false);
+    } else if (ownerId == null) {
+      if (footballActive && ent && distToBall <= PICKUP_RANGE) { claimBall(); }
+    } else {
+      if (remoteBall) {
+        ballPos.lerp(remoteBall.pos, Math.min(1, delta * 14));
+        if (!remoteHeld) ballPos.addScaledVector(remoteBall.vel, delta * 0.4);
+      }
+      if (footballActive && ent && !remoteHeld && distToBall <= CAPTURE_RANGE) claimBall();
+    }
+
+    ballGroup.position.copy(ballPos);
+    ballGroup.visible = true;
+    const sp = Math.hypot(ballVel.x, ballVel.z);
+    if (sp > 0.05) {
+      spinAxis.set(ballVel.z, 0, -ballVel.x).normalize();
+      ballGroup.rotateOnWorldAxis(spinAxis, (sp / BALL_RADIUS) * delta);
+    }
+  };
+
+  window.__footballCamera = function (delta) {
+    const ent = myEntity();
+    if (!ent) return;
+    _head.copy(ent.group.position); _head.y += 1.35;
+    camPitch = Math.max(0.08, Math.min(1.2, camPitch));
+    camDist = Math.max(2.4, Math.min(8, camDist));
+    const dir = new THREE.Vector3(
+      Math.sin(camYaw) * Math.cos(camPitch),
+      Math.sin(camPitch),
+      Math.cos(camYaw) * Math.cos(camPitch),
+    );
+    const desired = _head.clone().addScaledVector(dir, camDist);
+    const floorY = groundHeightAt(desired, desired.y) + 0.35;
+    if (desired.y < floorY) desired.y = floorY;
+    camera.position.lerp(desired, Math.min(1, delta * 9));
+    camera.lookAt(_head);
+  };
+
+  let dragId = null, lastDX = 0, lastDY = 0;
+  renderer.domElement.addEventListener("pointerdown", (e) => {
+    if (!footballActive) return;
+    if (e.target.closest && e.target.closest("#footballHud")) return;
+    dragId = e.pointerId; lastDX = e.clientX; lastDY = e.clientY;
+  });
+  window.addEventListener("pointermove", (e) => {
+    if (dragId !== e.pointerId || !footballActive) return;
+    const dx = e.clientX - lastDX, dy = e.clientY - lastDY;
+    lastDX = e.clientX; lastDY = e.clientY;
+    camYaw -= dx * 0.006;
+    camPitch += dy * 0.005;
+  });
+  window.addEventListener("pointerup", (e) => { if (dragId === e.pointerId) dragId = null; });
+  renderer.domElement.addEventListener("wheel", (e) => {
+    if (!footballActive) return;
+    e.preventDefault();
+    camDist += e.deltaY * 0.01;
+  }, { passive: false });
+
+  document.addEventListener("keydown", (e) => {
+    if (!footballActive) return;
+    if (e.target.matches && e.target.matches("input, textarea")) return;
+    const k = (e.key || "").toLowerCase();
+    if (k === " " || k === "spacebar") { e.preventDefault(); if (!charging) { charging = true; charge = 0; } }
+    else if (k === "shift") runHeld = true;
+  });
+  document.addEventListener("keyup", (e) => {
+    if (!footballActive) return;
+    const k = (e.key || "").toLowerCase();
+    if (k === " " || k === "spacebar") { e.preventDefault(); releaseKick(); }
+    else if (k === "shift") runHeld = false;
+  });
+
+  function releaseKick() {
+    if (!charging) return;
+    const strong = charge >= 0.5;
+    charging = false;
+    doKick(strong);
+    charge = 0;
+    updateForceBar();
+  }
+
+  function updateForceBar() {
+    const fill = document.getElementById("fbForceFill");
+    if (fill) fill.style.height = Math.round(charge * 100) + "%";
+    const bar = document.getElementById("fbForceWrap");
+    if (bar) bar.classList.toggle("is-charging", charging);
+  }
+
+  function bindHud() {
+    const base = document.getElementById("fbJoy");
+    const knob = document.getElementById("fbJoyKnob");
+    if (base && knob) {
+      const setKnob = (nx, ny) => { knob.style.transform = `translate(${nx * 34}px, ${ny * 34}px)`; };
+      const moveJoy = (e) => {
+        const r = base.getBoundingClientRect();
+        let nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+        let ny = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+        const len = Math.hypot(nx, ny);
+        if (len > 1) { nx /= len; ny /= len; }
+        joy.x = nx; joy.y = -ny;
+        setKnob(nx, ny);
+      };
+      base.addEventListener("pointerdown", (e) => {
+        joy.active = true; joy.id = e.pointerId; base.setPointerCapture(e.pointerId); moveJoy(e);
+      });
+      base.addEventListener("pointermove", (e) => { if (joy.id === e.pointerId) moveJoy(e); });
+      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; setKnob(0, 0); } };
+      base.addEventListener("pointerup", end);
+      base.addEventListener("pointercancel", end);
+    }
+    const kick = document.getElementById("fbKick");
+    if (kick) {
+      const down = (e) => { e.preventDefault(); if (!charging) { charging = true; charge = 0; } updateForceBar(); };
+      const up = (e) => { e.preventDefault(); releaseKick(); };
+      kick.addEventListener("pointerdown", down);
+      kick.addEventListener("pointerup", up);
+      kick.addEventListener("pointercancel", up);
+    }
+    const run = document.getElementById("fbRun");
+    if (run) {
+      run.addEventListener("pointerdown", () => { runHeld = true; run.classList.add("is-active"); });
+      const off = () => { runHeld = false; run.classList.remove("is-active"); };
+      run.addEventListener("pointerup", off);
+      run.addEventListener("pointercancel", off);
+    }
+    const exit = document.getElementById("fbExit");
+    if (exit) exit.addEventListener("click", () => exitFootball());
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bindHud);
+  else bindHud();
+
+  refreshBall();
+})();
