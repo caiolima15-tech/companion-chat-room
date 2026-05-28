@@ -1935,3 +1935,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 .floating-panel[hidden],
 .is-admin .admin-only[hidden],
 .is-admin .floating-panel[hidden] { display: none !important; }
+
+@keyframes avSpin { to { transform: rotate(360deg); } }
+#avatarCreatorSave:not(:disabled):hover { filter: brightness(1.08); }
+#avatarCreatorSave:disabled { cursor: not-allowed; }
