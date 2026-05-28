@@ -7120,9 +7120,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const ent = myEntity();
     if (!ballPlaced && ownerId == null) {
-      const sp = interWorldPos(activeInter);
-      if (sp) { ballPos.copy(sp); ballPos.y = groundHeightAt(sp, sp.y) + BALL_RADIUS; ballPlaced = true; }
+      const sp = spawnWorldPos(activeInter);
+      if (sp) { ballPos.copy(sp); ballPlaced = true; }
     }
+
 
     const distToBall = ent ? ballPos.distanceTo(ent.group.position) : Infinity;
     const actR = Math.max(activeInter.trigger_radius || 2, 2);
