@@ -3425,7 +3425,7 @@ function renderAssetEditor(asset) {
     <div class="asset-slider">
       <span class="asset-slider-label">${label}</span>
       <input type="range" data-asset-field="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${value}" />
-      <span class="asset-slider-value">${Number(value).toFixed(2)}</span>
+      <input type="number" class="asset-slider-value" data-asset-num="${field}" data-asset-id="${id}" min="${min}" max="${max}" step="${step}" value="${Number(value).toFixed(2)}" />
     </div>`;
   const deg = (r) => (r * 180) / Math.PI;
   return `
