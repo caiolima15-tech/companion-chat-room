@@ -6673,6 +6673,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (el.type === "range" || el.type === "number") val = Number(el.value);
     else val = el.value;
     editingDraft[field] = val;
+    // Trocar o tipo re-renderiza (editor do futebol é diferente)
+    if (field === "kind") {
+      if (val === "football") {
+        if (editingDraft.label === "Sentar" || !editingDraft.label) editingDraft.label = "Jogar futebol";
+        if (editingDraft.icon === "💺" || !editingDraft.icon) editingDraft.icon = "⚽";
+        if (!editingDraft.scale_mul) editingDraft.scale_mul = 1;
+        if (!editingDraft.trigger_radius || editingDraft.trigger_radius < 1) editingDraft.trigger_radius = 3;
+      }
+      renderAdmin();
+      return;
+    }
     // Mantém barra e número em sincronia
     if (el.type === "range") {
       const num = el.parentElement?.querySelector("input[type=number][data-field]");
@@ -6680,6 +6691,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     } else if (el.type === "number") {
       const range = el.parentElement?.querySelector("input[type=range][data-field]");
       if (range) range.value = val;
+    }
+    // Preview ao vivo da bola de futebol
+    if (editingDraft.kind === "football") {
+      window.__footballSetPreview?.(editingDraft);
+      return;
     }
     // Preview ao vivo: se já sentamos para testar, atualiza pose
     if (currentSit && (editingId === currentSit.id || editingId === "new")) {
@@ -6691,6 +6707,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
     }
   });
+
 
   editorEl?.addEventListener("click", async (e) => {
     const t = e.target;
