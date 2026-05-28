@@ -6543,7 +6543,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       <label class="ie-slider">
         <span class="ie-label">${label}</span>
         <input type="range" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0)}">
-        <span class="ie-val">${Number(draft[field] || 0).toFixed(2)}</span>
+        <input type="number" class="ie-val" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(draft[field] || 0).toFixed(2)}">
       </label>`;
 
     editorEl.innerHTML = `
