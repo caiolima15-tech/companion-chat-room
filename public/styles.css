@@ -1251,7 +1251,7 @@ body.admin-ui-hidden .admin-only { display: none !important; }
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 4;
-  max-height: 52vh;
+  max-height: 62vh;
   border-radius: 16px;
   overflow: hidden;
   background:
