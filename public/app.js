@@ -7205,10 +7205,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     _hasPrevPlayerPos = true;
 
     if (held) {
-      const dir = aimDir(ent);
+      const dir = aimDir(ent).clone();
       // ponto base: bem à frente do pé, com pequeno offset lateral
       const right = _v2.set(dir.z, 0, -dir.x);
-      const target = _v1.copy(ent.group.position)
+      const target = _v3.copy(ent.group.position)
         .addScaledVector(dir, DRIBBLE_DIST)
         .addScaledVector(right, DRIBBLE_SIDE);
       // pequenos "toques": quando corre, a bola adianta um pouco em ciclos
