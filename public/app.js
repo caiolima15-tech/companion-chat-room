@@ -5174,7 +5174,10 @@ async function deleteBot(id) {
 function botControlRow(row) {
   const slider = (label, key, min, max, step, val, fmt = (v) => v) => `
     <label style="display:block;margin:2px 0;font-size:11px;">
-      ${label}: <span data-val="${key}">${fmt(val)}</span>
+      <span style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <span>${label}</span>
+        <input type="number" class="num-edit" data-numkey="${key}" min="${min}" max="${max}" step="${step}" value="${Number(val)}">
+      </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
   const charOpts = charactersCatalog.map(c =>
