@@ -7090,7 +7090,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }, Math.max(60, endIn - 180));
   }
 
-  // Ajuste fino do personagem durante o chute (não afundar / alinhar o pé na bola).
+  // Ajuste fino opcional durante o chute. Por padrão NÃO mexe na posição do
+  // personagem para evitar teleporte — a animação de chute já cuida do corpo.
+  // Os sliders do Pose Debug ainda funcionam, mas com transição suave.
   function applyKickPose(ent, on) {
     const ch = ent?.character;
     if (!ch) return;
@@ -7099,16 +7101,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ent.__kickBase = { y: ch.position.y, z: ch.position.z, rotX: ch.rotation.x };
       }
       const kp = window.__kickPose || { offY: 0, offFwd: 0, rotX: 0 };
-      ch.position.y = ent.__kickBase.y + (kp.offY || 0);
-      ch.position.z = ent.__kickBase.z + (kp.offFwd || 0);
-      ch.rotation.x = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
+      ent.__kickTargetY = ent.__kickBase.y + (kp.offY || 0);
+      ent.__kickTargetZ = ent.__kickBase.z + (kp.offFwd || 0);
+      ent.__kickTargetRotX = ent.__kickBase.rotX + (kp.rotX || 0) * (Math.PI / 180);
     } else if (ent.__kickBase) {
-      ch.position.y = ent.__kickBase.y;
-      ch.position.z = ent.__kickBase.z;
-      ch.rotation.x = ent.__kickBase.rotX;
-      ent.__kickBase = null;
+      ent.__kickTargetY = ent.__kickBase.y;
+      ent.__kickTargetZ = ent.__kickBase.z;
+      ent.__kickTargetRotX = ent.__kickBase.rotX;
+      // libera depois que o lerp converge (no próximo frame)
+      setTimeout(() => { ent.__kickBase = null; ent.__kickTargetY = ent.__kickTargetZ = ent.__kickTargetRotX = null; }, 250);
     }
   }
+
   window.__fbApplyKickPoseLive = function () {
     const ent = myEntity();
     if (ent && ent.__fbKicking) applyKickPose(ent, true);
