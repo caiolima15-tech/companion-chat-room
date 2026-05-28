@@ -903,14 +903,21 @@ function hideAvaturnLoader() {
   setTimeout(() => { if (avatarCreatorLoader) avatarCreatorLoader.style.display = "none"; }, 400);
 }
 
-function openAvatarCreator() {
+let _editingAvatarId = null;
+function openAvatarCreator(opts = {}) {
   if (!avatarCreatorOverlay) return;
-  avatarCreatorStatus.textContent = "";
+  _editingAvatarId = opts.editId || null;
+  const heading = avatarCreatorOverlay.querySelector("h2");
+  if (heading) heading.textContent = _editingAvatarId ? "Editar meu avatar" : "Criar meu avatar";
+  avatarCreatorStatus.textContent = _editingAvatarId
+    ? "Ajuste seu avatar e clique em “Next” para atualizar."
+    : "";
   avatarCreatorStatus.style.color = "";
-  avatarCreatorName.value = "";
+  avatarCreatorName.value = opts.name || "";
   avatarCreatorFile.value = "";
   _avaturnReady = false;
   _avaturnSaving = false;
+  _lastAvaturnImportTs = 0;
   if (avatarCreatorLoader) {
     avatarCreatorLoader.style.display = "flex";
     avatarCreatorLoader.style.opacity = "1";
