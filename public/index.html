@@ -394,9 +394,22 @@
           <button id="characterSelectLogout" type="button" class="auth-link">Sair / trocar conta</button>
         </div>
         <h2>Escolha seu vibe</h2>
-        <p class="char-hint">Selecione o personagem e digite seu apelido pra entrar.</p>
+        <p class="char-hint">Arraste para girar, use o scroll para dar zoom e as setas para ver outros personagens.</p>
         <div id="currentAccountLabel" class="char-hint" style="opacity:.7;font-size:12px;"></div>
-        <div id="characterGrid" class="char-grid"></div>
+        <div id="characterStage" class="char-stage">
+          <canvas id="characterPreviewCanvas"></canvas>
+          <button id="charPrevBtn" type="button" class="char-nav char-nav-prev" aria-label="Personagem anterior">‹</button>
+          <button id="charNextBtn" type="button" class="char-nav char-nav-next" aria-label="Próximo personagem">›</button>
+          <button id="charDeleteBtn" type="button" class="char-stage-delete" title="Excluir avatar" hidden>×</button>
+          <div id="charStageName" class="char-stage-name"></div>
+          <div id="charStageLoader" class="char-stage-loader" hidden><div class="avatar-spinner-ring"></div></div>
+          <div id="charStageEmpty" class="char-stage-empty" hidden>Nenhum personagem ainda. Crie o seu abaixo.</div>
+        </div>
+        <div id="charDots" class="char-dots"></div>
+        <div class="char-stage-actions">
+          <button id="charEditBtn" type="button" class="char-secondary-btn" hidden>✎ Editar personagem</button>
+          <button id="charCreateBtn" type="button" class="char-secondary-btn">＋ Criar meu avatar</button>
+        </div>
         <label class="char-nick">
           <span>Apelido</span>
           <input id="characterNickname" type="text" maxlength="18" placeholder="Seu nome">

@@ -89,7 +89,7 @@ const emoteWaveButton = document.querySelector("#emoteWave");
 
 // Character select overlay
 const characterSelectOverlay = document.querySelector("#characterSelectOverlay");
-const characterGrid = document.querySelector("#characterGrid");
+
 const characterNicknameInput = document.querySelector("#characterNickname");
 const enterRoomButton = document.querySelector("#enterRoomButton");
 const characterSelectError = document.querySelector("#characterSelectError");
@@ -548,13 +548,11 @@ async function loadUserAvatars() {
 
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
-  renderCharacterTiles();
   characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
   selectedCharacterSlug =
     me?.character_slug ||
     charactersCatalog.find((c) => c.base_url)?.slug ||
     (userAvatars[0] ? `user:${userAvatars[0].id}` : null);
-  updateEnterButtonState();
   const label = document.querySelector("#currentAccountLabel");
   if (label) {
     supabase.auth.getUser().then(({ data }) => {
@@ -562,6 +560,10 @@ function openCharacterSelect() {
     });
   }
   characterSelectOverlay.hidden = false;
+  initPreviewScene();
+  refreshCharacterCarousel();
+  startPreviewLoop();
+  setTimeout(resizePreview, 60);
 }
 document.querySelector("#characterSelectLogout")?.addEventListener("click", async () => {
   await supabase.auth.signOut();
@@ -569,42 +571,7 @@ document.querySelector("#characterSelectLogout")?.addEventListener("click", asyn
 });
 function closeCharacterSelect() {
   if (characterSelectOverlay) characterSelectOverlay.hidden = true;
-}
-
-function renderCharacterTiles() {
-  if (!characterGrid) return;
-  const myAvatarTiles = userAvatars
-    .filter((av) => av.user_id === myId)
-    .map((av) => userAvatarToCharacter(av));
-  const all = [...charactersCatalog, ...myAvatarTiles];
-  const tilesHtml = all
-    .map((c) => {
-      const isSelected = selectedCharacterSlug === c.slug;
-      const ready = !!c.base_url;
-      const thumb = c.thumbnail_url
-        ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="${escapeHtml(c.name)}">`
-        : (c.isUserAvatar ? "🧑‍🎤" : "🧍");
-      const badge = c.isUserAvatar ? `<div class="char-tile-warn" style="background:#7c5cff;color:#fff;">Meu</div>` : "";
-      const deleteBtn = c.isUserAvatar
-        ? `<button class="char-tile-delete" data-action="delete-avatar" data-avatar-id="${escapeHtml(c.userAvatarId || "")}" title="Excluir avatar" style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.65);color:#fff;border:none;border-radius:50%;width:22px;height:22px;font-size:14px;line-height:20px;text-align:center;cursor:pointer;z-index:3;padding:0;">×</button>`
-        : "";
-      return `
-        <div class="char-tile ${isSelected ? "is-selected" : ""} ${ready ? "" : "is-disabled"}"
-             data-character-slug="${escapeHtml(c.slug)}" style="position:relative;">
-          ${deleteBtn}
-          <div class="char-tile-thumb">${thumb}</div>
-          <div class="char-tile-name">${escapeHtml(c.name)}</div>
-          ${ready ? "" : `<div class="char-tile-warn">Sem arquivos</div>`}
-          ${badge}
-        </div>`;
-    })
-    .join("");
-  const createTile = `
-    <div class="char-tile" data-action="create-avatar" style="display:flex;flex-direction:column;align-items:center;justify-content:center;border:2px dashed #4a4f5e;cursor:pointer;">
-      <div class="char-tile-thumb" style="font-size:32px;">＋</div>
-      <div class="char-tile-name">Criar meu avatar</div>
-    </div>`;
-  characterGrid.innerHTML = (all.length ? tilesHtml : `<div class="char-hint">Nenhum personagem disponível ainda.</div>`) + createTile;
+  stopPreviewLoop();
 }
 
 function updateEnterButtonState() {
@@ -614,28 +581,220 @@ function updateEnterButtonState() {
   enterRoomButton.disabled = !selectedCharacterSlug || !hasFiles;
 }
 
-characterGrid?.addEventListener("click", async (event) => {
-  const delBtn = event.target.closest('[data-action="delete-avatar"]');
-  if (delBtn) {
-    event.stopPropagation();
-    const avatarId = delBtn.dataset.avatarId;
-    if (!avatarId) return;
-    if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
-    const { error } = await supabase.from("user_avatars").delete().eq("id", avatarId);
-    if (error) { alert("Não foi possível excluir: " + error.message); return; }
-    if (selectedCharacterSlug === `user:${avatarId}`) selectedCharacterSlug = null;
-    userAvatars = userAvatars.filter((a) => a.id !== avatarId);
-    renderCharacterTiles();
-    updateEnterButtonState();
-    return;
+// ============ Preview 3D da seleção de personagem (estilo Avaturn) ============
+const charStage = document.querySelector("#characterStage");
+const previewCanvas = document.querySelector("#characterPreviewCanvas");
+const charPrevBtn = document.querySelector("#charPrevBtn");
+const charNextBtn = document.querySelector("#charNextBtn");
+const charDeleteBtn = document.querySelector("#charDeleteBtn");
+const charStageName = document.querySelector("#charStageName");
+const charStageLoader = document.querySelector("#charStageLoader");
+const charStageEmpty = document.querySelector("#charStageEmpty");
+const charDots = document.querySelector("#charDots");
+const charEditBtn = document.querySelector("#charEditBtn");
+const charCreateBtn = document.querySelector("#charCreateBtn");
+
+let selectableChars = [];
+let previewIndex = 0;
+let previewRenderer = null, previewScene = null, previewCamera = null, previewControls = null;
+let previewMixer = null, previewClock = null, previewRaf = null;
+let previewCharObj = null, previewGround = null, previewRing = null;
+let previewLoadToken = 0;
+
+function initPreviewScene() {
+  if (previewRenderer || !previewCanvas) return;
+  previewRenderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias: true, alpha: true });
+  previewRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  previewRenderer.shadowMap.enabled = true;
+  previewRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  previewScene = new THREE.Scene();
+  previewCamera = new THREE.PerspectiveCamera(32, 1, 0.05, 100);
+  previewCamera.position.set(0, 1.4, 3.4);
+
+  previewScene.add(new THREE.HemisphereLight(0xdfe6ff, 0x2a2440, 1.15));
+  const key = new THREE.DirectionalLight(0xffffff, 1.7);
+  key.position.set(2.6, 4.2, 3);
+  key.castShadow = true;
+  key.shadow.mapSize.set(1024, 1024);
+  key.shadow.camera.near = 0.5;
+  key.shadow.camera.far = 25;
+  previewScene.add(key);
+  const rim = new THREE.DirectionalLight(0x9b8cff, 0.9);
+  rim.position.set(-3, 2.4, -2.4);
+  previewScene.add(rim);
+
+  previewGround = new THREE.Mesh(
+    new THREE.CircleGeometry(1.45, 56),
+    new THREE.MeshStandardMaterial({ color: 0x14172a, roughness: 0.92, metalness: 0.08 }),
+  );
+  previewGround.rotation.x = -Math.PI / 2;
+  previewGround.receiveShadow = true;
+  previewScene.add(previewGround);
+
+  previewRing = new THREE.Mesh(
+    new THREE.RingGeometry(1.32, 1.46, 64),
+    new THREE.MeshBasicMaterial({ color: 0x7c5cff, transparent: true, opacity: 0.55, side: THREE.DoubleSide }),
+  );
+  previewRing.rotation.x = -Math.PI / 2;
+  previewScene.add(previewRing);
+
+  previewControls = new OrbitControls(previewCamera, previewRenderer.domElement);
+  previewControls.enablePan = false;
+  previewControls.enableDamping = true;
+  previewControls.dampingFactor = 0.08;
+  previewControls.rotateSpeed = 0.7;
+  previewControls.minDistance = 1.4;
+  previewControls.maxDistance = 5;
+  previewControls.minPolarAngle = Math.PI * 0.12;
+  previewControls.maxPolarAngle = Math.PI * 0.54;
+  previewControls.target.set(0, 0.95, 0);
+
+  previewClock = new THREE.Clock();
+  if (typeof ResizeObserver !== "undefined" && charStage) {
+    new ResizeObserver(() => resizePreview()).observe(charStage);
   }
-  const createBtn = event.target.closest('[data-action="create-avatar"]');
-  if (createBtn) { openAvatarCreator(); return; }
-  const tile = event.target.closest("[data-character-slug]");
-  if (!tile) return;
-  selectedCharacterSlug = tile.dataset.characterSlug;
-  renderCharacterTiles();
+  window.addEventListener("resize", resizePreview);
+  resizePreview();
+}
+
+function resizePreview() {
+  if (!previewRenderer || !previewCanvas) return;
+  const w = previewCanvas.clientWidth || charStage?.clientWidth || 0;
+  const h = previewCanvas.clientHeight || charStage?.clientHeight || 0;
+  if (!w || !h) return;
+  previewRenderer.setSize(w, h, false);
+  previewCamera.aspect = w / h;
+  previewCamera.updateProjectionMatrix();
+}
+
+function previewLoop() {
+  previewRaf = requestAnimationFrame(previewLoop);
+  const dt = previewClock ? previewClock.getDelta() : 0;
+  if (previewMixer) previewMixer.update(dt);
+  if (previewControls) previewControls.update();
+  if (previewRenderer && previewScene && previewCamera) previewRenderer.render(previewScene, previewCamera);
+}
+function startPreviewLoop() {
+  if (previewRaf || !previewRenderer) return;
+  previewClock?.start();
+  previewLoop();
+}
+function stopPreviewLoop() {
+  if (previewRaf) { cancelAnimationFrame(previewRaf); previewRaf = null; }
+}
+
+async function loadPreviewCharacter(character) {
+  if (!previewScene || !character) return;
+  const token = ++previewLoadToken;
+  if (previewCharObj) { previewScene.remove(previewCharObj); previewCharObj = null; }
+  previewMixer = null;
+  if (charStageLoader) charStageLoader.hidden = false;
+  try {
+    const { base, clips } = await loadCharacterAssets(character);
+    if (token !== previewLoadToken) return;
+    const obj = cloneSkeleton(base);
+    obj.scale.copy(base.scale);
+    obj.position.set(0, 0, 0);
+    obj.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
+    obj.traverse((c) => {
+      if (c.isMesh || c.isSkinnedMesh) { c.castShadow = true; c.frustumCulled = false; }
+    });
+    previewScene.add(obj);
+    previewCharObj = obj;
+
+    // Reposiciona base/anel sob os pés e enquadra a câmera de acordo com o modelo.
+    obj.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(obj);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    if (previewGround) previewGround.position.y = box.min.y;
+    if (previewRing) previewRing.position.y = box.min.y + 0.002;
+    const dist = Math.max(size.y, size.x, 1) * 1.55 + 0.4;
+    previewControls.target.set(center.x, center.y, center.z);
+    previewCamera.position.set(center.x, center.y + size.y * 0.12, center.z + dist);
+    previewControls.minDistance = dist * 0.55;
+    previewControls.maxDistance = dist * 2.4;
+    previewControls.update();
+
+    previewMixer = new THREE.AnimationMixer(obj);
+    const idleClip = clips.idle || Object.values(clips)[0];
+    if (idleClip && idleClip.tracks.length) previewMixer.clipAction(idleClip).reset().play();
+  } catch (e) {
+    console.warn("[preview] falha ao carregar personagem", e);
+  } finally {
+    if (token === previewLoadToken && charStageLoader) charStageLoader.hidden = true;
+  }
+}
+
+function buildSelectableChars() {
+  const myAvatarTiles = userAvatars
+    .filter((av) => av.user_id === myId)
+    .map((av) => userAvatarToCharacter(av));
+  selectableChars = [...charactersCatalog.filter((c) => c.base_url), ...myAvatarTiles];
+}
+function currentPreviewChar() { return selectableChars[previewIndex] || null; }
+
+function refreshCharacterCarousel() {
+  buildSelectableChars();
+  const idx = selectableChars.findIndex((c) => c.slug === selectedCharacterSlug);
+  if (idx >= 0) previewIndex = idx;
+  else if (previewIndex >= selectableChars.length) previewIndex = Math.max(0, selectableChars.length - 1);
+  updateCarouselUI();
+}
+
+function renderDots() {
+  if (!charDots) return;
+  charDots.innerHTML = selectableChars
+    .map((c, i) => `<button type="button" class="char-dot ${i === previewIndex ? "is-active" : ""}" data-i="${i}" aria-label="${escapeHtml(c.name)}"></button>`)
+    .join("");
+}
+
+function updateCarouselUI() {
+  const empty = selectableChars.length === 0;
+  if (charStageEmpty) charStageEmpty.hidden = !empty;
+  if (charPrevBtn) charPrevBtn.disabled = selectableChars.length <= 1;
+  if (charNextBtn) charNextBtn.disabled = selectableChars.length <= 1;
+  const c = currentPreviewChar();
+  selectedCharacterSlug = c?.slug || null;
+  if (charStageName) charStageName.textContent = c?.name || "";
+  if (charEditBtn) charEditBtn.hidden = !c?.isUserAvatar;
+  if (charDeleteBtn) charDeleteBtn.hidden = !c?.isUserAvatar;
+  renderDots();
   updateEnterButtonState();
+  if (c) loadPreviewCharacter(c);
+  else if (previewCharObj && previewScene) { previewScene.remove(previewCharObj); previewCharObj = null; previewMixer = null; }
+}
+
+function previewGo(delta) {
+  if (selectableChars.length <= 1) return;
+  previewIndex = (previewIndex + delta + selectableChars.length) % selectableChars.length;
+  updateCarouselUI();
+}
+
+charPrevBtn?.addEventListener("click", () => previewGo(-1));
+charNextBtn?.addEventListener("click", () => previewGo(1));
+charDots?.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-i]");
+  if (!b) return;
+  previewIndex = Number(b.dataset.i);
+  updateCarouselUI();
+});
+charCreateBtn?.addEventListener("click", () => openAvatarCreator());
+charEditBtn?.addEventListener("click", () => {
+  const c = currentPreviewChar();
+  if (!c?.isUserAvatar) return;
+  openAvatarCreator({ editId: c.userAvatarId, name: c.name });
+});
+charDeleteBtn?.addEventListener("click", async () => {
+  const c = currentPreviewChar();
+  if (!c?.isUserAvatar) return;
+  if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
+  const { error } = await supabase.from("user_avatars").delete().eq("id", c.userAvatarId);
+  if (error) { alert("Não foi possível excluir: " + error.message); return; }
+  if (selectedCharacterSlug === c.slug) selectedCharacterSlug = null;
+  userAvatars = userAvatars.filter((a) => a.id !== c.userAvatarId);
+  refreshCharacterCarousel();
 });
 
 enterRoomButton?.addEventListener("click", async () => {
@@ -744,14 +903,21 @@ function hideAvaturnLoader() {
   setTimeout(() => { if (avatarCreatorLoader) avatarCreatorLoader.style.display = "none"; }, 400);
 }
 
-function openAvatarCreator() {
+let _editingAvatarId = null;
+function openAvatarCreator(opts = {}) {
   if (!avatarCreatorOverlay) return;
-  avatarCreatorStatus.textContent = "";
+  _editingAvatarId = opts.editId || null;
+  const heading = avatarCreatorOverlay.querySelector("h2");
+  if (heading) heading.textContent = _editingAvatarId ? "Editar meu avatar" : "Criar meu avatar";
+  avatarCreatorStatus.textContent = _editingAvatarId
+    ? "Ajuste seu avatar e clique em “Next” para atualizar."
+    : "";
   avatarCreatorStatus.style.color = "";
-  avatarCreatorName.value = "";
+  avatarCreatorName.value = opts.name || "";
   avatarCreatorFile.value = "";
   _avaturnReady = false;
   _avaturnSaving = false;
+  _lastAvaturnImportTs = 0;
   if (avatarCreatorLoader) {
     avatarCreatorLoader.style.display = "flex";
     avatarCreatorLoader.style.opacity = "1";
@@ -795,17 +961,43 @@ async function handleAvatarUpload(file) {
     if (upErr) throw upErr;
     const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
     const baseUrl = pub.publicUrl;
-    const { data: inserted, error: dbErr } = await supabase
-      .from("user_avatars")
-      .insert({ user_id: me.id, name, base_url: baseUrl })
-      .select()
-      .single();
-    if (dbErr) throw dbErr;
-    userAvatars = [inserted, ...userAvatars];
-    avatarCreatorStatus.style.color = "#29d3bd";
-    avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
-    selectedCharacterSlug = `user:${inserted.id}`;
-    renderCharacterTiles();
+
+    if (_editingAvatarId) {
+      // Edição: substitui o GLB do avatar atual (mesmo slug user:<id>).
+      const { data: updated, error: dbErr } = await supabase
+        .from("user_avatars")
+        .update({ base_url: baseUrl })
+        .eq("id", _editingAvatarId)
+        .select()
+        .single();
+      if (dbErr) throw dbErr;
+      userAvatars = userAvatars.map((a) => (a.id === _editingAvatarId ? updated : a));
+      // Limpa o cache para recarregar a nova versão no preview e na sala.
+      characterCache.delete(`user:${_editingAvatarId}`);
+      selectedCharacterSlug = `user:${_editingAvatarId}`;
+      avatarCreatorStatus.style.color = "#29d3bd";
+      avatarCreatorStatus.textContent = "Pronto! Avatar atualizado.";
+      // Atualiza meu personagem na sala, se eu já estiver usando este avatar.
+      const myEntity = playerEntities.get(myId);
+      if (myEntity && me?.character_slug === `user:${_editingAvatarId}`) {
+        myEntity.characterSlug = null;
+        myEntity.pendingCharacterSlug = null;
+        applyCharacter(myEntity, `user:${_editingAvatarId}`);
+      }
+    } else {
+      const { data: inserted, error: dbErr } = await supabase
+        .from("user_avatars")
+        .insert({ user_id: me.id, name, base_url: baseUrl })
+        .select()
+        .single();
+      if (dbErr) throw dbErr;
+      userAvatars = [inserted, ...userAvatars];
+      selectedCharacterSlug = `user:${inserted.id}`;
+      avatarCreatorStatus.style.color = "#29d3bd";
+      avatarCreatorStatus.textContent = "Pronto! Avatar adicionado à sua lista.";
+    }
+    _editingAvatarId = null;
+    refreshCharacterCarousel();
     updateEnterButtonState();
     setTimeout(closeAvatarCreator, 900);
   } catch (err) {
@@ -1790,7 +1982,7 @@ async function setupGlobalSecondaryChannels() {
       .channel("room-characters")
       .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
         await loadCharactersCatalog();
-        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
       })
       .subscribe();
   }
@@ -1801,7 +1993,7 @@ async function setupGlobalSecondaryChannels() {
       .channel("room-user-avatars")
       .on("postgres_changes", { event: "*", schema: "public", table: "user_avatars" }, async () => {
         await loadUserAvatars();
-        if (characterSelectOverlay && !characterSelectOverlay.hidden) renderCharacterTiles();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
       })
       .subscribe();
   }

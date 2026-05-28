@@ -1,35 +1,65 @@
 ## Objetivo
 
-Tornar a criação de avatar mais fluida: nada de segundo login visível e um único botão nosso para salvar (em vez do "Next" do Avaturn).
+Transformar a tela "Escolha seu vibe" num **preview 3D estilo Avaturn**: um personagem por vez na tela, com fundo/base atrás, animação idle do próprio GLB, câmera que dá zoom e gira ao redor (sem andar), navegação para o lado (1 por vez) e o botão "Entrar" embaixo. Além disso, um botão "Editar personagem" que leva ao editor do Avaturn e atualiza o avatar no nosso vibe ao reexportar.
+
+## Como vai ficar
+
+```text
+┌───────────────────────────────┐
+│   Escolha seu vibe            ✕ │
+│  ┌─────────────────────────┐   │
+│  │   (fundo gradiente)     │   │
+│  │       ╭─────╮           │   │
+│  │  ‹    │ GLB │    ›       │   │  ← gira/zoom com o dedo/mouse
+│  │       │idle │           │   │  ← ‹ › troca de personagem (1 por vez)
+│  │       ╰──┬──╯           │   │
+│  │      (base/plataforma)  │   │
+│  └─────────────────────────┘   │
+│   • • ●  (indicador)            │
+│   [ Editar personagem ]         │
+│   Apelido: [__________]         │
+│   [      Entrar na sala      ]  │
+└───────────────────────────────┘
+```
 
 ## O que vai mudar
 
-### 1. Esconder a tela de login do Avaturn (`public/index.html` + `public/styles.css`)
+### 1. Preview 3D no lugar da grade (`public/index.html`, `public/styles.css`, `public/app.js`)
+- Substituir a grade `#characterGrid` por um **palco de preview**: um `<canvas>` ocupando o card, com fundo em gradiente escuro e uma base/plataforma sob o avatar (visual parecido com o do Avaturn).
+- Criar um mini-renderer Three.js dedicado (cena + câmera + luz + `OrbitControls`) só para a seleção, reaproveitando `loadCharacterAssets()` que já normaliza o GLB e carrega a animação **idle**.
+- O avatar selecionado entra com o `AnimationMixer` tocando **idle** em loop.
+- `OrbitControls` configurado para **girar e dar zoom**, com **pan desabilitado** e limites de distância/ângulo — a pessoa olha ao redor mas não "anda".
+- O loop de animação do preview só roda enquanto a tela está aberta (para não pesar), e é destruído ao entrar na sala.
 
-O iframe aponta para `hotmapavatar.avaturn.dev?lang=pt`. A tela de login do Avaturn aparece dentro dele. Como não controlamos o conteúdo (cross-origin), vamos fazer best-effort:
+### 2. Navegação 1-por-vez (`public/app.js`, `public/index.html`)
+- Setas ‹ › e **swipe** (arrastar na horizontal) trocam o personagem atual; cada troca carrega o próximo GLB no palco com um fade.
+- Indicador de pontinhos mostrando posição na lista.
+- A lista é a mesma de hoje: personagens do catálogo + os avatares do próprio usuário (`userAvatars` do usuário logado) + um item final "Criar meu avatar" (abre o criador do Avaturn, como já faz).
+- O botão **"Entrar na sala"** e o campo de **apelido** continuam embaixo; "Entrar" usa o personagem atualmente no palco.
+- Manter a ação de **excluir** avatar próprio (hoje no tile) como um ícone discreto no canto do palco quando o item for um avatar do usuário.
 
-- Tentar passar parâmetros conhecidos do Avaturn que pulam autenticação quando disponíveis (ex.: `?lang=pt&hideLogin=1` ou parâmetros documentados do SDK iframe). Testamos via postMessage logando o que o iframe responde.
-- Mostrar uma camada de loading nossa por cima do iframe nos primeiros segundos, escondendo qualquer flash de tela de login.
-- Se o Avaturn salvar sessão (cookie próprio), a partir da segunda vez o login não aparece — orientar via UI: "Aguarde, abrindo editor…".
+### 3. Botão "Editar personagem" → Avaturn + sincronizar de volta (`public/index.html`, `public/app.js`)
+- Mostrar "Editar personagem" apenas quando o item atual for um **avatar do usuário** (não nos personagens do catálogo).
+- Ao clicar: abre o criador do Avaturn (mesmo overlay de hoje) em **modo edição**: ao reexportar (clicar "Next"), em vez de criar um avatar novo, **atualizamos o avatar atual** — substitui o `.glb` no storage e atualiza `base_url`/thumbnail do registro em `user_avatars`, limpando o cache do preview para recarregar a nova versão no palco.
+- Resultado: a alteração feita no Avaturn passa a refletir no nosso vibe (mesmo slug `user:<id>`), inclusive para quem já está na sala (o realtime de `user_avatars` já existe).
 
-Importante avisar: como o iframe é de outro domínio, não conseguimos remover elementos internos via CSS/JS. Se o Avaturn exigir login obrigatório, a única forma 100% confiável de pular é usar a API key deles (opção que você descartou). Vou implementar o melhor que dá sem isso, e deixar comentado o ponto exato onde plugar a API key futuramente.
+> **Limitação (sem API key):** o editor do Avaturn **não** consegue abrir já carregado exatamente aquele avatar para ajustes — isso exige a API do Avaturn (sessão `edit_existing`), que você optou por não usar. Por isso, "Editar" abre o editor e o que for reexportado **substitui** o avatar atual. Se um dia quiser a edição que já abre o avatar existente, é só ativar a API key.
 
-### 2. Botão "Salvar avatar" nosso (`public/index.html`, `public/app.js`, `public/styles.css`)
-
-- Adicionar um botão fixo no rodapé do overlay do criador (`#avatarCreatorOverlay`): **"Salvar avatar e entrar"**.
-- Ao clicar, dispara `iframe.contentWindow.postMessage({ type: 'avaturn_export' }, '*')` (e variações conhecidas: `{ action: 'export' }`, `{ command: 'finish' }`) para forçar o export. O listener atual de mensagens já captura o GLB que vier de volta.
-- Estado do botão: desabilitado até o iframe sinalizar que está pronto (`iframeReady`/primeiro postMessage recebido).
-- Loader visual no botão enquanto baixa/sobe o GLB. Sucesso → fecha overlay e seleciona o avatar automaticamente (já existe `selectedCharacterSlug = user:${id}` no fluxo).
-- Mantemos como fallback escondido o "Importar .glb manualmente" que já existe.
-
-### 3. Validação no preview
-
-- Abrir o criador de avatar logado, confirmar que aparece tela de loading nossa, depois o editor.
-- Clicar no nosso botão "Salvar avatar e entrar" e verificar no console se o postMessage de export é aceito pelo iframe (logamos a resposta).
-- Se o comando de export não funcionar com nenhuma das variações, voltamos pra você com o log do que o Avaturn aceita — pode ser que essa versão só responda ao botão deles. Nesse caso a alternativa é a API key.
+### 4. Validação no preview
+- Abrir "Escolha seu vibe": ver um personagem por vez com fundo/base, idle rodando, girar e dar zoom (sem pan/andar).
+- Trocar com setas e swipe; conferir indicador e o botão Entrar usando o atual.
+- "Editar personagem" num avatar próprio: editar no Avaturn, reexportar e ver o avatar atualizado no palco e na sala.
+- Conferir desempenho no mobile (390px) e que o renderer é destruído ao entrar/sair.
 
 ## Detalhes técnicos
 
-- Listener `message` em `app.js` (linhas 866-924) já trata a resposta — não precisa mexer.
-- Adicionar handshake: ao receber o primeiro postMessage do Avaturn, habilita nosso botão e esconde o loader.
-- Sem mudanças de backend, banco ou auth.
+- Reaproveita `loadCharacterAssets(character)` → `{ base, clips, scale }`, `cloneSkeleton`, `THREE.AnimationMixer` e `/vendor/OrbitControls.js` (já importados em `public/app.js`).
+- Novo renderer isolado para o preview (não interfere no renderer da sala). `OrbitControls`: `enablePan=false`, `minDistance/maxDistance` e `min/maxPolarAngle` limitados; alvo na altura do tronco.
+- Edição/sync: substitui o objeto no Storage (bucket `characters`) e dá `update` em `user_avatars` (mesmo `id`/slug), depois `characterCache.delete('user:<id>')` para recarregar.
+- Sem mudanças de schema. Usa as tabelas/colunas atuais (`user_avatars.base_url`, `thumbnail_url`) e o realtime já existente.
+- A imagem enviada (avatar com fundo desfocado) é só referência visual do estilo de preview; não será embutida.
+
+## O que NÃO muda
+
+- Fluxo de login e a galeria compartilhada do Avaturn permanecem como estão.
+- Catálogo de personagens do admin continua disponível na mesma navegação.
