@@ -598,6 +598,7 @@ let previewIndex = 0;
 let previewRenderer = null, previewScene = null, previewCamera = null, previewControls = null;
 let previewMixer = null, previewClock = null, previewRaf = null;
 let previewCharObj = null, previewGround = null, previewRing = null;
+let previewSmoke = null;
 let previewLoadToken = 0;
 
 function initPreviewScene() {
