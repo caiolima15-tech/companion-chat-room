@@ -2048,7 +2048,8 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 #interactionsAdminPanel .ie-slider { display:flex; align-items:center; gap:6px; font-size:11px; }
 #interactionsAdminPanel .ie-slider .ie-label { width:80px; color:#aaa; }
 #interactionsAdminPanel .ie-slider input[type=range] { flex:1; }
-#interactionsAdminPanel .ie-slider .ie-val { width:48px; text-align:right; color:#ccc; font-variant-numeric:tabular-nums; }
+#interactionsAdminPanel .ie-slider input.ie-val { width:56px; text-align:right; color:#f8fafc; font-variant-numeric:tabular-nums; background:rgba(15,23,42,0.6); border:1px solid rgba(148,163,184,0.35); border-radius:5px; padding:2px 4px; font-size:11px; }
+#interactionsAdminPanel .ie-slider input.ie-val:focus { outline:none; border-color:#8a7dff; }
 #interactionsAdminPanel .ie-actions { display:flex; gap:6px; }
 #interactionsAdminPanel .ie-actions button { flex:1; padding:7px; border-radius:4px; border:1px solid #333; background:#1a1f2a; color:#eee; cursor:pointer; font-weight:600; }
 #interactionsAdminPanel .ie-actions button.primary { background:linear-gradient(135deg,#8b5cf6,#a78bfa); border:none; }
