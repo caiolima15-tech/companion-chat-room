@@ -422,12 +422,12 @@
 
     <!-- Avatar Creator (Avaturn) overlay -->
     <div id="avatarCreatorOverlay" class="char-overlay" hidden>
-      <div class="char-card" style="max-width:none;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:10px;border-radius:0;">
-        <div class="char-admin-head" style="flex:0 0 auto;">
+      <div class="char-card avatar-creator-card" style="max-width:none;width:100vw;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:6px;border-radius:0;align-items:center;">
+        <div class="char-admin-head" style="flex:0 0 auto;width:100%;max-width:760px;">
           <h2 style="margin:0;font-size:16px;">Criar meu avatar</h2>
           <button id="avatarCreatorClose" type="button" class="auth-link">Fechar ✕</button>
         </div>
-        <div style="flex:1 1 auto;min-height:0;border-radius:10px;overflow:hidden;background:#0b0d12;position:relative;">
+        <div style="flex:1 1 auto;min-height:0;width:100%;max-width:760px;border-radius:10px;overflow:hidden;background:#0b0d12;position:relative;margin:0 auto;">
           <iframe id="avatarCreatorFrame"
                   src="https://hotmapavatar.avaturn.dev?lang=pt"
                   allow="camera; microphone; clipboard-write; fullscreen; xr-spatial-tracking; accelerometer; gyroscope"
@@ -437,36 +437,19 @@
             <div style="width:42px;height:42px;border:3px solid #29d3bd;border-top-color:transparent;border-radius:50%;animation:avSpin 1s linear infinite;"></div>
             <div>Abrindo editor de avatar…</div>
           </div>
+          <div id="avatarCreatorStatus" class="char-hint" style="position:absolute;left:0;right:0;bottom:0;margin:0;padding:8px;min-height:0;text-align:center;background:rgba(11,13,18,0.82);z-index:3;"></div>
         </div>
-        <div id="avatarCreatorStatus" class="char-hint" style="margin-top:6px;min-height:18px;flex:0 0 auto;text-align:center;"></div>
-        <div style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:8px;flex:0 0 auto;color:#cfd3dc;font-size:13px;text-align:center;">
-          Quando terminar de montar seu avatar, clique em <strong style="color:#29d3bd;">“Next”</strong> dentro do editor para salvar e entrar.
+        <!-- Inputs ocultos (importação manual de .glb removida da UI) -->
+        <div style="display:none;">
+          <input id="avatarCreatorName" type="text" maxlength="28">
+          <input id="avatarCreatorFile" type="file" accept=".glb,model/gltf-binary">
+          <span id="avatarDropzone"></span>
+          <input id="avatarCreatorUrl" type="url">
+          <button id="avatarCreatorUrlBtn" type="button"></button>
         </div>
-        <details style="flex:0 0 auto;margin-top:4px;color:#9aa0ad;font-size:12px;">
-          <summary style="cursor:pointer;padding:4px 0;">Importar .glb manualmente (avançado)</summary>
-          <div style="display:flex;gap:10px;align-items:flex-end;margin-top:8px;flex-wrap:wrap;">
-            <label class="char-nick" style="flex:1 1 200px;">
-              <span>Nome do avatar</span>
-              <input id="avatarCreatorName" type="text" maxlength="28" placeholder="Ex.: Meu Avatar">
-            </label>
-            <label id="avatarDropzone" for="avatarCreatorFile"
-                   style="flex:2 1 320px;display:block;border:2px dashed #4a4f5e;border-radius:10px;padding:10px;text-align:center;cursor:pointer;color:#9aa0ad;">
-              <strong style="color:#cfd3dc;">Arraste o .glb aqui</strong>
-              <span style="font-size:12px;display:block;">ou clique para escolher</span>
-              <input id="avatarCreatorFile" type="file" accept=".glb,model/gltf-binary" hidden>
-            </label>
-          </div>
-          <div style="display:flex;gap:8px;align-items:flex-end;margin-top:10px;flex-wrap:wrap;">
-            <label class="char-nick" style="flex:1 1 320px;">
-              <span>Ou cole a URL .glb do Avaturn</span>
-              <input id="avatarCreatorUrl" type="url" placeholder="https://...avaturn.../avatar.glb">
-            </label>
-            <button id="avatarCreatorUrlBtn" type="button" class="auth-link" style="padding:8px 14px;border:1px solid #4a4f5e;border-radius:8px;">Importar URL</button>
-          </div>
-        </details>
-
       </div>
     </div>
+
 
     <!-- Admin: gerenciar personagens -->
     <div id="characterAdminOverlay" class="char-overlay" hidden>
