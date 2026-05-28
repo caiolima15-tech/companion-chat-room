@@ -1128,7 +1128,76 @@ async function handleCharacterUpload(input) {
 }
 
 manageCharactersButton?.addEventListener("click", openCharacterAdmin);
-document.querySelector("#adminShortcut")?.addEventListener("click", openCharacterAdmin);
+// Shield admin: abre/fecha o dock de ferramentas no canto direito
+(() => {
+  const shield = document.querySelector("#adminShortcut");
+  const dock = document.querySelector("#adminDock");
+  if (!shield || !dock) return;
+  const DOCK_KEY = "admin-dock-open";
+  function setDock(open) {
+    dock.hidden = !open;
+    shield.setAttribute("aria-pressed", open ? "true" : "false");
+    try { localStorage.setItem(DOCK_KEY, open ? "1" : "0"); } catch {}
+    if (!open) {
+      // Fecha todos os painéis admin ao recolher o dock
+      dock.querySelectorAll("[data-dock-panel]").forEach((b) => {
+        const sel = b.getAttribute("data-dock-panel");
+        const panel = sel && document.querySelector(sel);
+        if (panel && !panel.hidden) panel.hidden = true;
+        b.setAttribute("aria-pressed", "false");
+      });
+    }
+  }
+  shield.addEventListener("click", () => setDock(dock.hidden));
+  // Estado inicial: começa fechado (mesmo pro admin)
+  setDock(false);
+
+  // Delegação: cada barra do dock clica no botão original correspondente
+  dock.addEventListener("click", (ev) => {
+    const item = ev.target.closest(".admin-dock-item");
+    if (!item) return;
+    if (item.id === "adminDockImportGlb") {
+      document.querySelector("#glbInput")?.click();
+      return;
+    }
+    const targetSel = item.getAttribute("data-dock-target");
+    const target = targetSel && document.querySelector(targetSel);
+    if (target) target.click();
+    // Sincroniza aria-pressed do painel correspondente (após o clique)
+    const panelSel = item.getAttribute("data-dock-panel");
+    if (panelSel) {
+      const panel = document.querySelector(panelSel);
+      setTimeout(() => {
+        item.setAttribute("aria-pressed", panel && !panel.hidden ? "true" : "false");
+      }, 0);
+    }
+  });
+
+  // Quando um painel é fechado pelos seus próprios botões internos (×/−),
+  // remove o destaque da barra correspondente no dock.
+  const panelMap = {
+    "lightsAdminPanel": "[data-dock-panel='#lightsAdminPanel']",
+    "layersPanel": "[data-dock-panel='#layersPanel']",
+    "botsAdminPanel": "[data-dock-panel='#botsAdminPanel']",
+    "radioAdminPanel": "[data-dock-panel='#radioAdminPanel']",
+    "interactionsAdminPanel": "[data-dock-panel='#interactionsAdminPanel']",
+    "mapAdminPanel": "[data-dock-panel='#mapAdminPanel']",
+  };
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type !== "attributes" || m.attributeName !== "hidden") continue;
+      const panel = m.target;
+      const sel = panelMap[panel.id];
+      if (!sel) continue;
+      const btn = dock.querySelector(sel);
+      if (btn) btn.setAttribute("aria-pressed", panel.hidden ? "false" : "true");
+    }
+  });
+  Object.keys(panelMap).forEach((id) => {
+    const p = document.getElementById(id);
+    if (p) obs.observe(p, { attributes: true });
+  });
+})();
 
 // ============ Character loader (FBX + animations) ============
 // Usamos XHR direto (evita o wrapper de fetch da preview que quebra em arquivos grandes)
