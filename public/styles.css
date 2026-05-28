@@ -129,16 +129,17 @@ h1 {
   display: none !important;
 }
 
-.is-admin .admin-only {
+/* Admin: revela admin-only, MAS respeita [hidden] (painéis começam fechados) */
+.is-admin .admin-only:not([hidden]) {
   display: initial !important;
 }
 
-.is-admin .world-hud .admin-only,
-.is-admin label.admin-only {
+.is-admin .world-hud .admin-only:not([hidden]),
+.is-admin label.admin-only:not([hidden]) {
   display: inline-flex !important;
 }
 
-.is-admin .asset-dock.admin-only {
+.is-admin .asset-dock.admin-only:not([hidden]) {
   display: block !important;
 }
 
