@@ -770,35 +770,7 @@ function closeAvatarCreator() {
 }
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
-// Botão nosso: dispara export pro iframe do Avaturn via postMessage.
-// O listener de mensagens (mais abaixo) captura o GLB resultante.
-avatarCreatorSave?.addEventListener("click", () => {
-  if (_avaturnSaving) return;
-  if (!avatarCreatorFrame?.contentWindow) return;
-  _avaturnSaving = true;
-  avatarCreatorStatus.style.color = "";
-  avatarCreatorStatus.textContent = "Exportando avatar…";
-  // Variações conhecidas/heurísticas — o Avaturn aceita uma delas dependendo do build
-  const commands = [
-    { type: "avaturn_export" },
-    { eventName: "export" },
-    { action: "export" },
-    { command: "export" },
-    { type: "exportAvatar" },
-    "export",
-  ];
-  for (const cmd of commands) {
-    try { avatarCreatorFrame.contentWindow.postMessage(cmd, "*"); } catch {}
-  }
-  // Se em 12s nada voltar, libera o botão pra tentar de novo
-  setTimeout(() => {
-    if (_avaturnSaving) {
-      _avaturnSaving = false;
-      avatarCreatorStatus.style.color = "#f26868";
-      avatarCreatorStatus.textContent = "Não consegui exportar automaticamente. Clique em 'Next' dentro do editor.";
-    }
-  }, 12000);
-});
+
 
 
 async function handleAvatarUpload(file) {
