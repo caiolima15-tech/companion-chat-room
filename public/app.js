@@ -2334,8 +2334,16 @@ function notifyLeaveAndUntrack() {
 }
 window.addEventListener("pagehide", notifyLeaveAndUntrack);
 window.addEventListener("beforeunload", notifyLeaveAndUntrack);
+// Só sai da sala depois de um tempo longo em segundo plano (AFK real).
+let _afkLeaveTimer = null;
+const AFK_LEAVE_MS = 5 * 60 * 1000; // 5 minutos
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") notifyLeaveAndUntrack();
+  if (document.visibilityState === "hidden") {
+    if (_afkLeaveTimer) clearTimeout(_afkLeaveTimer);
+    _afkLeaveTimer = setTimeout(() => { notifyLeaveAndUntrack(); }, AFK_LEAVE_MS);
+  } else {
+    if (_afkLeaveTimer) { clearTimeout(_afkLeaveTimer); _afkLeaveTimer = null; }
+  }
 });
 
 
@@ -6835,6 +6843,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   const _v1 = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
+  const _v3 = new THREE.Vector3();
   const _head = new THREE.Vector3();
 
   function myEntity() { return (myId && playerEntities.get(myId)) || null; }
@@ -7205,10 +7214,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     _hasPrevPlayerPos = true;
 
     if (held) {
-      const dir = aimDir(ent);
+      const dir = aimDir(ent).clone();
       // ponto base: bem à frente do pé, com pequeno offset lateral
       const right = _v2.set(dir.z, 0, -dir.x);
-      const target = _v1.copy(ent.group.position)
+      const target = _v3.copy(ent.group.position)
         .addScaledVector(dir, DRIBBLE_DIST)
         .addScaledVector(right, DRIBBLE_SIDE);
       // pequenos "toques": quando corre, a bola adianta um pouco em ciclos
