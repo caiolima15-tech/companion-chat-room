@@ -598,6 +598,7 @@ let previewIndex = 0;
 let previewRenderer = null, previewScene = null, previewCamera = null, previewControls = null;
 let previewMixer = null, previewClock = null, previewRaf = null;
 let previewCharObj = null, previewGround = null, previewRing = null;
+let previewSmoke = null;
 let previewLoadToken = 0;
 
 function initPreviewScene() {
@@ -671,6 +672,7 @@ function previewLoop() {
   previewRaf = requestAnimationFrame(previewLoop);
   const dt = previewClock ? previewClock.getDelta() : 0;
   if (previewMixer) previewMixer.update(dt);
+  if (previewSmoke) updateLoadingSmoke({ loadingFx: previewSmoke }, performance.now() / 1000);
   if (previewControls) previewControls.update();
   if (previewRenderer && previewScene && previewCamera) previewRenderer.render(previewScene, previewCamera);
 }
@@ -688,7 +690,12 @@ async function loadPreviewCharacter(character) {
   const token = ++previewLoadToken;
   if (previewCharObj) { previewScene.remove(previewCharObj); previewCharObj = null; }
   previewMixer = null;
-  if (charStageLoader) charStageLoader.hidden = false;
+  // Mesma fumaça 3D usada ao carregar o avatar na sala (em vez do spinner HTML).
+  if (charStageLoader) charStageLoader.hidden = true;
+  if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+  previewSmoke = createLoadingSmoke();
+  previewSmoke.position.set(0, 0.35, 0);
+  previewScene.add(previewSmoke);
   try {
     const { base, clips } = await loadCharacterAssets(character);
     if (token !== previewLoadToken) return;
@@ -732,7 +739,10 @@ async function loadPreviewCharacter(character) {
   } catch (e) {
     console.warn("[preview] falha ao carregar personagem", e);
   } finally {
-    if (token === previewLoadToken && charStageLoader) charStageLoader.hidden = true;
+    if (token === previewLoadToken) {
+      if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+      if (charStageLoader) charStageLoader.hidden = true;
+    }
   }
 }
 
@@ -799,8 +809,17 @@ charDeleteBtn?.addEventListener("click", async () => {
   const c = currentPreviewChar();
   if (!c?.isUserAvatar) return;
   if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
+  const oldBaseUrl = userAvatars.find((a) => a.id === c.userAvatarId)?.base_url || null;
   const { error } = await supabase.from("user_avatars").delete().eq("id", c.userAvatarId);
   if (error) { alert("Não foi possível excluir: " + error.message); return; }
+  // Remove o GLB do storage para não deixar arquivos órfãos.
+  if (oldBaseUrl) {
+    const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
+    if (oldPath) {
+      supabase.storage.from("characters").remove([oldPath])
+        .catch((e) => console.warn("[avatar] falha ao remover GLB excluído", e));
+    }
+  }
   if (selectedCharacterSlug === c.slug) selectedCharacterSlug = null;
   userAvatars = userAvatars.filter((a) => a.id !== c.userAvatarId);
   refreshCharacterCarousel();
@@ -960,6 +979,15 @@ avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
 
 
 
+// Converte uma URL pública do Storage de volta para o caminho interno do bucket.
+function storagePathFromPublicUrl(url, bucket) {
+  if (!url) return null;
+  const marker = `/object/public/${bucket}/`;
+  const idx = url.indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(url.slice(idx + marker.length).split("?")[0]);
+}
+
 async function handleAvatarUpload(file) {
   if (!file) return;
   if (!file.name.toLowerCase().endsWith(".glb")) {
@@ -1000,6 +1028,7 @@ async function handleAvatarUpload(file) {
 
     if (_editingAvatarId) {
       // Edição: substitui o GLB do avatar atual (mesmo slug user:<id>).
+      const oldBaseUrl = userAvatars.find((a) => a.id === _editingAvatarId)?.base_url || null;
       const { data: updated, error: dbErr } = await supabase
         .from("user_avatars")
         .update({ base_url: baseUrl })
@@ -1007,6 +1036,14 @@ async function handleAvatarUpload(file) {
         .select()
         .single();
       if (dbErr) throw dbErr;
+      // Remove o GLB antigo do storage para não deixar arquivos órfãos.
+      if (oldBaseUrl && oldBaseUrl !== baseUrl) {
+        const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
+        if (oldPath) {
+          supabase.storage.from("characters").remove([oldPath])
+            .catch((e) => console.warn("[avatar] falha ao remover GLB antigo", e));
+        }
+      }
       userAvatars = userAvatars.map((a) => (a.id === _editingAvatarId ? updated : a));
       // Limpa o cache para recarregar a nova versão no preview e na sala.
       characterCache.delete(`user:${_editingAvatarId}`);
