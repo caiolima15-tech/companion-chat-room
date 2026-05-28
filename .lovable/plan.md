@@ -1,51 +1,66 @@
-# Ajustes de UI conforme a imagem
+## 1. Esconder widgets quando não está em sala
 
-## 1. Chat — cores e opacidade (`public/styles.css`)
+Arquivos: `public/styles.css`, `public/app.js`.
 
-- Fundo do `.chat-panel` / `.chat-log` / `.chat-form`: trocar o `rgba(...,0.5)` atual por **preto com opacidade bem mais baixa** (ex.: `rgba(0,0,0,0.78)` sólido escuro, sem o tom roxo/azulado atual).
-- Padronizar as bolhas (`.chat-bubble`):
-  - Mensagens do próprio usuário (`.chat-item.is-self .chat-bubble`): fundo **roxo claro `#a78bfa**` (lilás como no print), texto escuro, alinhadas à direita.
-  - Mensagens dos outros (`.chat-item:not(.is-self) .chat-bubble`): fundo **preto `#1a1a1a**`, texto branco, alinhadas à esquerda.
-  - Remover os tons amarelo/laranja atuais.
+- O `body.world-ready` já é adicionado em `enterRoom()`. Vou usá-lo como interruptor único: enquanto **não** estiver presente, escondo:
+  - `.mobile-bar` (botões inferiores ⚙️ 🙂 💬 👤 📨)
+  - `.world-hud` (Câmera, Meu perfil, Mensagens, Trocar personagem, Trocar local…)
+  - `.emote-cluster`
+  - `.chat-panel` (chat lateral)
+  - `.asset-dock`, `.admin-shortcut`, `#adminHideToggle` e todos os botões/painéis admin do topo
+- Adicionar em `styles.css` uma regra global `body:not(.world-ready) .mobile-bar, body:not(.world-ready) .world-hud, body:not(.world-ready) .emote-cluster, body:not(.world-ready) .chat-panel, body:not(.world-ready) .admin-only { display: none !important; }` (com cuidado para que overlays de seleção de mapa/personagem/avatar não sejam afetados — eles já ficam fora do `.world-shell`).
+- Em `app.js`, na função que volta para o lobby (sair da sala / `Trocar local` / `Trocar personagem` / logout), **remover** `world-ready` do `body`. Hoje só é adicionado, nunca removido — vou adicionar `document.body.classList.remove("world-ready")` nesses pontos (`closeWorld`/handlers de "Trocar local" e "Trocar personagem").
 
-## 2. Espaço vazio abaixo do mobile-bar (`public/styles.css`)
+## 2. Chat limpo ao sair da sala + TTL
 
-- Após a subida dos widgets, ficou uma faixa transparente entre o `mobile-bar` e a borda inferior. Preencher essa área com a cor `**#231e24**` (mesma da barra), aplicando `background: #231e24` direto no `.mobile-bar` e estendendo via `padding-bottom: env(safe-area-inset-bottom)` + um pseudo-elemento `::after` que cobre o espaço restante até `bottom: 0` com a mesma cor sólida.
+Arquivos: `public/app.js`.
 
-## 3. Ícone fantasma do chat quando minimizado (`public/app.js` + `public/styles.css`)
+- Ao sair da sala (mesmos handlers do item 1): esvaziar `#chatLog` (`chatLog.innerHTML = ""`) e zerar o estado em memória das mensagens. Resetar badges.
+- TTL local: adicionar varredura periódica (a cada 60s) em `chatLog` que remove `.chat-item` com `data-ts` mais antigo que **30 minutos**. Cada bolha já recebe timestamp ao ser renderizada — vou anexar `data-ts={Date.now()}` no momento da inserção e rodar `setInterval(purgeOldMessages, 60_000)` enquanto estiver na sala.
+- Não toco no banco — limpeza é só da UI local.
 
-- No print, com o chat minimizado, o botão de chat do `mobile-bar` mostra um ícone duplicado (balão preto + setinha). Investigar `#chatToggle` / `.chat-toggle` e o badge — provavelmente é o `.chat-toggle` flutuante antigo aparecendo junto. Garantir que quando `body` **não** tem `mobile-show-chat`, o `.chat-toggle` fique `display: none` em mobile (já existe o botão no `mobile-bar`).
+## 3. Dock admin no escudo (canto direito)
 
-## 4. Topbar — só nome da sala (`public/index.html` + `public/app.js`)
+Arquivos: `public/index.html`, `public/styles.css`, `public/app.js`.
 
-- Remover do `.topbar`:
-  - `<span class="kicker">Bar online 3D</span>` (linha 21 do `index.html`).
-  - `<span id="roleBadge">` (badge ADMIN/visitante).
-  - `<span id="onlineCount">` ("1 online" / bolinha verde).
-- Manter apenas o `<h1>Neon Tap Room</h1>` (nome da sala atual) e o botão **SAIR**.
-- No `app.js`, proteger as escritas em `roleBadge` / `onlineCount` com `if (el)` para não quebrar (linhas 1623, 1836, 2785). Não removo a lógica, só os elementos da UI.
+Comportamento desejado:
 
-## 5. Indicador roxo fantasma no canto esquerdo do topbar
+```text
+Estado 1 (sala carregada, admin):    Estado 2 (clicou no 🛡️):           Estado 3 (clicou em "Luzes"):
+                            [🛡️]    ┌────────────────┐ [🛡️]            ┌────────────────┐ [🛡️]
+                                     │ 🌑 Escuro       │                  │ 🌑 Escuro       │
+                                     │ 💡 Luzes        │                  │ 💡 Luzes ←ativo │  ←────┐
+                                     │ 🗂️ Camadas     │                  │ 🗂️ Camadas     │       │
+                                     │ 🤖 Bots         │                  │ 🤖 Bots         │   [Painel
+                                     │ 📻 Rádio        │                  │ 📻 Rádio        │    Luzes]
+                                     │ 🎯 Interações   │                  │ 🎯 Interações   │       │
+                                     │ 🗺️ Editar mapa │                  │ 🗺️ Editar mapa │  ←────┘
+                                     │ 📦 GLB / Char.  │                  │ 📦 GLB / Char.  │
+                                     └────────────────┘                   └────────────────┘
+```
 
-- No print há um "pílula" roxa pequena à esquerda do título. Provavelmente é o `kicker` ou um `::before`. Após remover o kicker (item 4), conferir se sobra algum estilo decorativo em `.topbar` e remover.
+Implementação:
 
-## 6. Botão "Sentar" contextual (`public/app.js`)
+- **HTML** (`public/index.html`): criar `<aside id="adminDock" class="admin-dock admin-only" hidden>` dentro de `.world-shell`, com uma lista de `<button data-tool="...">` (uma barra fina por ferramenta, ícone + nome). O `#adminShortcut` (🛡️) já existe — passa a ser o gatilho que mostra/esconde o `#adminDock`.
+- **Mover para o dock** os botões hoje espalhados pelo topo: `#darkModeToggle`, `#lightsAdminToggle`, `#layersToggleBtn`, `#botsToggleBtn`, `#radioToggleBtn`, `#interactionsToggleBtn`, `#mapAdminToggle`, `#manageCharactersButton`, `#placeButton`, importar GLB e `.asset-dock` (GLBs no mapa). Os botões originais deixam de existir como `position:absolute` no topo — viram entradas do dock que despacham o clique para o handler já registrado (ou são removidos do HTML e o dock chama as mesmas funções).
+- **Estado inicial**: `#adminDock` começa `hidden`. Mesmo para admin, só aparece se ele clicar no 🛡️. Persistir aberto/fechado em `localStorage` (`admin-dock-open`).
+- **Abertura de painéis**: clicar numa barra do dock abre o painel correspondente (`hidden = false`) **ao lado** do dock (posição fixa à direita do dock, `right: 56px`). Marca a barra como `aria-pressed="true"`.
+- **Minimizar = fechar e voltar pro dock**: os botões `data-panel-min` / `data-panel-close` / `#mapAdminClose` / `#lightsAdminClose` / `#layersClose` passam a apenas `panel.hidden = true` e remover o `aria-pressed` da barra correspondente. Não há mais estado "minimizado parcial" — fecha de vez e fica acessível só pelo dock.
+- **Esconder o dock**: clicar de novo no 🛡️ esconde o dock **e** fecha qualquer painel admin aberto.
+- **Não-admin**: 🛡️ e `#adminDock` permanecem com `.admin-only` → não aparecem.
 
-Hoje o painel/botão de sentar aparece fixo. Mudar para:
+## 4. CSS do dock
 
-- Aparecer **somente quando o player está próximo (raio ~1.2m) de uma interação do tipo `sit**` configurada no mapa atual.
-- Renderizar como um **balão flutuante 3D** fixo acima do objeto (usando `THREE.Sprite` ou um `div` projetado via `camera.project()` na posição do assento), **não** seguindo o personagem.
-- Sumir suavemente quando o player se afasta do raio.
-- Implementação: no loop de animação (`animate()` / `tick`), iterar `assetInteractions` filtrando `type === 'sit'`, calcular distância `player.position.distanceTo(seatWorldPos)`, mostrar/esconder o overlay correspondente e atualizar `left/top` via projeção da câmera.
+`public/styles.css` ganha:
+
+- `.admin-dock` fixo em `position:absolute; right:12px; top:64px; display:flex; flex-direction:column; gap:6px; width:200px; z-index:40;` com fundo `rgba(10,10,20,0.92)`, borda, `backdrop-filter:blur(8px)`.
+- `.admin-dock button` em barra única: `display:flex; align-items:center; gap:8px; padding:8px 10px; background:transparent; border:1px solid transparent; border-radius:6px; color:#eee; cursor:pointer; font:13px system-ui; text-align:left;`. Hover: borda roxa. `[aria-pressed="true"]`: fundo `rgba(167,139,250,0.18)`.
+- Em telas estreitas (`max-width: 640px`): dock vira `right:8px; width:180px; top:60px` e os painéis abertos passam a ocupar `right:200px; max-width: calc(100vw - 220px)`.
 
 ## Arquivos afetados
 
-- `public/styles.css` — cores/opacidade do chat, bolhas self/other, fundo `#231e24` abaixo do mobile-bar, esconder `.chat-toggle` em mobile.
-- `public/index.html` — remover `kicker`, `roleBadge`, `onlineCount` da `.topbar`.
-- `public/app.js` — guards nos elementos removidos; refatorar o prompt de sentar para ser baseado em proximidade + overlay projetado no objeto.
+- `public/index.html` — novo `<aside id="adminDock">`; remoção dos botões admin do topo (vira lista no dock); manter painéis (`#lightsAdminPanel`, `#layersPanel`, `#botsAdminPanel`, `#radioAdminPanel`, `#interactionsAdminPanel`, `#mapAdminPanel`) — só muda o gatilho.
+- `public/styles.css` — gating geral via `body.world-ready`; estilos do `.admin-dock`; ajuste do `.admin-shortcut` (vira o handle do dock).
+- `public/app.js` — `remove("world-ready")` nos retornos pro lobby; limpeza/TTL do chat; lógica do dock (abrir/fechar painéis, persistência); rebind dos handlers existentes nas novas barras do dock.
 
-Sem mudanças no banco. Sem novas dependências. 
-
-## 7. O mapa não sobe junto com a subida do teclado 
-
-quando usuario clica em digitar uma mensagem o que deve subir apenas é o chat, o mapa ao fundo permanece na mesma posicao na tela.
+Sem alterações no banco. Sem novas dependências.

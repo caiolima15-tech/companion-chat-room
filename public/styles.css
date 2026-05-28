@@ -1665,6 +1665,112 @@ body:not(.world-ready) #radioHud,
 body:not(.world-ready) #interactionPrompt {
   display: none !important;
 }
+
+/* Esconde todos os widgets/HUD/chat/admin enquanto NÃO está em uma sala */
+body:not(.world-ready) .mobile-bar,
+body:not(.world-ready) .world-hud,
+body:not(.world-ready) .emote-cluster,
+body:not(.world-ready) .chat-panel,
+body:not(.world-ready) .admin-only,
+body:not(.world-ready) #adminShortcut,
+body:not(.world-ready) #adminHideToggle,
+body:not(.world-ready) #boundsToggleBtn,
+body:not(.world-ready) #freeCamToggleBtn,
+body:not(.world-ready) .admin-dock,
+body:not(.world-ready) .floating-panel {
+  display: none !important;
+}
+
+/* ============================================================
+   Admin dock — barra retrátil de ferramentas no canto direito
+   ============================================================ */
+.admin-dock {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  z-index: 45;
+  width: 210px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(10, 10, 20, 0.92);
+  border: 1px solid #2a2a3a;
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+}
+.admin-dock[hidden] { display: none !important; }
+.admin-dock button.admin-dock-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #eee;
+  cursor: pointer;
+  font: 13px system-ui;
+  text-align: left;
+  width: 100%;
+}
+.admin-dock button.admin-dock-item:hover {
+  border-color: rgba(167, 139, 250, 0.55);
+  background: rgba(167, 139, 250, 0.08);
+}
+.admin-dock button.admin-dock-item[aria-pressed="true"] {
+  background: rgba(167, 139, 250, 0.2);
+  border-color: rgba(167, 139, 250, 0.6);
+  color: #fff;
+}
+.admin-dock .admin-dock-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+/* Esconde os botões admin antigos do topo (foram movidos para o dock) */
+#darkModeToggle,
+#lightsAdminToggle,
+#layersToggleBtn,
+#botsToggleBtn,
+#radioToggleBtn,
+#interactionsToggleBtn,
+#mapAdminToggle,
+.world-hud .admin-only,
+.world-hud label.admin-only,
+.asset-dock.admin-only {
+  display: none !important;
+}
+
+/* Reposiciona painéis admin pra abrir ao lado do dock */
+body.world-ready #lightsAdminPanel:not([hidden]),
+body.world-ready #layersPanel:not([hidden]),
+body.world-ready #botsAdminPanel:not([hidden]),
+body.world-ready #radioAdminPanel:not([hidden]),
+body.world-ready #interactionsAdminPanel:not([hidden]),
+body.world-ready #mapAdminPanel:not([hidden]) {
+  top: 64px !important;
+  right: 232px !important;
+  left: auto !important;
+}
+@media (max-width: 640px) {
+  .admin-dock { width: 168px; top: 60px; right: 8px; padding: 6px; }
+  .admin-dock button.admin-dock-item { font-size: 12px; padding: 7px 8px; }
+  body.world-ready #lightsAdminPanel:not([hidden]),
+  body.world-ready #layersPanel:not([hidden]),
+  body.world-ready #botsAdminPanel:not([hidden]),
+  body.world-ready #radioAdminPanel:not([hidden]),
+  body.world-ready #interactionsAdminPanel:not([hidden]),
+  body.world-ready #mapAdminPanel:not([hidden]) {
+    right: 188px !important;
+    max-width: calc(100vw - 200px) !important;
+  }
+}
 .world-loading-text {
   font-size: 22px;
   font-weight: 700;

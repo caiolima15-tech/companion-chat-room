@@ -689,12 +689,35 @@ enterRoomButton?.addEventListener("click", async () => {
 });
 
 changeCharacterButton?.addEventListener("click", () => {
+  exitRoomToLobby();
   openCharacterSelect();
 });
 
 changeMapButton?.addEventListener("click", () => {
+  exitRoomToLobby();
   openMapSelect();
 });
+
+function exitRoomToLobby() {
+  document.body.classList.remove("world-ready");
+  // Limpa o chat local (mensagens somem ao sair da sala)
+  if (chatLog) chatLog.innerHTML = "";
+  try {
+    const cb = document.querySelector("#mobileChatBadge");
+    const db = document.querySelector("#mobileDmBadge");
+    if (cb) cb.hidden = true;
+    if (db) db.hidden = true;
+  } catch {}
+  // Fecha o admin dock e qualquer painel aberto
+  const dock = document.querySelector("#adminDock");
+  if (dock) {
+    dock.hidden = true;
+    dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  }
+  document.querySelectorAll(".floating-panel, #lightsAdminPanel, #layersPanel, #mapAdminPanel").forEach((p) => {
+    if (p) p.hidden = true;
+  });
+}
 
 // ===== Avatar Creator (Avaturn workaround) =====
 const avatarCreatorOverlay = document.querySelector("#avatarCreatorOverlay");
@@ -1128,7 +1151,76 @@ async function handleCharacterUpload(input) {
 }
 
 manageCharactersButton?.addEventListener("click", openCharacterAdmin);
-document.querySelector("#adminShortcut")?.addEventListener("click", openCharacterAdmin);
+// Shield admin: abre/fecha o dock de ferramentas no canto direito
+(() => {
+  const shield = document.querySelector("#adminShortcut");
+  const dock = document.querySelector("#adminDock");
+  if (!shield || !dock) return;
+  const DOCK_KEY = "admin-dock-open";
+  function setDock(open) {
+    dock.hidden = !open;
+    shield.setAttribute("aria-pressed", open ? "true" : "false");
+    try { localStorage.setItem(DOCK_KEY, open ? "1" : "0"); } catch {}
+    if (!open) {
+      // Fecha todos os painéis admin ao recolher o dock
+      dock.querySelectorAll("[data-dock-panel]").forEach((b) => {
+        const sel = b.getAttribute("data-dock-panel");
+        const panel = sel && document.querySelector(sel);
+        if (panel && !panel.hidden) panel.hidden = true;
+        b.setAttribute("aria-pressed", "false");
+      });
+    }
+  }
+  shield.addEventListener("click", () => setDock(dock.hidden));
+  // Estado inicial: começa fechado (mesmo pro admin)
+  setDock(false);
+
+  // Delegação: cada barra do dock clica no botão original correspondente
+  dock.addEventListener("click", (ev) => {
+    const item = ev.target.closest(".admin-dock-item");
+    if (!item) return;
+    if (item.id === "adminDockImportGlb") {
+      document.querySelector("#glbInput")?.click();
+      return;
+    }
+    const targetSel = item.getAttribute("data-dock-target");
+    const target = targetSel && document.querySelector(targetSel);
+    if (target) target.click();
+    // Sincroniza aria-pressed do painel correspondente (após o clique)
+    const panelSel = item.getAttribute("data-dock-panel");
+    if (panelSel) {
+      const panel = document.querySelector(panelSel);
+      setTimeout(() => {
+        item.setAttribute("aria-pressed", panel && !panel.hidden ? "true" : "false");
+      }, 0);
+    }
+  });
+
+  // Quando um painel é fechado pelos seus próprios botões internos (×/−),
+  // remove o destaque da barra correspondente no dock.
+  const panelMap = {
+    "lightsAdminPanel": "[data-dock-panel='#lightsAdminPanel']",
+    "layersPanel": "[data-dock-panel='#layersPanel']",
+    "botsAdminPanel": "[data-dock-panel='#botsAdminPanel']",
+    "radioAdminPanel": "[data-dock-panel='#radioAdminPanel']",
+    "interactionsAdminPanel": "[data-dock-panel='#interactionsAdminPanel']",
+    "mapAdminPanel": "[data-dock-panel='#mapAdminPanel']",
+  };
+  const obs = new MutationObserver((muts) => {
+    for (const m of muts) {
+      if (m.type !== "attributes" || m.attributeName !== "hidden") continue;
+      const panel = m.target;
+      const sel = panelMap[panel.id];
+      if (!sel) continue;
+      const btn = dock.querySelector(sel);
+      if (btn) btn.setAttribute("aria-pressed", panel.hidden ? "false" : "true");
+    }
+  });
+  Object.keys(panelMap).forEach((id) => {
+    const p = document.getElementById(id);
+    if (p) obs.observe(p, { attributes: true });
+  });
+})();
 
 // ============ Character loader (FBX + animations) ============
 // Usamos XHR direto (evita o wrapper de fetch da preview que quebra em arquivos grandes)
@@ -2967,10 +3059,22 @@ function renderAssetEditor(asset) {
 }
 
 // ============ Chat UI ============
+const CHAT_MSG_TTL_MS = 30 * 60 * 1000; // 30 minutos
+function purgeOldChatMessages() {
+  if (!chatLog) return;
+  const cutoff = Date.now() - CHAT_MSG_TTL_MS;
+  chatLog.querySelectorAll("[data-ts]").forEach((el) => {
+    const ts = Number(el.getAttribute("data-ts")) || 0;
+    if (ts && ts < cutoff) el.remove();
+  });
+}
+setInterval(purgeOldChatMessages, 60_000);
+
 function addSystemLine(text) {
   const item = document.createElement("div");
   item.className = "system-line";
   item.textContent = text;
+  item.setAttribute("data-ts", String(Date.now()));
   chatLog.appendChild(item);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
@@ -2978,6 +3082,7 @@ function addMessage(message) {
   const item = document.createElement("div");
   const isSelf = message.user_id && myId && message.user_id === myId;
   item.className = "chat-item" + (isSelf ? " is-self" : "");
+  item.setAttribute("data-ts", String(Date.now()));
   const avatarStyle = message.avatar_url
     ? `background-image:url('${escapeHtml(message.avatar_url)}')`
     : `background:${escapeHtml(message.color || '#6c5ce7')}`;
