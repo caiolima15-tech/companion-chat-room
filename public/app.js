@@ -3946,11 +3946,11 @@ assetList.addEventListener("click", (event) => {
 });
 
 assetList.addEventListener("input", (event) => {
-  const input = event.target.closest("input[data-asset-field]");
+  const input = event.target.closest("input[data-asset-field], input[data-asset-num]");
   if (!input || !isAdmin) return;
   const asset = currentAssets.find((item) => item.id === input.dataset.assetId);
   if (!asset) return;
-  const field = input.dataset.assetField;
+  const field = input.dataset.assetField || input.dataset.assetNum;
   let value = parseFloat(input.value);
   if (Number.isNaN(value)) return;
   const patch = {};
@@ -3959,9 +3959,12 @@ assetList.addEventListener("input", (event) => {
   } else {
     patch[field] = value;
   }
-  // Atualiza valor exibido ao lado
-  const valueEl = input.parentElement?.querySelector(".asset-slider-value");
-  if (valueEl) valueEl.textContent = value.toFixed(2);
+  // Mantém os dois controles (barra + número) em sincronia
+  const wrap = input.parentElement;
+  const range = wrap?.querySelector("input[type=range]");
+  const num = wrap?.querySelector("input[type=number]");
+  if (input === range && num && document.activeElement !== num) num.value = value.toFixed(2);
+  if (input === num && range) range.value = value;
   // Atualiza cache local pra render imediato e evita reset do slider
   Object.assign(asset, patch);
   // Render local imediato
