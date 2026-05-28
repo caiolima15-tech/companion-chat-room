@@ -6800,13 +6800,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 (function footballModule() {
   const BALL_RADIUS = 0.18;
   const BALL_DIAMETER = BALL_RADIUS * 2;
-  const GRAVITY = -11.5;
-  const DRIBBLE_DIST = 0.6;
-  const PICKUP_RANGE = 0.95;
-  const CAPTURE_RANGE = 1.1;
+  const GRAVITY = -14.0;
+  const DRIBBLE_DIST = 0.45;       // bola mais colada ao pé
+  const DRIBBLE_SIDE = 0.08;       // leve deslocamento lateral (pé dominante)
+  const PICKUP_RANGE = 0.85;
+  const CAPTURE_RANGE = 1.0;
   const WALK_SPEED = 2.3;
   const RUN_SPEED = 4.4;
   const CHARGE_TIME = 1.0;
+  const KICK_COOLDOWN = 0.9;       // segundos sem auto-pickup após chutar
 
   const loader = new GLTFLoader();
 
