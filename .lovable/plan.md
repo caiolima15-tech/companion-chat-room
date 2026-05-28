@@ -1,65 +1,77 @@
 ## Objetivo
 
-Transformar a tela "Escolha seu vibe" num **preview 3D estilo Avaturn**: um personagem por vez na tela, com fundo/base atrás, animação idle do próprio GLB, câmera que dá zoom e gira ao redor (sem andar), navegação para o lado (1 por vez) e o botão "Entrar" embaixo. Além disso, um botão "Editar personagem" que leva ao editor do Avaturn e atualiza o avatar no nosso vibe ao reexportar.
+Trazer a mecânica do seu protótipo de futebol para dentro da sala 3D multiplayer: uma **bola GLB compartilhada** que aparece nos mapas onde você colocar (via painel admin), e quando qualquer avatar chega perto entra no **modo futebol** (controle analógico, câmera atrás do jogador, correr, e chute com barra de força). A bola é sincronizada em tempo real entre todos da sala.
 
-## Como vai ficar
+## O que VOCÊ precisa subir (e como exportar)
+
+- **Bola:** um único arquivo **`.glb`** (modelo de bola). Tamanho/posição são ajustados no código/admin.
+- **Animações de chute (Mixamo):** exportar **FBX Binary, "Without Skin"** (só animação, sem malha) — igual aos seus `idle/walk/run.fbx` atuais. A base usada no Mixamo é indiferente (todo rig Mixamo usa os ossos `mixamorig`, e o app já faz retarget). Use **30 fps** e marque **"In Place"** quando existir.
+  - `kickWeak` → ex.: "Soccer Pass" / "Passing"
+  - `kickStrong` → ex.: "Center Kick" / "Striker"
+  - (opcional) `dribble` para idle com bola; senão reuso `walk`.
+- `walk` e `run` já existem e serão reaproveitados.
+
+Você me sobe a bola `.glb` e os 2 FBX de chute aqui no chat; eu coloco a bola na biblioteca de objetos e os chutes na biblioteca de animações.
+
+## Como vai funcionar
 
 ```text
-┌───────────────────────────────┐
-│   Escolha seu vibe            ✕ │
-│  ┌─────────────────────────┐   │
-│  │   (fundo gradiente)     │   │
-│  │       ╭─────╮           │   │
-│  │  ‹    │ GLB │    ›       │   │  ← gira/zoom com o dedo/mouse
-│  │       │idle │           │   │  ← ‹ › troca de personagem (1 por vez)
-│  │       ╰──┬──╯           │   │
-│  │      (base/plataforma)  │   │
-│  └─────────────────────────┘   │
-│   • • ●  (indicador)            │
-│   [ Editar personagem ]         │
-│   Apelido: [__________]         │
-│   [      Entrar na sala      ]  │
-└───────────────────────────────┘
+┌──────────────────────────────────────────┐
+│  (sala normal: clique pra andar)          │
+│                ⚽  ← bola dinâmica         │
+│        ↑ chega perto da bola              │
+│  ╔══════════════════════════════════════╗ │
+│  ║  MODO FUTEBOL                         ║ │
+│  ║  joystick/WASD + câmera atrás         ║ │
+│  ║  [RUN]            [CHUTE] + barra força║ │
+│  ╚══════════════════════════════════════╝ │
+│        ↓ se afasta → volta ao normal      │
+└──────────────────────────────────────────┘
 ```
 
-## O que vai mudar
+### 1. Colocar a bola por mapa (painel admin)
+- Adiciono um novo tipo de objeto **"Futebol"** ao sistema de interações que você já usa (`map_asset_interactions` + `map_assets`). Você escolhe o mapa, posição (ponto de spawn da bola), escala e o **raio de ativação** (a "zona do campo").
+- Pode colocar em quantos mapas quiser (1 registro por mapa).
+- O objeto colocado define o spawn; a bola em si é um objeto dinâmico que se move com física.
 
-### 1. Preview 3D no lugar da grade (`public/index.html`, `public/styles.css`, `public/app.js`)
-- Substituir a grade `#characterGrid` por um **palco de preview**: um `<canvas>` ocupando o card, com fundo em gradiente escuro e uma base/plataforma sob o avatar (visual parecido com o do Avaturn).
-- Criar um mini-renderer Three.js dedicado (cena + câmera + luz + `OrbitControls`) só para a seleção, reaproveitando `loadCharacterAssets()` que já normaliza o GLB e carrega a animação **idle**.
-- O avatar selecionado entra com o `AnimationMixer` tocando **idle** em loop.
-- `OrbitControls` configurado para **girar e dar zoom**, com **pan desabilitado** e limites de distância/ângulo — a pessoa olha ao redor mas não "anda".
-- O loop de animação do preview só roda enquanto a tela está aberta (para não pesar), e é destruído ao entrar na sala.
+### 2. Bola compartilhada (multiplayer)
+- A bola vive como um objeto dinâmico na cena para todos que estão num mapa com futebol ativo.
+- Sincronização por **posse/autoridade** via um canal realtime dedicado por mapa (broadcast):
+  - Quem está com a bola (ou foi o último a chutar) é a **autoridade** e transmite posição/velocidade da bola em alta frequência.
+  - Os outros clientes **interpolam** a bola recebida (sem recalcular física).
+  - Ao um jogador entrar no raio de captura da bola solta, ele **reivindica a posse** (broadcast de "claim"); empate resolvido por menor id/timestamp.
+- Estado da bola é efêmero (só realtime) — sem novas tabelas. Quem entra na sala recebe a posição atual da autoridade no próximo tick.
 
-### 2. Navegação 1-por-vez (`public/app.js`, `public/index.html`)
-- Setas ‹ › e **swipe** (arrastar na horizontal) trocam o personagem atual; cada troca carrega o próximo GLB no palco com um fade.
-- Indicador de pontinhos mostrando posição na lista.
-- A lista é a mesma de hoje: personagens do catálogo + os avatares do próprio usuário (`userAvatars` do usuário logado) + um item final "Criar meu avatar" (abre o criador do Avaturn, como já faz).
-- O botão **"Entrar na sala"** e o campo de **apelido** continuam embaixo; "Entrar" usa o personagem atualmente no palco.
-- Manter a ação de **excluir** avatar próprio (hoje no tile) como um ícone discreto no canto do palco quando o item for um avatar do usuário.
+### 3. Modo futebol (ativação por proximidade)
+- Ao entrar no raio da bola: troco o controle de "clicar pra andar" por **controle analógico** (joystick mobile já existe na UI + WASD), com a **câmera terceira pessoa atrás do jogador** (yaw/pitch/zoom por arrasto, como no protótipo).
+- Drible: a bola "gruda" levemente à frente do jogador com pequenos toques (lógica do seu protótipo).
+- **Chute:** segurar o botão **CHUTE**/Espaço carrega a **barra de força**; soltar dispara — `kickWeak` se carga baixa, `kickStrong` se carga alta — aplicando força/altura proporcional. A bola é liberada do pé e segue física (gravidade, quique, atrito).
+- Ao se afastar (raio de saída): volto ao movimento normal de clique e à câmera padrão.
+- A posição do jogador no modo futebol continua sincronizada pelo broadcast de movimento já existente (`me.x/me.y/facing/running`), agora atualizado continuamente em vez de por destino.
 
-### 3. Botão "Editar personagem" → Avaturn + sincronizar de volta (`public/index.html`, `public/app.js`)
-- Mostrar "Editar personagem" apenas quando o item atual for um **avatar do usuário** (não nos personagens do catálogo).
-- Ao clicar: abre o criador do Avaturn (mesmo overlay de hoje) em **modo edição**: ao reexportar (clicar "Next"), em vez de criar um avatar novo, **atualizamos o avatar atual** — substitui o `.glb` no storage e atualiza `base_url`/thumbnail do registro em `user_avatars`, limpando o cache do preview para recarregar a nova versão no palco.
-- Resultado: a alteração feita no Avaturn passa a refletir no nosso vibe (mesmo slug `user:<id>`), inclusive para quem já está na sala (o realtime de `user_avatars` já existe).
-
-> **Limitação (sem API key):** o editor do Avaturn **não** consegue abrir já carregado exatamente aquele avatar para ajustes — isso exige a API do Avaturn (sessão `edit_existing`), que você optou por não usar. Por isso, "Editar" abre o editor e o que for reexportado **substitui** o avatar atual. Se um dia quiser a edição que já abre o avatar existente, é só ativar a API key.
-
-### 4. Validação no preview
-- Abrir "Escolha seu vibe": ver um personagem por vez com fundo/base, idle rodando, girar e dar zoom (sem pan/andar).
-- Trocar com setas e swipe; conferir indicador e o botão Entrar usando o atual.
-- "Editar personagem" num avatar próprio: editar no Avaturn, reexportar e ver o avatar atualizado no palco e na sala.
-- Conferir desempenho no mobile (390px) e que o renderer é destruído ao entrar/sair.
+### 4. Animações de chute
+- Adiciono `kickWeak` e `kickStrong` à biblioteca compartilhada (`SHARED_ANIM_LIBRARY`) e aos slots de animação de cada avatar (carregadas/retargeadas sob demanda como as demais).
+- Chute toca **uma vez** (LoopOnce, clampWhenFinished) e volta para walk/run/idle ao terminar.
+- A animação de chute também é refletida nos outros jogadores (broadcast de evento "kick").
 
 ## Detalhes técnicos
 
-- Reaproveita `loadCharacterAssets(character)` → `{ base, clips, scale }`, `cloneSkeleton`, `THREE.AnimationMixer` e `/vendor/OrbitControls.js` (já importados em `public/app.js`).
-- Novo renderer isolado para o preview (não interfere no renderer da sala). `OrbitControls`: `enablePan=false`, `minDistance/maxDistance` e `min/maxPolarAngle` limitados; alvo na altura do tronco.
-- Edição/sync: substitui o objeto no Storage (bucket `characters`) e dá `update` em `user_avatars` (mesmo `id`/slug), depois `characterCache.delete('user:<id>')` para recarregar.
-- Sem mudanças de schema. Usa as tabelas/colunas atuais (`user_avatars.base_url`, `thumbnail_url`) e o realtime já existente.
-- A imagem enviada (avatar com fundo desfocado) é só referência visual do estilo de preview; não será embutida.
+- **Sem mudança de schema.** Uso `map_asset_interactions.kind = 'football'` (campo texto livre), com `asset_id` apontando para o `map_assets` da bola e `trigger_radius`/`exit_radius` para ativar/desativar. Bola e física rodam no cliente; sincronização só por realtime (broadcast), sem persistir estado da bola.
+- **Arquivos:** bola `.glb` vai pro bucket `map-assets` (fluxo de upload de objeto que já existe); os FBX de chute vão pra `public/assets/animations/` e entram em `SHARED_ANIM_LIBRARY`.
+- **Coordenadas:** a bola usa posição em mundo (Three.js); converto para o sistema `worldFromPercent`/`percentFromWorld` só onde precisar interagir com o jogador. Aplico os limites/quiques dentro dos limites do mapa atual.
+- **Câmera/colisão:** reuso os raycasts de chão/colisão já existentes para a câmera terceira-pessoa e para manter a bola no chão do mapa.
+- **Canal realtime novo:** `ball:<mapId>` (broadcast) para transform da bola, claims de posse e eventos de chute; entra/sai junto com a sala.
+- **UI:** barra de força + botões CHUTE/RUN só aparecem no modo futebol (escondidos por padrão; reaproveito estilos do protótipo adaptados ao tema atual).
+
+## Validação
+
+- Admin coloca a bola num mapa; ao entrar perto, modo futebol ativa (joystick/WASD, câmera atrás, barra de força).
+- Chutar fraco/forte: animação correta e física da bola coerente.
+- Dois navegadores no mesmo mapa: ambos veem a mesma bola; passar/disputar funciona; chute de um aparece pro outro.
+- Afastar-se volta ao controle normal sem tela preta.
+- Conferir mobile (390px): joystick + botões + barra sem cortar.
 
 ## O que NÃO muda
 
-- Fluxo de login e a galeria compartilhada do Avaturn permanecem como estão.
-- Catálogo de personagens do admin continua disponível na mesma navegação.
+- Login, troca de avatar, troca de mapa, chat, rádio e demais interações (sentar etc.) continuam iguais.
+- Mapas sem objeto "Futebol" não têm bola nem modo futebol.
