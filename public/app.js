@@ -709,29 +709,42 @@ async function loadPreviewCharacter(character) {
     previewScene.add(obj);
     previewCharObj = obj;
 
-    // Reposiciona base/anel sob os pés e enquadra a câmera de acordo com o modelo.
-    obj.updateMatrixWorld(true);
-    let box = new THREE.Box3().setFromObject(obj);
+    // Mede com PRECISÃO (vértices com skin reais) — igual à sala. setFromObject usa
+    // a bind pose e costuma dar um min.y abaixo dos pés, deixando o avatar flutuando.
+    const measure = (o) => {
+      o.updateMatrixWorld(true);
+      o.traverse((c) => {
+        if (c.isSkinnedMesh && c.skeleton) {
+          try { c.skeleton.update(); } catch {}
+          try { c.computeBoundingBox(); c.computeBoundingSphere(); } catch {}
+        }
+      });
+      const b = new THREE.Box3();
+      b.expandByObject(o, true);
+      if (!isFinite(b.min.y) || !isFinite(b.max.y)) b.setFromObject(o);
+      return b;
+    };
+    let box = measure(obj);
     // Cola os pés na base: desloca o modelo para que o ponto mais baixo fique em y=0.
     obj.position.y -= box.min.y;
-    obj.updateMatrixWorld(true);
-    box = new THREE.Box3().setFromObject(obj);
+    box = measure(obj);
     const size = box.getSize(new THREE.Vector3());
     if (previewGround) previewGround.position.y = 0;
     if (previewRing) previewRing.position.y = 0.002;
 
-    // Enquadra o corpo inteiro: distância para caber a altura no FOV vertical,
-    // câmera mais alta (na altura do meio do corpo) e mira no centro do corpo.
+    // Enquadra o corpo inteiro com a câmera mais alta (na altura do meio do corpo)
+    // e mirando no centro do corpo. Permite aproximar bem mais (minDistance menor).
     const vFov = (previewCamera.fov * Math.PI) / 180;
     const fitH = (size.y * 0.5) / Math.tan(vFov / 2);
-    const fitW = (size.x * 0.5) / Math.tan(vFov / 2) / previewCamera.aspect;
-    const dist = Math.max(fitH, fitW, 1.4) * 1.18;
-    const midY = size.y * 0.5; // pés em 0 → meio do corpo
+    const fitW = (size.x * 0.5) / Math.tan(vFov / 2) / Math.max(previewCamera.aspect, 0.0001);
+    const dist = Math.max(fitH, fitW, 1.2) * 1.08;
+    const midY = size.y * 0.52; // pés em 0 → meio do corpo
     previewControls.target.set(0, midY, 0);
-    previewCamera.position.set(0, midY + size.y * 0.06, dist);
-    previewControls.minDistance = dist * 0.55;
-    previewControls.maxDistance = dist * 2.4;
+    previewCamera.position.set(0, midY + size.y * 0.18, dist);
+    previewControls.minDistance = Math.max(dist * 0.3, 0.6);
+    previewControls.maxDistance = dist * 2.6;
     previewControls.update();
+
 
     previewMixer = new THREE.AnimationMixer(obj);
     const idleClip = clips.idle || Object.values(clips)[0];
