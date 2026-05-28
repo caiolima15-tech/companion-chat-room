@@ -548,13 +548,11 @@ async function loadUserAvatars() {
 
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
-  renderCharacterTiles();
   characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
   selectedCharacterSlug =
     me?.character_slug ||
     charactersCatalog.find((c) => c.base_url)?.slug ||
     (userAvatars[0] ? `user:${userAvatars[0].id}` : null);
-  updateEnterButtonState();
   const label = document.querySelector("#currentAccountLabel");
   if (label) {
     supabase.auth.getUser().then(({ data }) => {
@@ -562,6 +560,10 @@ function openCharacterSelect() {
     });
   }
   characterSelectOverlay.hidden = false;
+  initPreviewScene();
+  refreshCharacterCarousel();
+  startPreviewLoop();
+  setTimeout(resizePreview, 60);
 }
 document.querySelector("#characterSelectLogout")?.addEventListener("click", async () => {
   await supabase.auth.signOut();
@@ -569,6 +571,7 @@ document.querySelector("#characterSelectLogout")?.addEventListener("click", asyn
 });
 function closeCharacterSelect() {
   if (characterSelectOverlay) characterSelectOverlay.hidden = true;
+  stopPreviewLoop();
 }
 
 function renderCharacterTiles() {
