@@ -947,6 +947,14 @@ window.addEventListener("message", async (event) => {
   // Log diagnóstico — para vermos o formato real que o Avaturn manda
   console.log("[Avaturn] message:", payload);
 
+  // Qualquer mensagem do Avaturn = iframe está vivo. Esconde nosso loader
+  // e habilita o botão "Salvar avatar e entrar".
+  if (!_avaturnReady) {
+    _avaturnReady = true;
+    setAvaturnSaveEnabled(true);
+    hideAvaturnLoader();
+  }
+
   const url = findGlbUrlDeep(payload);
   if (!url) return; // ignora handshakes (iframeReady, etc.)
 
