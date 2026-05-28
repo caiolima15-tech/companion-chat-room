@@ -7123,11 +7123,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       else return;
     }
     const dir = aimDir(ent).clone();
-    const power = strong ? (9 + charge * 9) : (5.5 + charge * 4);
-    const up = strong ? (3.2 + charge * 3) : (2.0 + charge * 2);
+    const power = strong ? (10 + charge * 12) : (6 + charge * 5);
+    const up = strong ? (3.5 + charge * 3.5) : (2.2 + charge * 2);
+    // posiciona a bola um pouco à frente do pé para sair limpa
+    const R = ballRadius();
+    ballPos.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST + 0.15);
+    ballPos.y = groundHeightAt(ballPos, ballPos.y) + R + 0.02;
     ballVel.set(dir.x * power, up, dir.z * power);
     held = false;
-    ballPos.addScaledVector(dir, 0.2);
+    pickupCooldown = KICK_COOLDOWN;
+    stillTime = 0;
     playKickAnim(ent, strong);
     broadcastKick(strong);
     broadcastState(true);
