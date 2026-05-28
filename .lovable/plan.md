@@ -1,75 +1,51 @@
+# Ajustes de UI conforme a imagem
 
-## 1. Não mostrar nenhum mapa antes de entrar na sala
+## 1. Chat — cores e opacidade (`public/styles.css`)
 
-Hoje `buildMap()` chama `loadEnvironment(currentMapId)` na linha 2051, então o "Bar" (ou o último `localStorage.neon-tap-room-map`) começa a carregar logo no boot e fica visível atrás da tela de login/seleção.
+- Fundo do `.chat-panel` / `.chat-log` / `.chat-form`: trocar o `rgba(...,0.5)` atual por **preto com opacidade bem mais baixa** (ex.: `rgba(0,0,0,0.78)` sólido escuro, sem o tom roxo/azulado atual).
+- Padronizar as bolhas (`.chat-bubble`):
+  - Mensagens do próprio usuário (`.chat-item.is-self .chat-bubble`): fundo **roxo claro `#a78bfa**` (lilás como no print), texto escuro, alinhadas à direita.
+  - Mensagens dos outros (`.chat-item:not(.is-self) .chat-bubble`): fundo **preto `#1a1a1a**`, texto branco, alinhadas à esquerda.
+  - Remover os tons amarelo/laranja atuais.
 
-Mudanças em `public/app.js`:
-- Remover a chamada `loadEnvironment(currentMapId)` de `buildMap()`. O cenário só começa a carregar dentro de `enterRoom()` / `switchRoom()`.
-- Adicionar uma classe `pre-world` no `<body>` enquanto o usuário ainda não entrou. CSS esconde o `#scene` (canvas), `#hud`, rádio, etc., deixando só a UI de overlays (auth, seleção de personagem, seleção de mapa).
-- `enterRoom()` remove `pre-world` só depois que `loadEnvironment` resolve, garantindo que o mundo apareça pronto.
+## 2. Espaço vazio abaixo do mobile-bar (`public/styles.css`)
 
-Resultado: ao logar não aparece nenhum cenário de fundo; o usuário vai direto para "escolher personagem → escolher sala → carregar → entrar".
+- Após a subida dos widgets, ficou uma faixa transparente entre o `mobile-bar` e a borda inferior. Preencher essa área com a cor `**#231e24**` (mesma da barra), aplicando `background: #231e24` direto no `.mobile-bar` e estendendo via `padding-bottom: env(safe-area-inset-bottom)` + um pseudo-elemento `::after` que cobre o espaço restante até `bottom: 0` com a mesma cor sólida.
 
-## 2. Excluir mapas de verdade (builtins inclusos)
+## 3. Ícone fantasma do chat quando minimizado (`public/app.js` + `public/styles.css`)
 
-Hoje, quando o admin "exclui" um builtin (Bar, Bar Antigo, Milk Bar, etc.), o código só insere `hidden=true` em `custom_maps`. Mesmo assim, `currentMapId` no `localStorage` pode continuar apontando para `"bar"`, e `loadEnvironment("bar")` ainda carrega a GLB builtin (`/assets/maps/bar.glb`).
+- No print, com o chat minimizado, o botão de chat do `mobile-bar` mostra um ícone duplicado (balão preto + setinha). Investigar `#chatToggle` / `.chat-toggle` e o badge — provavelmente é o `.chat-toggle` flutuante antigo aparecendo junto. Garantir que quando `body` **não** tem `mobile-show-chat`, o `.chat-toggle` fique `display: none` em mobile (já existe o botão no `mobile-bar`).
 
-Mudanças em `public/app.js`:
-- `loadCustomMaps()`: depois de calcular `hiddenBuiltins` e `MAPS`, se `currentMapId` não estiver mais em `MAPS`, limpar `localStorage.neon-tap-room-map` e setar `currentMapId = MAPS[0]?.id || null`.
-- `loadEnvironment(mapId)`: se `MAPS.find(m=>m.id===mapId)` não existir (mapa foi excluído), abortar sem chamar `loader.load`, e em vez de cair no fallback `"bar"`, voltar para o `MAPS[0]` disponível (ou nenhum, se a lista estiver vazia).
-- O delete continua marcando builtin como `hidden=true` (não dá pra apagar uma linha que não existe), MAS na UI ele some 100%: do menu, do default de boot e do `currentMapId`. Para o usuário é "excluído de verdade".
-- Bônus: ao excluir builtin, também apagar `map_thumbnails`, `map_transforms`, `map_lights`, `map_radios`, `map_assets`, `map_bots`, `map_asset_interactions` daquele `map_id` (cleanup completo dos registros associados). Para non-builtins, mesma limpeza antes do `delete from custom_maps`.
+## 4. Topbar — só nome da sala (`public/index.html` + `public/app.js`)
 
-## 3. Barra de progresso real (sem orb)
+- Remover do `.topbar`:
+  - `<span class="kicker">Bar online 3D</span>` (linha 21 do `index.html`).
+  - `<span id="roleBadge">` (badge ADMIN/visitante).
+  - `<span id="onlineCount">` ("1 online" / bolinha verde).
+- Manter apenas o `<h1>Neon Tap Room</h1>` (nome da sala atual) e o botão **SAIR**.
+- No `app.js`, proteger as escritas em `roleBadge` / `onlineCount` com `if (el)` para não quebrar (linhas 1623, 1836, 2785). Não removo a lógica, só os elementos da UI.
 
-Hoje `#worldLoadingOverlay` mostra um orb animado sem percentual, e o `hideWorldLoading` espera 250ms.
+## 5. Indicador roxo fantasma no canto esquerdo do topbar
 
-Mudanças:
-- `public/index.html`: substituir o bloco `.world-loading-orb` por uma barra: `<div class="world-loading-bar"><div class="world-loading-bar-fill" id="worldLoadingBarFill"></div></div>` mais um `<span id="worldLoadingPercent">0%</span>`.
-- `public/styles.css`: estilos da barra (trilho escuro, fill com gradiente, transição `width 200ms`).
-- `public/app.js` em `setupWorldLoading`:
-  - Adicionar `window.setWorldLoadingProgress(loaded, total)` que atualiza largura do fill e o `%`.
-  - Reset para 0% em cada `showWorldLoading`.
-- Usar um `THREE.LoadingManager` único compartilhado pelo `loader` (GLTF) e pelo `FBXLoader` durante o boot/entrada. O manager tem `onProgress(url, loaded, total)` que será encaminhado para `setWorldLoadingProgress`. `enterRoom()` e `switchRoom()` ligam o manager antes do `Promise.all` e desligam depois.
-- Para transições de tela (escolher mapa → trocar sala), a mesma barra é reutilizada com label "Trocando de sala…".
+- No print há um "pílula" roxa pequena à esquerda do título. Provavelmente é o `kicker` ou um `::before`. Após remover o kicker (item 4), conferir se sobra algum estilo decorativo em `.topbar` e remover.
 
-## 4. Carregando o mundo nunca sumindo / mapa não aparece
+## 6. Botão "Sentar" contextual (`public/app.js`)
 
-Causa provável: hoje `loadEnvironment` é disparado **duas vezes** na primeira entrada — uma vez em `buildMap()` (linha 2051) e outra em `enterRoom()`. As duas concorrem em `clearEnvironment()` e `currentEnvRoot`, e se o primeiro `loader.load` termina depois do segundo, o cenário fica num estado inconsistente e a promise que `enterRoom` espera pode ficar pendurada se o segundo `assetsPromise` ainda estiver in-flight.
+Hoje o painel/botão de sentar aparece fixo. Mudar para:
 
-Mudanças:
-- Item 1 já remove a chamada duplicada de `buildMap()`.
-- `loadEnvironment` ganha guarda de concorrência: variável `__envLoadToken` incrementada a cada chamada; callbacks só aplicam resultado se ainda forem o token atual. Caso contrário, só resolvem.
-- Branch de erro em `loadEnvironment` (linha 2174-2178) tem bug: chama `loadEnvironment("bar").then(resolve)` mas `resolve` é do escopo do `new Promise` interno — funciona, mas se "bar" também falhar entra em loop. Trocar por: se `MAPS[0]` existir e for diferente, tentar uma única vez; senão `resolve()` direto (sem cenário, ainda valida o `enterRoom`).
-- Garantir que `hideWorldLoading()` é chamado mesmo se `loadEnvironment` lançar (já está em `finally` no `enterRoom`, mas conferir o `switchRoom` em ~1748 — falta `try/finally` igual).
+- Aparecer **somente quando o player está próximo (raio ~1.2m) de uma interação do tipo `sit**` configurada no mapa atual.
+- Renderizar como um **balão flutuante 3D** fixo acima do objeto (usando `THREE.Sprite` ou um `div` projetado via `camera.project()` na posição do assento), **não** seguindo o personagem.
+- Sumir suavemente quando o player se afasta do raio.
+- Implementação: no loop de animação (`animate()` / `tick`), iterar `assetInteractions` filtrando `type === 'sit'`, calcular distância `player.position.distanceTo(seatWorldPos)`, mostrar/esconder o overlay correspondente e atualizar `left/top` via projeção da câmera.
 
-Resultado: a barra carrega até 100% e some; o cenário aparece pronto.
+## Arquivos afetados
 
-## 5. Thumbnail de mapa por upload de imagem
+- `public/styles.css` — cores/opacidade do chat, bolhas self/other, fundo `#231e24` abaixo do mobile-bar, esconder `.chat-toggle` em mobile.
+- `public/index.html` — remover `kicker`, `roleBadge`, `onlineCount` da `.topbar`.
+- `public/app.js` — guards nos elementos removidos; refatorar o prompt de sentar para ser baseado em proximidade + overlay projetado no objeto.
 
-Já existe a tabela `map_thumbnails (map_id, thumb_url)` e o bucket público `map-assets`. Hoje só usamos o campo `thumb` (emoji) em `custom_maps`.
+Sem mudanças no banco. Sem novas dependências. 
 
-Mudanças:
-- `public/app.js`, no modal de `openMapEdit`:
-  - Adicionar um bloco "Thumbnail (imagem)" com `<input type="file" accept="image/*">` mais preview da imagem atual e botão "Remover imagem".
-  - Ao salvar com arquivo: upload em `map-assets/thumbs/{slug}-{ts}.{ext}`, pegar `getPublicUrl`, `upsert` em `map_thumbnails` por `map_id = slug`. Ao remover: `delete from map_thumbnails where map_id = slug` (sem mexer no Storage para não quebrar caches).
-- `loadCustomMaps()`: também buscar `map_thumbnails` e juntar `thumbUrl` em cada item de `MAPS`.
-- `renderMapTiles()`: se `m.thumbUrl` existir, renderizar `<img src=...>` no `.char-tile-thumb` em vez do emoji. Caso contrário, manter o emoji `m.thumb` como fallback.
-- Modal "criar novo mapa" ganha o mesmo campo opcional (idêntico fluxo).
+## 7. O mapa não sobe junto com a subida do teclado 
 
-## Resumo dos arquivos afetados
-
-- `public/app.js`:
-  - Remover `loadEnvironment` do boot inicial.
-  - Adicionar classe `pre-world` no body e remover após `enterRoom`.
-  - `loadCustomMaps`: limpar `currentMapId` se mapa sumiu; juntar `thumbUrl` de `map_thumbnails`.
-  - `openMapEdit` / criar mapa: campo de upload de thumbnail.
-  - Delete completo: cascata em todas as tabelas `map_*` ligadas ao `map_id`.
-  - `loadEnvironment`: token de concorrência, fallback seguro sem loop.
-  - `switchRoom`: envolver em `try/finally` para garantir `hideWorldLoading`.
-  - `setupWorldLoading`: `setWorldLoadingProgress`, integração com `THREE.LoadingManager`.
-  - `renderMapTiles`: usar `<img>` quando houver `thumbUrl`.
-- `public/index.html`: substituir orb por barra de progresso + `%`.
-- `public/styles.css`: estilos da barra + regra `body.pre-world #scene, body.pre-world #hud, body.pre-world #radioHud { display: none }`.
-
-Sem migrations: `map_thumbnails` já existe.
+quando usuario clica em digitar uma mensagem o que deve subir apenas é o chat, o mapa ao fundo permanece na mesma posicao na tela.

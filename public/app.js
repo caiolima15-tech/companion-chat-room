@@ -61,6 +61,12 @@ const canvas = document.querySelector("#worldCanvas");
 const worldShell = document.querySelector("#worldShell");
 const nameplatesLayer = document.querySelector("#nameplates");
 const onlineCount = document.querySelector("#onlineCount");
+const roomTitleEl = document.querySelector("#roomTitle");
+function updateRoomTitle() {
+  if (!roomTitleEl) return;
+  const m = (typeof MAPS !== "undefined" && Array.isArray(MAPS)) ? MAPS.find((x) => x.id === currentMapId) : null;
+  if (m?.name) roomTitleEl.textContent = m.name;
+}
 const chatLog = document.querySelector("#chatLog");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
@@ -488,6 +494,7 @@ async function enterRoom() {
     // Chat, GLBs colocados, realtime, rádio e interações carregam em segundo plano
     // — o usuário entra mais rápido e os elementos aparecem progressivamente.
     await loadEnvironment(currentMapId, { waitForAssets: false });
+    updateRoomTitle();
     if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
@@ -1620,7 +1627,7 @@ async function setupRoomChannels(mapId) {
         playerEntities.delete(payload.id);
       }
       players = players.filter((p) => p.id !== payload.id);
-      onlineCount.textContent = `${players.length} online`;
+      if (onlineCount) onlineCount.textContent = `${players.length} online`;
     })
     .subscribe();
 
@@ -1754,6 +1761,7 @@ async function switchRoom(newMapId) {
 
     currentMapId = newMapId;
     localStorage.setItem("neon-tap-room-map", newMapId);
+    updateRoomTitle();
 
     await loadEnvironment(newMapId, { waitForAssets: false });
     const myEntity = playerEntities.get(myId);
@@ -1833,7 +1841,7 @@ document.addEventListener("visibilitychange", () => {
 // ============ HUD permissions ============
 function renderPermissions() {
   document.body.classList.toggle("is-admin", isAdmin);
-  roleBadge.textContent = isAdmin ? "admin" : "visitante";
+  if (roleBadge) roleBadge.textContent = isAdmin ? "admin" : "visitante";
   if (glbInput) glbInput.disabled = !isAdmin;
   if (exportButton) exportButton.disabled = !isAdmin;
   if (placeButton) placeButton.disabled = !isAdmin || !selectedAsset;
@@ -2782,7 +2790,7 @@ function renderPlayers(nextPlayers) {
     if (idx >= 0) players[idx] = { ...players[idx], ...me };
     isAdmin = !!mine.isAdmin;
   }
-  onlineCount.textContent = `${players.length} online`;
+  if (onlineCount) onlineCount.textContent = `${players.length} online`;
 
   const byId = new Map(players.map((p) => [p.id, p]));
   for (const [id, entity] of playerEntities) {
