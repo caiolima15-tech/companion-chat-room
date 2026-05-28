@@ -1927,3 +1927,6 @@ body.world-ready #mapAdminPanel:not([hidden]) {
     pointer-events: none;
   }
 }
+
+/* Force hidden attribute to win over inline display styles on admin panels */
+[hidden] { display: none !important; }
