@@ -548,17 +548,16 @@ async function loadUserAvatars() {
 
 function openCharacterSelect() {
   if (!characterSelectOverlay) return;
-  characterNicknameInput.value = me?.name && me.name !== "Visitante" ? me.name : "";
+  // Nome do usuário é pré-estabelecido na conta. Só pedimos para definir quando
+  // ainda não existe (contas antigas / criadas sem nome).
+  const hasName = !!(me?.name && me.name !== "Visitante");
+  const nickWrap = document.querySelector("#characterNickWrap");
+  if (nickWrap) nickWrap.hidden = hasName;
+  characterNicknameInput.value = hasName ? "" : "";
   selectedCharacterSlug =
     me?.character_slug ||
     charactersCatalog.find((c) => c.base_url)?.slug ||
     (userAvatars[0] ? `user:${userAvatars[0].id}` : null);
-  const label = document.querySelector("#currentAccountLabel");
-  if (label) {
-    supabase.auth.getUser().then(({ data }) => {
-      label.textContent = data?.user?.email ? `Conectado como ${data.user.email}` : "";
-    });
-  }
   characterSelectOverlay.hidden = false;
   initPreviewScene();
   refreshCharacterCarousel();
@@ -705,14 +704,24 @@ async function loadPreviewCharacter(character) {
 
     // Reposiciona base/anel sob os pés e enquadra a câmera de acordo com o modelo.
     obj.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(obj);
+    let box = new THREE.Box3().setFromObject(obj);
+    // Cola os pés na base: desloca o modelo para que o ponto mais baixo fique em y=0.
+    obj.position.y -= box.min.y;
+    obj.updateMatrixWorld(true);
+    box = new THREE.Box3().setFromObject(obj);
     const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    if (previewGround) previewGround.position.y = box.min.y;
-    if (previewRing) previewRing.position.y = box.min.y + 0.002;
-    const dist = Math.max(size.y, size.x, 1) * 1.55 + 0.4;
-    previewControls.target.set(center.x, center.y, center.z);
-    previewCamera.position.set(center.x, center.y + size.y * 0.12, center.z + dist);
+    if (previewGround) previewGround.position.y = 0;
+    if (previewRing) previewRing.position.y = 0.002;
+
+    // Enquadra o corpo inteiro: distância para caber a altura no FOV vertical,
+    // câmera mais alta (na altura do meio do corpo) e mira no centro do corpo.
+    const vFov = (previewCamera.fov * Math.PI) / 180;
+    const fitH = (size.y * 0.5) / Math.tan(vFov / 2);
+    const fitW = (size.x * 0.5) / Math.tan(vFov / 2) / previewCamera.aspect;
+    const dist = Math.max(fitH, fitW, 1.4) * 1.18;
+    const midY = size.y * 0.5; // pés em 0 → meio do corpo
+    previewControls.target.set(0, midY, 0);
+    previewCamera.position.set(0, midY + size.y * 0.06, dist);
     previewControls.minDistance = dist * 0.55;
     previewControls.maxDistance = dist * 2.4;
     previewControls.update();
@@ -799,7 +808,19 @@ charDeleteBtn?.addEventListener("click", async () => {
 
 enterRoomButton?.addEventListener("click", async () => {
   if (!me || !selectedCharacterSlug) return;
-  const newName = (characterNicknameInput.value || "").trim() || "Visitante";
+  const nickWrap = document.querySelector("#characterNickWrap");
+  const needsName = nickWrap && !nickWrap.hidden;
+  let newName = me.name && me.name !== "Visitante" ? me.name : "";
+  if (needsName) {
+    newName = (characterNicknameInput.value || "").trim();
+    if (!newName) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Digite seu nome de usuário para continuar.";
+      characterNicknameInput.focus();
+      return;
+    }
+  }
+  if (!newName) newName = "Visitante";
   const character = findCharacterBySlug(selectedCharacterSlug);
   if (!character?.base_url) {
     characterSelectError.hidden = false;

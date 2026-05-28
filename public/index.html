@@ -381,7 +381,7 @@
         <p id="authHint">Use email e senha pra entrar na sala.</p>
         <input id="authEmail" type="email" placeholder="email@exemplo.com" required autocomplete="email">
         <input id="authPassword" type="password" placeholder="Senha (min. 6)" required minlength="6" autocomplete="current-password">
-        <input id="authNickname" type="text" placeholder="Apelido" maxlength="18" hidden>
+        <input id="authNickname" type="text" placeholder="Nome do usuário" maxlength="18" hidden>
         <div id="authError" class="auth-error" hidden></div>
         <button type="submit" id="authSubmit">Log in</button>
         <button type="button" id="authSwitch" class="auth-link">Criar conta</button>
@@ -396,9 +396,7 @@
           <span class="kicker">Neon Tap Room</span>
           <button id="characterSelectLogout" type="button" class="auth-link">Sair / trocar conta</button>
         </div>
-        <h2>Escolha seu vibe</h2>
-        <p class="char-hint">Arraste para girar, use o scroll para dar zoom e as setas para ver outros personagens.</p>
-        <div id="currentAccountLabel" class="char-hint" style="opacity:.7;font-size:12px;"></div>
+        <h2>Escolha seu avatar</h2>
         <div id="characterStage" class="char-stage">
           <canvas id="characterPreviewCanvas"></canvas>
           <button id="charPrevBtn" type="button" class="char-nav char-nav-prev" aria-label="Personagem anterior">‹</button>
@@ -413,8 +411,8 @@
           <button id="charEditBtn" type="button" class="char-secondary-btn" hidden>✎ Editar personagem</button>
           <button id="charCreateBtn" type="button" class="char-secondary-btn">＋ Criar meu avatar</button>
         </div>
-        <label class="char-nick">
-          <span>Apelido</span>
+        <label class="char-nick" id="characterNickWrap" hidden>
+          <span>Nome do usuário</span>
           <input id="characterNickname" type="text" maxlength="18" placeholder="Seu nome">
         </label>
         <div id="characterSelectError" class="auth-error" hidden></div>
