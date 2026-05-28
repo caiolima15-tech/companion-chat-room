@@ -6891,13 +6891,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     activeInter = list[0] || null;
     setupBallChannel(activeInter ? currentMapId : null);
     if (activeInter) {
+      applyBallScale(activeInter.scale_mul);
       ensureBall();
+      ballPlaced = false; // recoloca no novo spawn no próximo frame
     } else if (ballGroup) {
       ballGroup.visible = false;
       if (footballActive) exitFootball();
     }
   }
   window.addEventListener("interactions:updated", refreshBall);
+
+  // Preview ao vivo do editor admin (posição/tamanho da bola enquanto arrasta sliders).
+  window.__footballSetPreview = function (draft) {
+    window.__footballEditPreview = draft || null;
+    if (draft) {
+      applyBallScale(draft.scale_mul);
+      if (ownerId == null || ownerId === myId) resetBallToSpawn();
+    }
+  };
+
 
   function enterFootball() {
     if (footballActive) return;
