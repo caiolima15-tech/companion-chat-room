@@ -689,12 +689,35 @@ enterRoomButton?.addEventListener("click", async () => {
 });
 
 changeCharacterButton?.addEventListener("click", () => {
+  exitRoomToLobby();
   openCharacterSelect();
 });
 
 changeMapButton?.addEventListener("click", () => {
+  exitRoomToLobby();
   openMapSelect();
 });
+
+function exitRoomToLobby() {
+  document.body.classList.remove("world-ready");
+  // Limpa o chat local (mensagens somem ao sair da sala)
+  if (chatLog) chatLog.innerHTML = "";
+  try {
+    const cb = document.querySelector("#mobileChatBadge");
+    const db = document.querySelector("#mobileDmBadge");
+    if (cb) cb.hidden = true;
+    if (db) db.hidden = true;
+  } catch {}
+  // Fecha o admin dock e qualquer painel aberto
+  const dock = document.querySelector("#adminDock");
+  if (dock) {
+    dock.hidden = true;
+    dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+  }
+  document.querySelectorAll(".floating-panel, #lightsAdminPanel, #layersPanel, #mapAdminPanel").forEach((p) => {
+    if (p) p.hidden = true;
+  });
+}
 
 // ===== Avatar Creator (Avaturn workaround) =====
 const avatarCreatorOverlay = document.querySelector("#avatarCreatorOverlay");
