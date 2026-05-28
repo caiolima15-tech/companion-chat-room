@@ -672,6 +672,7 @@ function previewLoop() {
   previewRaf = requestAnimationFrame(previewLoop);
   const dt = previewClock ? previewClock.getDelta() : 0;
   if (previewMixer) previewMixer.update(dt);
+  if (previewSmoke) updateLoadingSmoke({ loadingFx: previewSmoke }, performance.now() / 1000);
   if (previewControls) previewControls.update();
   if (previewRenderer && previewScene && previewCamera) previewRenderer.render(previewScene, previewCamera);
 }
