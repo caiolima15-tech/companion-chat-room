@@ -6835,6 +6835,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   const _v1 = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
+  const _v3 = new THREE.Vector3();
   const _head = new THREE.Vector3();
 
   function myEntity() { return (myId && playerEntities.get(myId)) || null; }
