@@ -7069,25 +7069,29 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const slot = strong ? "kickStrong" : "kickWeak";
     const act = ent.actions[slot];
     if (!act) return;
-    if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.12);
-    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.12); } catch {} ent.emoteAction = null; }
+    if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.28);
+    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.28); } catch {} ent.emoteAction = null; }
     ent.currentAction = null;
     act.reset();
     act.setLoop(THREE.LoopOnce, 1);
     act.clampWhenFinished = false;          // não congela na última pose
-    act.fadeIn(0.08).play();
+    // pula a pré-animação (windup) e começa mais perto do impacto
+    const clipDur = act.getClip?.().duration || 0.6;
+    const SKIP = Math.min(0.35, clipDur * 0.45);
+    try { act.time = SKIP; } catch {}
+    // janela efetiva (mais curta = chute mais básico)
+    const WINDOW = Math.min(0.55, clipDur - SKIP);
+    act.fadeIn(0.25).play();
     ent.__fbKicking = true;
     applyKickPose(ent, true);
-    const dur = (act.getClip?.().duration || 0.6) * 1000;
-    const endIn = Math.min(dur, 900);
     clearTimeout(ent.__fbKickT);
-    // antes do fim: começa a sair do chute suavemente
+    // antes do fim: começa a sair do chute suavemente (fade longo)
     ent.__fbKickT = setTimeout(() => {
-      try { act.fadeOut(0.22); } catch {}
+      try { act.fadeOut(0.45); } catch {}
       applyKickPose(ent, false);
       ent.__fbKicking = false;
       // o próximo frame de handleFootballMovement já vai dar fadeIn em walk/idle
-    }, Math.max(60, endIn - 180));
+    }, Math.max(120, WINDOW * 1000 - 250));
   }
 
   // Ajuste fino opcional durante o chute. Por padrão NÃO mexe na posição do
