@@ -2133,6 +2133,8 @@ async function switchRoom(newMapId) {
     updateRoomTitle();
 
     await loadEnvironment(newMapId, { waitForAssets: false });
+    // Reexibe o mundo (o botão "Trocar local" removeu a classe ao voltar pro lobby)
+    document.body.classList.add("world-ready");
     const myEntity = playerEntities.get(myId);
     if (myEntity) {
       myEntity.group.position.set(0, 0, 0);
