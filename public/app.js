@@ -4808,8 +4808,18 @@ function renderLightsAdminList() {
       inp.addEventListener("input", () => {
         const key = inp.dataset.key;
         const num = parseFloat(inp.value);
-        const labelSpan = card.querySelector(`[data-val="${key}"]`);
-        if (labelSpan) labelSpan.textContent = inp.value;
+        const numEl = card.querySelector(`input[data-numkey="${key}"]`);
+        if (numEl && document.activeElement !== numEl) numEl.value = inp.value;
+        scheduleLightSave(id, { [key]: num });
+      });
+    });
+    card.querySelectorAll("input[data-numkey]").forEach((numEl) => {
+      numEl.addEventListener("input", () => {
+        const key = numEl.dataset.numkey;
+        const num = parseFloat(numEl.value);
+        if (Number.isNaN(num)) return;
+        const range = card.querySelector(`input[type=range][data-key="${key}"]`);
+        if (range) range.value = num;
         scheduleLightSave(id, { [key]: num });
       });
     });
