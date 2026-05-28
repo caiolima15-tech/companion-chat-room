@@ -497,6 +497,10 @@ async function enterRoom() {
     updateRoomTitle();
     if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
+    // Garante que todos os painéis admin comecem fechados ao entrar
+    document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => { if (p) p.hidden = true; });
+    const _dock = document.querySelector("#adminDock");
+    if (_dock) { _dock.hidden = true; _dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false")); }
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
   } finally {
     window.hideWorldLoading?.();
