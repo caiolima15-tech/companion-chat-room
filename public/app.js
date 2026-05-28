@@ -752,7 +752,6 @@ async function loadPreviewCharacter(character) {
     // Cola os pés na base: desloca o modelo para que o ponto mais baixo fique em y=0.
     obj.position.y -= box.min.y;
     box = measure(obj);
-    const size = box.getSize(new THREE.Vector3());
     if (previewGround) previewGround.position.y = 0;
     if (previewRing) previewRing.position.y = 0.002;
 
