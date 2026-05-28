@@ -1929,5 +1929,9 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   }
 }
 
-/* Force hidden attribute to win over inline display styles on admin panels */
+/* Force hidden attribute to always win, even over inline display:flex and .is-admin rules */
 [hidden] { display: none !important; }
+.admin-only[hidden],
+.floating-panel[hidden],
+.is-admin .admin-only[hidden],
+.is-admin .floating-panel[hidden] { display: none !important; }
