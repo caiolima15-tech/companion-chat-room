@@ -2180,3 +2180,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 .kick-pose .kp-actions button { flex:1; min-width:64px; padding:6px; border-radius:6px; cursor:pointer;
   border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.06); color:#eee; font:600 11px system-ui; }
 .kick-pose .kp-actions .kp-save { background:linear-gradient(135deg,#22c55e,#16a34a); border:none; color:#fff; flex-basis:100%; }
+
+#speedAdminPanel .sp-row { display:flex; flex-direction:column; gap:3px; }
+#speedAdminPanel .sp-row span { opacity:0.7; font-size:11px; }
+#speedAdminPanel input[type=range] { width:100%; }
