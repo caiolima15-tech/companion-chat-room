@@ -7256,7 +7256,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (dir.lengthSq() > 1e-5) {
         dir.normalize();
         const running = runHeld || mag > 0.92;
-        const speed = running ? RUN_SPEED : WALK_SPEED;
+        const speed = running ? RUN_SPEED() : WALK_SPEED();
         const step = speed * delta * (running ? 1 : Math.max(0.5, mag));
         const before = ent.group.position.clone();
         const cand = before.clone().addScaledVector(dir, step);
