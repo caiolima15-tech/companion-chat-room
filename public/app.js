@@ -6874,8 +6874,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const DRIBBLE_SIDE = 0.08;       // leve deslocamento lateral (pé dominante)
   const PICKUP_RANGE = 0.85;
   const CAPTURE_RANGE = 1.0;
-  const WALK_SPEED = 2.3;
-  const RUN_SPEED = 4.4;
+  // velocidades do modo futebol: vêm do painel admin (speedCfg, dinâmico)
+  const WALK_SPEED = () => speedCfg.walkFb;
+  const RUN_SPEED = () => speedCfg.runFb;
   const CHARGE_TIME = 1.0;
   const KICK_COOLDOWN = 0.9;       // segundos sem auto-pickup após chutar
 
