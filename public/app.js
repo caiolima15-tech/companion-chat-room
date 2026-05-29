@@ -3663,8 +3663,8 @@ function applyFreeCameraMovement() {
 }
 
 function updatePlayerAnimation(delta) {
-  const walkSpeed = 1.4;
-  const runSpeed = 3.2;
+  const walkSpeed = speedCfg.walkN;
+  const runSpeed = speedCfg.runN;
   for (const entity of playerEntities.values()) {
     // Modo futebol (jogador local): o módulo posiciona/anima; aqui só atualiza o mixer.
     if (entity.player?.id === myId && window.__footballMode) {
