@@ -246,6 +246,30 @@ function saveKickPose() {
 }
 window.__kickPose = kickPose;
 window.__saveKickPose = saveKickPose;
+// Alias: agora esse "pose" se aplica ao modo futebol inteiro (idle/walk/run/chute).
+window.__fbPose = kickPose;
+
+// ============ Speed config (admin tunable) ============
+const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
+const SPEED_DEFAULTS = { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 };
+function loadSpeedCfg() {
+  try {
+    const raw = localStorage.getItem(SPEED_CFG_KEY);
+    if (raw) return { ...SPEED_DEFAULTS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...SPEED_DEFAULTS };
+}
+const speedCfg = loadSpeedCfg();
+function saveSpeedCfg() { try { localStorage.setItem(SPEED_CFG_KEY, JSON.stringify(speedCfg)); } catch {} }
+window.__speedCfg = speedCfg;
+window.__saveSpeedCfg = saveSpeedCfg;
+function applyAnimSpeedsAll() {
+  for (const ent of playerEntities.values()) {
+    if (ent.actions?.walk) ent.actions.walk.timeScale = speedCfg.walkAnim;
+    if (ent.actions?.run) ent.actions.run.timeScale = speedCfg.runAnim;
+  }
+}
+window.__applyAnimSpeeds = applyAnimSpeedsAll;
 
 
 
@@ -3193,6 +3217,8 @@ function setPlayerAction(entity, name) {
   const previous = entity.actions[entity.currentAction];
   const next = entity.actions[name];
   if (previous) previous.fadeOut(0.16);
+  if (name === "walk") next.timeScale = speedCfg.walkAnim;
+  else if (name === "run") next.timeScale = speedCfg.runAnim;
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
@@ -3637,8 +3663,8 @@ function applyFreeCameraMovement() {
 }
 
 function updatePlayerAnimation(delta) {
-  const walkSpeed = 1.4;
-  const runSpeed = 3.2;
+  const walkSpeed = speedCfg.walkN;
+  const runSpeed = speedCfg.runN;
   for (const entity of playerEntities.values()) {
     // Modo futebol (jogador local): o módulo posiciona/anima; aqui só atualiza o mixer.
     if (entity.player?.id === myId && window.__footballMode) {
@@ -6848,8 +6874,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const DRIBBLE_SIDE = 0.08;       // leve deslocamento lateral (pé dominante)
   const PICKUP_RANGE = 0.85;
   const CAPTURE_RANGE = 1.0;
-  const WALK_SPEED = 2.3;
-  const RUN_SPEED = 4.4;
+  // velocidades do modo futebol: vêm do painel admin (speedCfg, dinâmico)
+  const WALK_SPEED = () => speedCfg.walkFb;
+  const RUN_SPEED = () => speedCfg.runFb;
   const CHARGE_TIME = 1.0;
   const KICK_COOLDOWN = 0.9;       // segundos sem auto-pickup após chutar
 
@@ -7065,10 +7092,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) {
       savedFootballPos = ent.group.position.clone();
       if (savedNormalPos) ent.group.position.copy(savedNormalPos);
-      // garante postura em pé ao sair do modo futebol
+      // restaura postura padrão do personagem (sem offsets do modo futebol)
       ent.__fbKicking = false;
       ent.__kickTargetRotX = null;
-      if (ent.character) ent.character.rotation.x = 0;
+      if (ent.character) {
+        ent.character.position.set(0, poseDebug.offY || 0, 0);
+        const d = Math.PI / 180;
+        ent.character.rotation.set(
+          CHARACTER_DEFAULT_ROT_X + (poseDebug.rotX || 0) * d,
+          (poseDebug.rotY || 0) * d,
+          (poseDebug.rotZ || 0) * d,
+        );
+      }
     }
     const hud = document.getElementById("footballHud");
     if (hud) {
@@ -7229,7 +7264,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (dir.lengthSq() > 1e-5) {
         dir.normalize();
         const running = runHeld || mag > 0.92;
-        const speed = running ? RUN_SPEED : WALK_SPEED;
+        const speed = running ? RUN_SPEED() : WALK_SPEED();
         const step = speed * delta * (running ? 1 : Math.max(0.5, mag));
         const before = ent.group.position.clone();
         const cand = before.clone().addScaledVector(dir, step);
@@ -7250,11 +7285,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
-    // Lerp suave APENAS da rotação X do pose-debug do chute (nunca mexer em position).
+    // Pose contínua do MODO FUTEBOL (aplica desde idle, walk, run e durante o chute).
+    // Os sliders do painel admin afetam offY (altura), offFwd (frente/trás) e rotX (inclinação).
     const ch = ent.character;
-    if (ch && ent.__kickTargetRotX != null) {
-      const t = Math.min(1, delta * 10);
-      ch.rotation.x += (ent.__kickTargetRotX - ch.rotation.x) * t;
+    if (ch) {
+      const fp = window.__fbPose || { offY: 0, offFwd: 0, rotX: 0 };
+      const targetY = fp.offY || 0;
+      const targetZ = fp.offFwd || 0;
+      const targetRx = CHARACTER_DEFAULT_ROT_X + (fp.rotX || 0) * (Math.PI / 180);
+      const t = Math.min(1, delta * 12);
+      ch.position.y += (targetY - ch.position.y) * t;
+      ch.position.z += (targetZ - ch.position.z) * t;
+      ch.rotation.x += (targetRx - ch.rotation.x) * t;
     }
     ent.target.copy(ent.group.position);
 
@@ -7527,4 +7569,64 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   else bindHud();
 
   refreshBall();
+})();
+
+// ============================================================
+// 🏃 Painel admin de Velocidades (movimento e animação)
+// ============================================================
+(function speedAdminPanel() {
+  function bind() {
+    const btn = document.getElementById("speedAdminToggle");
+    const panel = document.getElementById("speedAdminPanel");
+    if (!btn || !panel) return;
+    const cfg = window.__speedCfg;
+    if (!cfg) return;
+    const rows = [
+      { key: "walkN",    el: "spWalkN",   val: "spWalkNVal" },
+      { key: "runN",     el: "spRunN",    val: "spRunNVal"  },
+      { key: "walkFb",   el: "spWalkFb",  val: "spWalkFbVal"},
+      { key: "runFb",    el: "spRunFb",   val: "spRunFbVal" },
+      { key: "walkAnim", el: "spWalkA",   val: "spWalkAVal" },
+      { key: "runAnim",  el: "spRunA",    val: "spRunAVal"  },
+    ];
+    function sync() {
+      for (const r of rows) {
+        const el = document.getElementById(r.el);
+        const lbl = document.getElementById(r.val);
+        if (!el || !lbl) continue;
+        el.value = cfg[r.key];
+        lbl.textContent = Number(cfg[r.key]).toFixed(2);
+      }
+    }
+    sync();
+    for (const r of rows) {
+      const el = document.getElementById(r.el);
+      const lbl = document.getElementById(r.val);
+      if (!el) continue;
+      el.addEventListener("input", () => {
+        cfg[r.key] = Number(el.value);
+        if (lbl) lbl.textContent = cfg[r.key].toFixed(2);
+        if (r.key === "walkAnim" || r.key === "runAnim") window.__applyAnimSpeeds?.();
+      });
+    }
+    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
+      const body = panel.querySelector(".panel-body");
+      if (body) body.style.display = body.style.display === "none" ? "" : "none";
+    });
+    document.getElementById("spSave")?.addEventListener("click", () => {
+      window.__saveSpeedCfg?.();
+      window.__applyAnimSpeeds?.();
+      if (typeof addSystemLine === "function") addSystemLine("Velocidades salvas.");
+    });
+    document.getElementById("spReset")?.addEventListener("click", () => {
+      Object.assign(cfg, { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 });
+      sync();
+      window.__applyAnimSpeeds?.();
+      window.__saveSpeedCfg?.();
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
 })();
