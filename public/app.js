@@ -246,6 +246,30 @@ function saveKickPose() {
 }
 window.__kickPose = kickPose;
 window.__saveKickPose = saveKickPose;
+// Alias: agora esse "pose" se aplica ao modo futebol inteiro (idle/walk/run/chute).
+window.__fbPose = kickPose;
+
+// ============ Speed config (admin tunable) ============
+const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
+const SPEED_DEFAULTS = { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 };
+function loadSpeedCfg() {
+  try {
+    const raw = localStorage.getItem(SPEED_CFG_KEY);
+    if (raw) return { ...SPEED_DEFAULTS, ...JSON.parse(raw) };
+  } catch {}
+  return { ...SPEED_DEFAULTS };
+}
+const speedCfg = loadSpeedCfg();
+function saveSpeedCfg() { try { localStorage.setItem(SPEED_CFG_KEY, JSON.stringify(speedCfg)); } catch {} }
+window.__speedCfg = speedCfg;
+window.__saveSpeedCfg = saveSpeedCfg;
+function applyAnimSpeedsAll() {
+  for (const ent of playerEntities.values()) {
+    if (ent.actions?.walk) ent.actions.walk.timeScale = speedCfg.walkAnim;
+    if (ent.actions?.run) ent.actions.run.timeScale = speedCfg.runAnim;
+  }
+}
+window.__applyAnimSpeeds = applyAnimSpeedsAll;
 
 
 
