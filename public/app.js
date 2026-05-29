@@ -3562,10 +3562,45 @@ function moveToWorld(point) {
   }
   trackMe(false).catch(() => {});
 }
+function applyJoystickMoveNormal(jx, jy, mag) {
+  if (!me || !myId) return;
+  const entity = playerEntities.get(myId);
+  if (!entity) return;
+  const camFwd = new THREE.Vector3().copy(entity.group.position).sub(camera.position);
+  camFwd.y = 0;
+  if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
+  camFwd.normalize();
+  const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+  const dir = new THREE.Vector3().addScaledVector(camFwd, jy).addScaledVector(camRight, jx);
+  if (dir.lengthSq() < 1e-5) return;
+  dir.normalize();
+  // limiar: subir um pouco anda, subir bem corre
+  const running = mag > 0.7;
+  // alvo logo à frente — updatePlayerAnimation cuida de mover/animar
+  entity.target.copy(entity.group.position).addScaledVector(dir, 1.2);
+  entity.running = running;
+  me.running = running;
+  const pct = percentFromWorld(entity.target.x, entity.target.z);
+  me.x = Math.max(5, Math.min(95, pct.x));
+  me.y = Math.max(8, Math.min(92, pct.y));
+  const facing = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? "right" : "left") : dir.z > 0 ? "down" : "up";
+  me.facing = facing;
+  const idx = players.findIndex((p) => p.id === myId);
+  if (idx >= 0) players[idx] = { ...players[idx], ...me };
+  const now = performance.now();
+  if (now - lastMoveSent > 90) { lastMoveSent = now; trackMe(false).catch(() => {}); }
+}
+
 function applyHeldMovement() {
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
+  // Joystick na tela (modo normal)
+  const j = window.__joyState;
+  if (j && j.active) {
+    const mag = Math.min(1, Math.hypot(j.x, j.y));
+    if (mag > 0.12) { applyJoystickMoveNormal(j.x, j.y, mag); return; }
+  }
   if (!keyState.size) return;
   const amount = 0.72;
   let dx = 0;
