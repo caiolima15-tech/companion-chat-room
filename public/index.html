@@ -46,17 +46,16 @@
             <button id="emoteDance" type="button" title="Dançar (1)">💃</button>
             <button id="emoteWave" type="button" title="Acenar (2)">👋</button>
           </div>
+          <div id="joyHud" class="joy-hud" aria-label="Joystick de movimento">
+            <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
+          </div>
           <div id="footballHud" class="football-hud" hidden aria-label="Controles de futebol">
-            <div class="fb-left">
-              <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
-            </div>
             <div class="fb-actions">
               <button id="fbExit" type="button" class="fb-exit">Sair ✕</button>
               <div class="fb-kick-row">
                 <div id="fbForceWrap" class="fb-force"><div id="fbForceFill" class="fb-force-fill"></div></div>
                 <button id="fbKick" type="button" class="fb-kick">CHUTE</button>
               </div>
-              
             </div>
             <div id="kickPosePanel" class="kick-pose admin-only" hidden>
               <div class="kp-title">⚽ Pose do chute (admin)</div>
@@ -67,7 +66,7 @@
                 <input id="kpFwd" type="range" min="-1" max="1" step="0.01" value="0">
               </label>
               <label class="kp-row">Rotação ° <span id="kpRotVal">0</span>
-                <input id="kpRot" type="range" min="-45" max="45" step="1" value="0">
+                <input id="kpRot" type="range" min="-90" max="90" step="1" value="0">
               </label>
               <div class="kp-actions">
                 <button id="kpTestWeak" type="button">Testar fraco</button>
