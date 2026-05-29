@@ -7092,10 +7092,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) {
       savedFootballPos = ent.group.position.clone();
       if (savedNormalPos) ent.group.position.copy(savedNormalPos);
-      // garante postura em pé ao sair do modo futebol
+      // restaura postura padrão do personagem (sem offsets do modo futebol)
       ent.__fbKicking = false;
       ent.__kickTargetRotX = null;
-      if (ent.character) ent.character.rotation.x = 0;
+      if (ent.character) {
+        ent.character.position.set(0, poseDebug.offY || 0, 0);
+        const d = Math.PI / 180;
+        ent.character.rotation.set(
+          CHARACTER_DEFAULT_ROT_X + (poseDebug.rotX || 0) * d,
+          (poseDebug.rotY || 0) * d,
+          (poseDebug.rotZ || 0) * d,
+        );
+      }
     }
     const hud = document.getElementById("footballHud");
     if (hud) {
