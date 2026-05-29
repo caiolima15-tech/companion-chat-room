@@ -7277,11 +7277,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
-    // Lerp suave APENAS da rotação X do pose-debug do chute (nunca mexer em position).
+    // Pose contínua do MODO FUTEBOL (aplica desde idle, walk, run e durante o chute).
+    // Os sliders do painel admin afetam offY (altura), offFwd (frente/trás) e rotX (inclinação).
     const ch = ent.character;
-    if (ch && ent.__kickTargetRotX != null) {
-      const t = Math.min(1, delta * 10);
-      ch.rotation.x += (ent.__kickTargetRotX - ch.rotation.x) * t;
+    if (ch) {
+      const fp = window.__fbPose || { offY: 0, offFwd: 0, rotX: 0 };
+      const targetY = fp.offY || 0;
+      const targetZ = fp.offFwd || 0;
+      const targetRx = CHARACTER_DEFAULT_ROT_X + (fp.rotX || 0) * (Math.PI / 180);
+      const t = Math.min(1, delta * 12);
+      ch.position.y += (targetY - ch.position.y) * t;
+      ch.position.z += (targetZ - ch.position.z) * t;
+      ch.rotation.x += (targetRx - ch.rotation.x) * t;
     }
     ent.target.copy(ent.group.position);
 
