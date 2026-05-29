@@ -3217,6 +3217,8 @@ function setPlayerAction(entity, name) {
   const previous = entity.actions[entity.currentAction];
   const next = entity.actions[name];
   if (previous) previous.fadeOut(0.16);
+  if (name === "walk") next.timeScale = speedCfg.walkAnim;
+  else if (name === "run") next.timeScale = speedCfg.runAnim;
   next.reset().fadeIn(0.16).play();
   entity.currentAction = name;
 }
