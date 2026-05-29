@@ -7455,6 +7455,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   function bindHud() {
+    window.__joyState = joy;
     const base = document.getElementById("fbJoy");
     const knob = document.getElementById("fbJoyKnob");
     if (base && knob) {
