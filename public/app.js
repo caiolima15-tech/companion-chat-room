@@ -7570,3 +7570,63 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   refreshBall();
 })();
+
+// ============================================================
+// 🏃 Painel admin de Velocidades (movimento e animação)
+// ============================================================
+(function speedAdminPanel() {
+  function bind() {
+    const btn = document.getElementById("speedAdminToggle");
+    const panel = document.getElementById("speedAdminPanel");
+    if (!btn || !panel) return;
+    const cfg = window.__speedCfg;
+    if (!cfg) return;
+    const rows = [
+      { key: "walkN",    el: "spWalkN",   val: "spWalkNVal" },
+      { key: "runN",     el: "spRunN",    val: "spRunNVal"  },
+      { key: "walkFb",   el: "spWalkFb",  val: "spWalkFbVal"},
+      { key: "runFb",    el: "spRunFb",   val: "spRunFbVal" },
+      { key: "walkAnim", el: "spWalkA",   val: "spWalkAVal" },
+      { key: "runAnim",  el: "spRunA",    val: "spRunAVal"  },
+    ];
+    function sync() {
+      for (const r of rows) {
+        const el = document.getElementById(r.el);
+        const lbl = document.getElementById(r.val);
+        if (!el || !lbl) continue;
+        el.value = cfg[r.key];
+        lbl.textContent = Number(cfg[r.key]).toFixed(2);
+      }
+    }
+    sync();
+    for (const r of rows) {
+      const el = document.getElementById(r.el);
+      const lbl = document.getElementById(r.val);
+      if (!el) continue;
+      el.addEventListener("input", () => {
+        cfg[r.key] = Number(el.value);
+        if (lbl) lbl.textContent = cfg[r.key].toFixed(2);
+        if (r.key === "walkAnim" || r.key === "runAnim") window.__applyAnimSpeeds?.();
+      });
+    }
+    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
+      const body = panel.querySelector(".panel-body");
+      if (body) body.style.display = body.style.display === "none" ? "" : "none";
+    });
+    document.getElementById("spSave")?.addEventListener("click", () => {
+      window.__saveSpeedCfg?.();
+      window.__applyAnimSpeeds?.();
+      if (typeof addSystemLine === "function") addSystemLine("Velocidades salvas.");
+    });
+    document.getElementById("spReset")?.addEventListener("click", () => {
+      Object.assign(cfg, { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 });
+      sync();
+      window.__applyAnimSpeeds?.();
+      window.__saveSpeedCfg?.();
+    });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
