@@ -72,14 +72,18 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      { title: "Virtualife" },
+      { name: "description", content: "Viva sua vida virtualmente" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { property: "og:title", content: "Virtualife" },
+      { property: "og:description", content: "Viva sua vida virtualmente" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Virtualife" },
+      { name: "twitter:description", content: "Viva sua vida virtualmente" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/23ef4975-ae26-4e1e-8108-76bce6028e8b/id-preview-feaec2cf--1aeea415-7a0f-4deb-9e83-3696f1c94e7e.lovable.app-1780016937951.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/23ef4975-ae26-4e1e-8108-76bce6028e8b/id-preview-feaec2cf--1aeea415-7a0f-4deb-9e83-3696f1c94e7e.lovable.app-1780016937951.png" },
     ],
     links: [
       {
