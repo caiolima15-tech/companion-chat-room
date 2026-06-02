@@ -9381,8 +9381,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!btn) return;
     // Mostra o botão só depois que o usuário entrou no mundo
     const refreshVisibility = () => {
-      const inWorld = document.body.classList.contains("in-world");
-      btn.hidden = !inWorld;
+      const inRoom = document.body.classList.contains("world-ready");
+      btn.hidden = !inRoom;
     };
     refreshVisibility();
     const mo = new MutationObserver(refreshVisibility);
