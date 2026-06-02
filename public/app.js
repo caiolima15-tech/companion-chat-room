@@ -150,6 +150,7 @@ let presenceChannel = null;
 let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
+let voiceChannel = null;
 let catalogChannel = null;
 let userAvatarsChannel = null;
 let profilesChannel = null;
