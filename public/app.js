@@ -8619,11 +8619,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // ============ ADMIN PANEL ============
   function renderCatalogPicker() {
     const sel = document.getElementById("carCatalogPicker");
-    if (!sel) return;
-    sel.innerHTML = catalog.length
-      ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
-      : `<option value="">— nenhum no catálogo —</option>`;
+    if (sel) {
+      sel.innerHTML = catalog.length
+        ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
+        : `<option value="">— nenhum no catálogo —</option>`;
+    }
+    const list = document.getElementById("carCatalogList");
+    if (list) {
+      if (!catalog.length) {
+        list.innerHTML = `<div style="opacity:0.6;font-size:11px;">Nenhum modelo cadastrado.</div>`;
+      } else {
+        list.innerHTML = catalog.map(c => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.03);border:1px solid #2a3040;border-radius:4px;">
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>
+            <button data-cat-del="${c.id}" title="Excluir do catálogo" style="background:#3a1020;color:#ff6680;border:1px solid #5a2030;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">×</button>
+          </div>
+        `).join("");
+        list.querySelectorAll("[data-cat-del]").forEach(b =>
+          b.addEventListener("click", () => deleteCatalogCar(b.dataset.catDel))
+        );
+      }
+    }
   }
+
+  async function deleteCatalogCar(id) {
+    const cat = catalog.find(c => c.id === id);
+    if (!cat) return;
+    if (!confirm(`Excluir o modelo "${cat.name}" do catálogo? Carros já no mapa continuam existindo.`)) return;
+    const { error } = await supabase.from("cars_catalog").delete().eq("id", id);
+    if (error) { alert("Falha ao excluir: " + error.message); return; }
+    catalog = catalog.filter(c => c.id !== id);
+    renderCatalogPicker();
+    addSystemLine?.("Modelo removido do catálogo.");
+  }
+
 
   function renderAdminList() {
     const list = document.getElementById("carsAdminList");
