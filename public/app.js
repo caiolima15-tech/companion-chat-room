@@ -9629,12 +9629,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .from("friend_requests")
       .select("id,from_user,to_user,status")
       .or(`and(from_user.eq.${myId},to_user.eq.${peerId}),and(from_user.eq.${peerId},to_user.eq.${myId})`)
-      .maybeSingle();
-    if (!data) return { status: "none" };
-    if (data.status === "accepted") return { status: "accepted", row: data };
-    if (data.status === "rejected") return { status: "rejected", row: data, mine: data.from_user === myId };
-    return { status: "pending", row: data, mine: data.from_user === myId };
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    const row = data?.[0];
+    if (!row) return { status: "none" };
+    if (row.status === "accepted") return { status: "accepted", row };
+    if (row.status === "rejected") return { status: "rejected", row, mine: row.from_user === myId };
+    return { status: "pending", row, mine: row.from_user === myId };
   }
+
 
   function friendButtonLabel(rel) {
     if (rel.status === "accepted") return { text: "✓ Amigos", disabled: true };
