@@ -9600,3 +9600,96 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (uid) doDelete(uid, btn);
   });
 })();
+
+// ============ Popup ao clicar em outro jogador no mapa ============
+(function setupPlayerPopup() {
+  let popup = null;
+  let currentPeerId = null;
+
+  function close() {
+    if (popup) { popup.remove(); popup = null; currentPeerId = null; }
+  }
+
+  document.addEventListener("pointerdown", (e) => {
+    if (popup && !popup.contains(e.target) && !e.target.closest?.(".nameplate")) close();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+
+  async function open(peerId, anchorEl) {
+    if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
+    close();
+    currentPeerId = peerId;
+    const { data: peer } = await supabase.from("profiles").select("id,nickname,avatar_url").eq("id", peerId).maybeSingle();
+    if (currentPeerId !== peerId) return;
+    const name = peer?.nickname || "Usuário";
+    const avatar = peer?.avatar_url || "";
+
+    popup = document.createElement("div");
+    popup.className = "player-popup";
+    popup.innerHTML = `
+      <div class="player-popup-header">
+        <div class="player-popup-avatar" style="${avatar ? `background-image:url('${avatar.replace(/'/g, "%27")}');` : ''}"></div>
+        <div class="player-popup-name">${escapeHtml(name)}</div>
+      </div>
+      <div class="player-popup-actions">
+        <button data-act="profile">👤 Ver perfil</button>
+        <button data-act="friend">🤝 Solicitar amizade</button>
+        <button data-act="follow-loc">📍 Ir até onde está</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+    positionPopup(anchorEl);
+
+    popup.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === "profile") {
+        close();
+        if (typeof openProfile === "function") openProfile(peerId);
+        else window.dispatchEvent(new CustomEvent("open-profile", { detail: peerId }));
+      } else if (act === "friend") {
+        btn.disabled = true; btn.textContent = "Enviando…";
+        try {
+          await supabase.from("direct_messages").insert({
+            from_user: myId,
+            to_user: peerId,
+            content: "🤝 Olá! Quer ser meu amigo?",
+          });
+          btn.textContent = "✅ Pedido enviado";
+          setTimeout(close, 900);
+        } catch (err) {
+          btn.disabled = false; btn.textContent = "🤝 Solicitar amizade";
+          alert("Falha ao enviar pedido: " + (err?.message || err));
+        }
+      } else if (act === "follow-loc") {
+        const target = playerEntities.get(peerId);
+        if (!target) { close(); return; }
+        // posição um pouco à frente do alvo (offset de 1.2u em direção aleatória)
+        const ang = Math.random() * Math.PI * 2;
+        const offX = Math.cos(ang) * 1.2;
+        const offZ = Math.sin(ang) * 1.2;
+        const pos = target.group.position;
+        try {
+          moveToWorld({ x: pos.x + offX, z: pos.z + offZ });
+        } catch {}
+        close();
+      }
+    });
+  }
+
+  function positionPopup(anchorEl) {
+    if (!popup || !anchorEl) return;
+    const r = anchorEl.getBoundingClientRect();
+    popup.style.left = (r.left + r.width / 2) + "px";
+    popup.style.top = r.top + "px";
+  }
+
+  // delegação no layer de nameplates
+  document.addEventListener("click", (e) => {
+    const plate = e.target.closest?.(".nameplate.is-clickable");
+    if (!plate) return;
+    const uid = plate.dataset.user;
+    if (uid) { e.stopPropagation(); open(uid, plate); }
+  });
+})();
