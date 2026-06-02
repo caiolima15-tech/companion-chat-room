@@ -8036,6 +8036,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = myId ? playerEntities.get(myId) : null;
     return ent?.group?.position || null;
   }
+
+  const DRIVER_HEARTBEAT_MS = 12000;
+  function isDriverFresh(row) {
+    if (!row?.driver_user_id) return false;
+    const t = Date.parse(row.driver_since || "");
+    return Number.isFinite(t) && (Date.now() - t) < DRIVER_HEARTBEAT_MS;
+  }
+  function isCarOccupied(c) {
+    return !!(c?.row?.driver_user_id && isDriverFresh(c.row));
+  }
+  async function clearStaleDriver(c) {
+    if (!c?.row?.driver_user_id || isDriverFresh(c.row)) return false;
+    c.row.driver_user_id = null;
+    c.row.driver_since = null;
+    try {
+      await supabase.from("map_cars").update({ driver_user_id: null, driver_since: null }).eq("id", c.row.id);
+    } catch {}
+    return true;
+  }
+
   // Retorna o carro mais próximo (livre OU ocupado). Sinaliza se está ocupado.
   function nearestCarAny(maxDist = 3.2) {
     const p = myPos();
