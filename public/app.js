@@ -9663,17 +9663,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           alert("Falha ao enviar pedido: " + (err?.message || err));
         }
       } else if (act === "follow-loc") {
-        const target = playerEntities.get(peerId);
-        if (!target) { close(); return; }
-        // posição um pouco à frente do alvo (offset de 1.2u em direção aleatória)
-        const ang = Math.random() * Math.PI * 2;
-        const offX = Math.cos(ang) * 1.2;
-        const offZ = Math.sin(ang) * 1.2;
-        const pos = target.group.position;
-        try {
-          moveToWorld({ x: pos.x + offX, z: pos.z + offZ });
-        } catch {}
-        close();
+        await handleFollowLocation(peerId, name);
       }
     });
   }
