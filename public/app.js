@@ -5656,6 +5656,10 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   makePanel(document.getElementById("interactionsAdminPanel"));
   // Radio panel idem
   makePanel(document.getElementById("radioAdminPanel"));
+  // Cars panel
+  makePanel(document.getElementById("carsAdminPanel"));
+  // Speed panel
+  makePanel(document.getElementById("speedAdminPanel"));
 
   // Pose debug removido
 
@@ -7850,8 +7854,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!meshCount) return null;
     const box = new THREE.Box3().setFromObject(scene);
     const size = box.getSize(new THREE.Vector3());
-    if (Math.max(size.x, size.z) > 1.2) {
-      console.warn("[cars] GLB da roda parece conter o carro/várias rodas — usando rodas procedurais.");
+    // Só rejeita se for claramente o carro inteiro (várias rodas + tamanho de chassi).
+    if (Math.max(size.x, size.z) > 2.5) {
+      console.warn("[cars] GLB da roda parece conter o carro inteiro — usando rodas procedurais.", { size });
       return null;
     }
     const clone = scene.clone(true);
@@ -8635,9 +8640,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         chassis_offset_y: cat.chassis_offset_y, wheel_offsets: cat.wheel_offsets,
         created_by: myId,
       };
-      const { error } = await supabase.from("map_cars").insert(row);
-      if (error) addSystemLine?.("Erro: " + error.message);
-      else addSystemLine?.("Carro adicionado.");
+      const { data: inserted, error } = await supabase.from("map_cars").insert(row).select().single();
+      if (error) { addSystemLine?.("Erro: " + error.message); return; }
+      addSystemLine?.("Carro adicionado.");
+      if (inserted) {
+        try { await upsertCarFromRow(inserted); renderAdminList(); } catch (e) { console.warn("[cars] spawn local", e); }
+      }
     });
 
     document.getElementById("carNewSave")?.addEventListener("click", async () => {
