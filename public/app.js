@@ -8636,9 +8636,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         chassis_offset_y: cat.chassis_offset_y, wheel_offsets: cat.wheel_offsets,
         created_by: myId,
       };
-      const { error } = await supabase.from("map_cars").insert(row);
-      if (error) addSystemLine?.("Erro: " + error.message);
-      else addSystemLine?.("Carro adicionado.");
+      const { data: inserted, error } = await supabase.from("map_cars").insert(row).select().single();
+      if (error) { addSystemLine?.("Erro: " + error.message); return; }
+      addSystemLine?.("Carro adicionado.");
+      if (inserted) {
+        try { await upsertCarFromRow(inserted); renderAdminList(); } catch (e) { console.warn("[cars] spawn local", e); }
+      }
     });
 
     document.getElementById("carNewSave")?.addEventListener("click", async () => {
