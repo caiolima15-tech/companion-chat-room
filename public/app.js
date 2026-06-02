@@ -4005,13 +4005,21 @@ document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d"].includes(key)
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "shift"].includes(key)
       || (window.__freeCameraMode && (key === "q" || key === "e"))) {
     event.preventDefault();
     keyState.add(key);
     return;
   }
-  if (key === " " || key === "spacebar") { event.preventDefault(); return; }
+  if (key === " " || key === "spacebar") {
+    event.preventDefault();
+    // Pulo (modo normal apenas)
+    if (!window.__footballMode && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode && myId) {
+      const ent = playerEntities.get(myId);
+      if (ent && ent.__jumpVy == null) ent.__jumpVy = 7.2;
+    }
+    return;
+  }
   if (key === "e" && !window.__freeCameraMode && window.__sittingInteraction) {
     event.preventDefault();
     try { window.standUpFromInteraction?.(); } catch {}
