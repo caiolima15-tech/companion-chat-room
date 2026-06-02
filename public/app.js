@@ -6648,18 +6648,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.42;
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260527";
+  const RADIO_DEFAULT_VOLUME = 0.12;
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260602";
 
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
   let initialVolume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
-  if (Number.isFinite(savedVol) && localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
-    initialVolume = Math.min(1, Math.max(0, initialVolume * 0.6));
+  if (localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
+    // Migração: rádio passa a iniciar bem baixo; usuário aumenta se quiser.
+    initialVolume = RADIO_DEFAULT_VOLUME;
     localStorage.setItem("radio.volume", String(initialVolume));
+    localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   }
-  localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   audio.volume = initialVolume;
   audio.muted = savedMuted;
   if (volSlider) volSlider.value = String(Math.round(audio.volume * 100));
