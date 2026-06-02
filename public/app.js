@@ -3631,6 +3631,7 @@ function applyJoystickMoveNormal(jx, jy, mag) {
 
 function applyHeldMovement(delta) {
   if (window.__drivingCar) return; // dirigindo carro: controles do veículo
+  if (window.__ridingCar) return;  // de carona: posição controlada pelo carro
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
