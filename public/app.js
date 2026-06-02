@@ -251,9 +251,18 @@ window.__fbPose = kickPose;
 
 // ============ Speed config (admin tunable) ============
 const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
-const SPEED_DEFAULTS = { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 };
+const SPEED_CFG_VERSION_KEY = "neon-tap-room-speed-cfg-version";
+const SPEED_CFG_VERSION = "2";
+const SPEED_DEFAULTS = { walkN: 1.8, runN: 5.0, walkFb: 2.8, runFb: 5.6, walkAnim: 1.0, runAnim: 1.15 };
 function loadSpeedCfg() {
   try {
+    const ver = localStorage.getItem(SPEED_CFG_VERSION_KEY);
+    if (ver !== SPEED_CFG_VERSION) {
+      // força upgrade dos defaults p/ todos os usuários
+      localStorage.removeItem(SPEED_CFG_KEY);
+      localStorage.setItem(SPEED_CFG_VERSION_KEY, SPEED_CFG_VERSION);
+      return { ...SPEED_DEFAULTS };
+    }
     const raw = localStorage.getItem(SPEED_CFG_KEY);
     if (raw) return { ...SPEED_DEFAULTS, ...JSON.parse(raw) };
   } catch {}
