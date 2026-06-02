@@ -8588,6 +8588,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (riding) updatePassengerFrame(delta);
     else updatePrompt();
     updateRemoteCars(delta);
+    // Esconde personagens (e nameplates) de quem está dentro de um carro
+    const hide = new Set();
+    for (const c of cars.values()) {
+      const dId = c?.row?.driver_user_id;
+      if (dId && isDriverFresh(c.row)) hide.add(dId);
+    }
+    window.__hiddenDrivers = hide;
+    for (const [id, ent] of playerEntities) {
+      if (hide.has(id)) {
+        if (ent.group.visible) ent.group.visible = false;
+        if (ent.plate) ent.plate.style.opacity = "0";
+        if (ent.loadingSpinner) ent.loadingSpinner.style.opacity = "0";
+      }
+    }
   };
 
   // ============ INPUT ============
