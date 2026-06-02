@@ -2270,7 +2270,9 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 
 body.driving-on #joyHud,
 body.driving-on .emote-cluster,
+body.driving-on .mobile-bar,
 body.driving-on #interactionPrompt { display:none !important; }
+.car-hud { z-index: 1200; }
 
 #carsAdminPanel .car-row { display:flex; align-items:center; gap:6px; padding:6px 8px; background:rgba(255,255,255,0.04); border-radius:6px; }
 #carsAdminPanel .car-row .car-name { flex:1; font-weight:600; }
