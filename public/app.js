@@ -3631,6 +3631,7 @@ function applyJoystickMoveNormal(jx, jy, mag) {
 
 function applyHeldMovement(delta) {
   if (window.__drivingCar) return; // dirigindo carro: controles do veículo
+  if (window.__ridingCar) return;  // de carona: posição controlada pelo carro
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
@@ -7736,13 +7737,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const DEFAULT_WHEEL_OFFSETS = {
     fl:{x:-0.78,y:0.1,z:-1.25}, fr:{x:0.75,y:0.1,z:-1.25},
     rl:{x:-0.78,y:0.1,z:1.25},  rr:{x:0.75,y:0.1,z:1.25},
+    scale: 1,
   };
-  const cars = new Map(); // id -> { row, group, chassisGroup, wheels{fl,fr,rl,rr}, state{vel,steer,yaw,wheelSpin} }
+  const cars = new Map(); // id -> { row, group, chassisGroup, wheels{fl,fr,rl,rr}, state, __netTarget? }
   let catalog = []; // [{id,name,...}]
   let channel = null;
   let currentMap = null;
   let driving = null; // car instance currently driven
+  let riding = null;  // car instance we're passenger of
   let promptCarId = null;
+  let promptCarOccupied = false;
   const carKeys = new Set();
   // botões on-screen
   const padState = { fwd:false, back:false, left:false, right:false, brake:false };
@@ -7750,6 +7754,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const carsGroup = new THREE.Group();
   carsGroup.name = "CarsRoot";
   scene.add(carsGroup);
+
+  // Helpers de colisão (reutiliza groundHeightAt + colliderMeshes globais)
+  const _carRay = new THREE.Raycaster();
+  const _carDown = new THREE.Vector3(0,-1,0);
+  const _carFwd = new THREE.Vector3();
+  const _carTmpA = new THREE.Vector3();
+  const _carTmpB = new THREE.Vector3();
 
   function disposeCar(c) {
     if (!c) return;
@@ -7774,6 +7785,29 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     g.rotateZ(Math.PI/2);
     const m = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.65, metalness: 0.2 });
     return new THREE.Mesh(g, m);
+  }
+
+  // Se o GLB tiver várias rodas (ou o carro inteiro), descarta e usa procedural.
+  // Aceita apenas GLBs de UMA roda (≤1.2m em XZ).
+  function tryExtractSingleWheel(scene) {
+    if (!scene) return null;
+    let meshCount = 0;
+    scene.traverse(o => { if (o.isMesh) meshCount++; });
+    if (!meshCount) return null;
+    const box = new THREE.Box3().setFromObject(scene);
+    const size = box.getSize(new THREE.Vector3());
+    if (Math.max(size.x, size.z) > 1.2) {
+      console.warn("[cars] GLB da roda parece conter o carro/várias rodas — usando rodas procedurais.");
+      return null;
+    }
+    const clone = scene.clone(true);
+    clone.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    const cb = new THREE.Box3().setFromObject(clone);
+    const center = cb.getCenter(new THREE.Vector3());
+    clone.position.sub(center);
+    const wrap = new THREE.Group();
+    wrap.add(clone);
+    return wrap;
   }
 
   async function spawnCarMesh(row) {
@@ -7804,13 +7838,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     // wheels
     const wheelOffsets = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const wheelScale = wheelOffsets.scale ?? 1;
     const radius = row.wheel_radius || 0.35;
     let wheelTemplate = null;
     if (row.wheel_url) {
       try {
         const gltf = await new Promise((res, rej) => loader.load(row.wheel_url, res, undefined, rej));
-        wheelTemplate = gltf.scene || gltf.scenes?.[0];
-        wheelTemplate?.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+        const raw = gltf.scene || gltf.scenes?.[0];
+        wheelTemplate = tryExtractSingleWheel(raw);
       } catch (e) { console.warn("[cars] wheel load fail", e); }
     }
     const wheels = {};
@@ -7819,6 +7854,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const node = new THREE.Group();
       node.position.set(off.x, off.y, off.z);
       const spinPivot = new THREE.Group();
+      spinPivot.scale.setScalar(wheelScale);
       node.add(spinPivot);
       let visual;
       if (wheelTemplate) {
@@ -7836,22 +7872,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return { group, chassisGroup, wheels };
   }
 
+  function applyWheelTransforms(c, wo) {
+    const scl = wo.scale ?? 1;
+    for (const k of ["fl","fr","rl","rr"]) {
+      const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
+      c.wheels[k].position.set(off.x, off.y, off.z);
+      c.wheels[k].userData.spin.scale.setScalar(scl);
+    }
+  }
+
   async function upsertCarFromRow(row) {
     const existing = cars.get(row.id);
     if (existing) {
-      // Apenas reposicionar/repor tuning sem recriar mesh
       Object.assign(existing.row, row);
       if (!driving || driving.row.id !== row.id) {
-        existing.group.position.set(row.x||0, row.y||0, row.z||0);
-        existing.group.rotation.y = row.rotation_y || 0;
-        existing.state.yaw = row.rotation_y || 0;
+        existing.__netTarget = existing.__netTarget || {};
+        existing.__netTarget.x = row.x||0;
+        existing.__netTarget.y = row.y||0;
+        existing.__netTarget.z = row.z||0;
+        existing.__netTarget.yaw = row.rotation_y || 0;
       }
-      // Wheel offsets podem ter mudado
       const wo = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
-      for (const k of ["fl","fr","rl","rr"]) {
-        const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
-        existing.wheels[k].position.set(off.x, off.y, off.z);
-      }
+      applyWheelTransforms(existing, wo);
       existing.chassisGroup.position.y = row.chassis_offset_y || 0;
       existing.chassisGroup.scale.setScalar(row.chassis_scale || 1);
       return existing;
@@ -7871,7 +7913,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function loadCarsForMap(mapId) {
     currentMap = mapId;
-    // limpa existentes
     for (const c of cars.values()) disposeCar(c);
     cars.clear();
     const { data, error } = await supabase.from("map_cars").select("*").eq("map_id", mapId);
@@ -7886,7 +7927,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     await loadCatalog();
     await loadCarsForMap(mapId);
     if (channel) await supabase.removeChannel(channel);
-    channel = supabase.channel(`cars-${mapId}`)
+    channel = supabase.channel(`cars-${mapId}`, { config: { broadcast: { self: false } } })
       .on("postgres_changes", { event:"*", schema:"public", table:"map_cars", filter:`map_id=eq.${mapId}` }, async (payload) => {
         if (payload.eventType === "DELETE") {
           const c = cars.get(payload.old.id);
@@ -7897,13 +7938,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const row = payload.new;
         try { await upsertCarFromRow(row); renderAdminList(); } catch {}
       })
+      .on("broadcast", { event: "pos" }, ({ payload }) => {
+        const c = cars.get(payload.id);
+        if (!c) return;
+        if (driving && driving.row.id === payload.id) return;
+        c.__netTarget = { x: payload.x, y: payload.y, z: payload.z, yaw: payload.yaw, vel: payload.vel || 0 };
+      })
       .subscribe();
   }
   async function carsLeaveRoom() {
     if (channel) { await supabase.removeChannel(channel); channel = null; }
     for (const c of cars.values()) disposeCar(c);
     cars.clear();
-    if (driving) exitCar(true);
+    if (driving) await exitCar(true);
+    if (riding) exitPassenger();
   }
   window.carsEnterRoom = carsEnterRoom;
   window.carsLeaveRoom = carsLeaveRoom;
@@ -7913,12 +7961,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = myId ? playerEntities.get(myId) : null;
     return ent?.group?.position || null;
   }
-  function nearestCar(maxDist = 3.2) {
+  // Retorna o carro mais próximo (livre OU ocupado). Sinaliza se está ocupado.
+  function nearestCarAny(maxDist = 3.2) {
     const p = myPos();
     if (!p) return null;
     let best = null, bestD = Infinity;
     for (const c of cars.values()) {
-      if (c.row.driver_user_id && c.row.driver_user_id !== myId) continue;
       const d = c.group.position.distanceTo(p);
       if (d < bestD) { bestD = d; best = c; }
     }
@@ -7926,8 +7974,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   async function enterCar(c) {
-    if (driving || !c) return;
-    // Tenta reclamar o carro
+    if (driving || riding || !c) return;
     const { data, error } = await supabase
       .from("map_cars")
       .update({ driver_user_id: myId, driver_since: new Date().toISOString() })
@@ -7943,10 +7990,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     driving = c;
     window.__drivingCar = c;
     c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
-    // esconde personagem
     const ent = playerEntities.get(myId);
     if (ent) ent.group.visible = false;
-    // HUD
     document.body.classList.add("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
@@ -7962,7 +8007,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Pare o carro antes de sair.");
       return;
     }
-    // persiste posição final e libera
     try {
       await supabase.from("map_cars").update({
         x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
@@ -7976,7 +8020,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     document.body.classList.remove("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = true;
-    // teleporta player ao lado do carro
     const ent = playerEntities.get(myId);
     if (ent) {
       ent.group.visible = true;
@@ -7995,6 +8038,91 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (controls) controls.enabled = true;
   }
 
+  // ============ PASSENGER (carona) ============
+  function enterPassenger(c) {
+    if (driving || riding || !c) return;
+    if (!c.row.driver_user_id) {
+      addSystemLine?.("Esse carro está vazio — entre como motorista (F).");
+      return;
+    }
+    riding = c;
+    window.__ridingCar = c;
+    document.body.classList.add("driving-on");
+    const hud = document.getElementById("carHud");
+    if (hud) {
+      hud.hidden = false;
+      hud.classList.add("passenger-mode");
+    }
+    const prompt = document.getElementById("carPrompt");
+    if (prompt) prompt.hidden = true;
+    if (controls) controls.enabled = false;
+    addSystemLine?.("Você está de carona. Aperte F para sair.");
+  }
+
+  function exitPassenger() {
+    if (!riding) return;
+    const c = riding;
+    riding = null;
+    window.__ridingCar = null;
+    document.body.classList.remove("driving-on");
+    const hud = document.getElementById("carHud");
+    if (hud) { hud.hidden = true; hud.classList.remove("passenger-mode"); }
+    const ent = playerEntities.get(myId);
+    if (ent) {
+      const fwd = new THREE.Vector3(Math.sin(c.state.yaw), 0, Math.cos(c.state.yaw));
+      const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const exitPos = c.group.position.clone().addScaledVector(side, -1.6);
+      ent.group.position.copy(exitPos);
+      ent.target.copy(exitPos);
+      if (me) {
+        const pct = percentFromWorld(exitPos.x, exitPos.z);
+        me.x = Math.max(5, Math.min(95, pct.x));
+        me.y = Math.max(8, Math.min(92, pct.y));
+        trackMe?.(true).catch(() => {});
+      }
+    }
+    if (controls) controls.enabled = true;
+  }
+
+  function updatePassengerFrame(delta) {
+    if (!riding) return;
+    const c = riding;
+    // Sai automaticamente se o motorista saiu (carro virou livre)
+    if (!c.row.driver_user_id) { exitPassenger(); return; }
+    const ent = playerEntities.get(myId);
+    if (!ent) return;
+    // Posiciona o player no banco do carona (lado direito atrás)
+    const yaw = c.state.yaw;
+    const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+    const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+    const pos = c.group.position.clone()
+      .addScaledVector(side, 0.55)
+      .addScaledVector(fwd, -0.2);
+    pos.y = c.group.position.y + 0.9;
+    ent.group.position.copy(pos);
+    ent.group.rotation.y = yaw;
+    ent.target.copy(pos);
+    // Câmera 3a pessoa do carro
+    const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+    const camWant = c.group.position.clone()
+      .addScaledVector(fwd, -6.5)
+      .add(new THREE.Vector3(0, 3.2, 0));
+    camera.position.lerp(camWant, Math.min(1, delta * 4));
+    controls.target.lerp(camTarget, Math.min(1, delta * 6));
+    camera.lookAt(controls.target);
+    // Broadcast posição p/ outros players verem o passageiro andando
+    if (me) {
+      const pct = percentFromWorld(pos.x, pos.z);
+      me.x = Math.max(0, Math.min(100, pct.x));
+      me.y = Math.max(0, Math.min(100, pct.y));
+      const now = performance.now();
+      if (!riding.__lastBcast || now - riding.__lastBcast > 90) {
+        riding.__lastBcast = now;
+        trackMe?.(false).catch(() => {});
+      }
+    }
+  }
+
   function carInput() {
     const fwd = carKeys.has("w") || carKeys.has("arrowup") || padState.fwd ? 1 : 0;
     const back = carKeys.has("s") || carKeys.has("arrowdown") || padState.back ? 1 : 0;
@@ -8004,8 +8132,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return { throttle: fwd - back, steer: right - left, brake };
   }
 
-  const _camTmp = new THREE.Vector3();
-  const _camLook = new THREE.Vector3();
+  // Verifica colisão à frente (parede ou objeto alto)
+  function hasObstacleAt(from, to) {
+    if (!colliderMeshes || !colliderMeshes.length) return false;
+    _carFwd.copy(to).sub(from); _carFwd.y = 0;
+    const dist = _carFwd.length();
+    if (dist < 1e-4) return false;
+    _carFwd.normalize();
+    // Raio na altura do parachoque (~0.7m)
+    _carTmpA.set(from.x, from.y + 0.7, from.z);
+    _carRay.set(_carTmpA, _carFwd);
+    _carRay.far = dist + 0.9;
+    const hits = _carRay.intersectObjects(colliderMeshes, false);
+    return !!(hits.length && hits[0].distance < dist + 0.9);
+  }
 
   function simulateDriving(delta) {
     const c = driving;
@@ -8016,41 +8156,49 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const accel = r.acceleration || 8;
     const brakeF = r.brake_force || 14;
     const turn = r.turn_speed || 2.2;
-    // throttle
     if (inp.throttle > 0) c.state.vel += accel * delta;
     else if (inp.throttle < 0) c.state.vel -= accel * 0.7 * delta;
-    else c.state.vel *= Math.pow(0.65, delta); // engine drag
+    else c.state.vel *= Math.pow(0.65, delta);
     if (inp.brake) {
       const decel = brakeF * delta;
       if (Math.abs(c.state.vel) <= decel) c.state.vel = 0;
       else c.state.vel -= Math.sign(c.state.vel) * decel;
     }
     c.state.vel = Math.max(-maxSpeed*0.5, Math.min(maxSpeed, c.state.vel));
-    // steering — escala com sqrt(speed) p/ não girar parado
     const targetSteer = inp.steer * 0.6;
     c.state.steer += (targetSteer - c.state.steer) * Math.min(1, delta * 8);
     const speedFactor = Math.min(1, Math.abs(c.state.vel) / 4);
     c.state.yaw -= c.state.steer * turn * delta * speedFactor * Math.sign(c.state.vel || 1);
-    // move
     const fwd = new THREE.Vector3(Math.sin(c.state.yaw), 0, Math.cos(c.state.yaw));
-    c.group.position.addScaledVector(fwd, c.state.vel * delta);
+    // Tenta mover; se bater em parede/obstáculo, zera velocidade
+    const from = c.group.position.clone();
+    const to = from.clone().addScaledVector(fwd, c.state.vel * delta);
+    if (hasObstacleAt(from, to)) {
+      c.state.vel *= -0.15; // pequeno ricochete
+    } else {
+      c.group.position.copy(to);
+    }
     c.group.rotation.y = c.state.yaw;
-    // visuais rodas
+    // Segue o chão (rampas, plataformas)
+    try {
+      const gy = groundHeightAt(c.group.position, c.group.position.y);
+      c.group.position.y += (gy - c.group.position.y) * Math.min(1, delta * 12);
+    } catch {}
+    // rodas
     const wr = r.wheel_radius || 0.35;
     c.state.wheelSpin -= (c.state.vel * delta) / wr;
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      // direção (steer) só nas frontais
       if (k === "fl" || k === "fr") w.rotation.y = c.state.steer;
       w.userData.spin.rotation.x = c.state.wheelSpin;
     }
-    // velocímetro
+    // HUD
     const sv = document.getElementById("carSpeedVal");
-    if (sv) sv.textContent = String(Math.round(Math.abs(c.state.vel) * 3.6)); // m/s -> km/h aprox
+    if (sv) sv.textContent = String(Math.round(Math.abs(c.state.vel) * 3.6));
     const exitBtn = document.getElementById("carExitBtn");
     if (exitBtn) exitBtn.disabled = Math.abs(c.state.vel) > 0.05;
-    // câmera 3a pessoa
+    // Câmera
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     const camWant = c.group.position.clone()
       .addScaledVector(fwd, -6.5)
@@ -8058,37 +8206,94 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     camera.position.lerp(camWant, Math.min(1, delta * 4));
     controls.target.lerp(camTarget, Math.min(1, delta * 6));
     camera.lookAt(controls.target);
+    // Broadcast a posição p/ outros players (a cada ~80ms)
+    const now = performance.now();
+    if (!c.__lastBcast || now - c.__lastBcast > 80) {
+      c.__lastBcast = now;
+      try {
+        channel?.send({
+          type: "broadcast",
+          event: "pos",
+          payload: {
+            id: c.row.id,
+            x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
+            yaw: c.state.yaw, vel: c.state.vel,
+          },
+        });
+      } catch {}
+    }
+  }
+
+  // Lerp visual dos carros que NÃO estamos dirigindo (usa último broadcast OU posição do DB)
+  function updateRemoteCars(delta) {
+    for (const c of cars.values()) {
+      if (driving && driving.row.id === c.row.id) continue;
+      const t = c.__netTarget;
+      if (t) {
+        c.group.position.x += (t.x - c.group.position.x) * Math.min(1, delta * 10);
+        c.group.position.y += (t.y - c.group.position.y) * Math.min(1, delta * 8);
+        c.group.position.z += (t.z - c.group.position.z) * Math.min(1, delta * 10);
+        let dy = t.yaw - c.state.yaw;
+        while (dy > Math.PI) dy -= Math.PI*2;
+        while (dy < -Math.PI) dy += Math.PI*2;
+        c.state.yaw += dy * Math.min(1, delta * 10);
+        c.group.rotation.y = c.state.yaw;
+        // Roda visual com base na velocidade transmitida
+        const wr = c.row.wheel_radius || 0.35;
+        c.state.wheelSpin -= ((t.vel || 0) * delta) / wr;
+        for (const k of ["fl","fr","rl","rr"]) {
+          const w = c.wheels[k]; if (!w) continue;
+          w.userData.spin.rotation.x = c.state.wheelSpin;
+        }
+      }
+    }
   }
 
   function updatePrompt() {
-    if (driving) return;
-    const c = nearestCar();
+    if (driving || riding) return;
+    const c = nearestCarAny();
     const prompt = document.getElementById("carPrompt");
     if (!prompt) return;
     if (c) {
       promptCarId = c.row.id;
+      promptCarOccupied = !!c.row.driver_user_id;
       const txt = prompt.querySelector(".car-prompt-text");
-      if (txt) txt.textContent = `Entrar no ${c.row.name}`;
+      const enterBtn = document.getElementById("carEnterBtn");
+      const rideBtn = document.getElementById("carRideBtn");
+      if (promptCarOccupied) {
+        if (txt) txt.textContent = `${c.row.name} (em uso) — Carona`;
+        if (enterBtn) enterBtn.hidden = true;
+        if (rideBtn) rideBtn.hidden = false;
+      } else {
+        if (txt) txt.textContent = `Entrar no ${c.row.name}`;
+        if (enterBtn) enterBtn.hidden = false;
+        if (rideBtn) rideBtn.hidden = true;
+      }
       prompt.hidden = false;
     } else {
       promptCarId = null;
+      promptCarOccupied = false;
       prompt.hidden = true;
     }
   }
 
   window.__carsFrame = function (delta) {
     if (driving) simulateDriving(delta);
+    else if (riding) updatePassengerFrame(delta);
     else updatePrompt();
+    updateRemoteCars(delta);
   };
 
   // ============ INPUT ============
   document.addEventListener("keydown", (e) => {
     if (e.target?.matches?.("input, textarea")) return;
     const k = (e.key || "").toLowerCase();
-    if (k === "f" && !driving && promptCarId) {
+    if (k === "f" && !driving && !riding && promptCarId) {
       e.preventDefault();
       const c = cars.get(promptCarId);
-      if (c) enterCar(c);
+      if (!c) return;
+      if (promptCarOccupied) enterPassenger(c);
+      else enterCar(c);
       return;
     }
     if (k === "f" && driving) {
@@ -8096,11 +8301,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       exitCar();
       return;
     }
+    if (k === "f" && riding) {
+      e.preventDefault();
+      exitPassenger();
+      return;
+    }
     if (driving) {
       if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) {
         e.preventDefault();
         carKeys.add(k);
-        // remove do keyState normal pra não interferir
         try { keyState.delete(k); } catch {}
       }
     }
@@ -8112,11 +8321,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function bindHud() {
     document.getElementById("carEnterBtn")?.addEventListener("click", () => {
-      if (driving || !promptCarId) return;
+      if (driving || riding || !promptCarId) return;
       const c = cars.get(promptCarId);
       if (c) enterCar(c);
     });
-    document.getElementById("carExitBtn")?.addEventListener("click", () => exitCar());
+    document.getElementById("carRideBtn")?.addEventListener("click", () => {
+      if (driving || riding || !promptCarId) return;
+      const c = cars.get(promptCarId);
+      if (c) enterPassenger(c);
+    });
+    document.getElementById("carExitBtn")?.addEventListener("click", () => {
+      if (driving) exitCar();
+      else if (riding) exitPassenger();
+    });
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -8177,7 +8394,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!c || !wrap) return;
     wrap.hidden = false;
     const r = c.row;
-    const wo = r.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const wo = r.wheel_offsets || JSON.parse(JSON.stringify(DEFAULT_WHEEL_OFFSETS));
+    if (wo.scale == null) wo.scale = 1;
     const slider = (label, key, min, max, step, val) => `
       <div class="ct-row"><label>${label}<span data-v="${key}">${Number(val).toFixed(2)}</span></label>
         <input type="range" data-tk="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
@@ -8188,6 +8406,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ${slider("Y", `wheel_offsets.${k}.y`, -2, 2, 0.01, wo[k]?.y ?? 0)}
           ${slider("Z", `wheel_offsets.${k}.z`, -3, 3, 0.01, wo[k]?.z ?? 0)}
         </div></div>`;
+    // valores derivados para controles simétricos
+    const trackF = Math.abs((wo.fr?.x ?? 0.75) - (wo.fl?.x ?? -0.75));
+    const trackR = Math.abs((wo.rr?.x ?? 0.75) - (wo.rl?.x ?? -0.75));
+    const wheelbase = Math.abs(((wo.rl?.z ?? 1.25) + (wo.rr?.z ?? 1.25))/2 - ((wo.fl?.z ?? -1.25) + (wo.fr?.z ?? -1.25))/2);
+    const axleY = ((wo.fl?.y ?? 0.1)+(wo.fr?.y ?? 0.1)+(wo.rl?.y ?? 0.1)+(wo.rr?.y ?? 0.1))/4;
     wrap.innerHTML = `
       <div style="font-weight:600;font-size:12px;">⚙️ Ajustar: ${escapeHtml(r.name)}</div>
       <div class="ct-section"><h5>Performance</h5>
@@ -8200,9 +8423,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ${slider("Escala", "chassis_scale", 0.3, 3, 0.01, r.chassis_scale)}
         ${slider("Offset Y", "chassis_offset_y", -2, 2, 0.01, r.chassis_offset_y)}
         ${slider("Rotação Y°", "_rot_deg", -180, 180, 1, (r.rotation_y||0)*180/Math.PI)}
-        ${slider("Raio roda", "wheel_radius", 0.1, 1, 0.01, r.wheel_radius)}
       </div>
-      ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
+      <div class="ct-section"><h5>Rodas (simétrico)</h5>
+        ${slider("Tamanho das rodas", "wheel_offsets.scale", 0.3, 3, 0.01, wo.scale ?? 1)}
+        ${slider("Raio (procedural)", "wheel_radius", 0.1, 1, 0.01, r.wheel_radius)}
+        ${slider("Bitola dianteira (X)", "_trackF", 0.5, 3, 0.01, trackF)}
+        ${slider("Bitola traseira (X)", "_trackR", 0.5, 3, 0.01, trackR)}
+        ${slider("Distância eixos (Z)", "_wheelbase", 0.8, 5, 0.01, wheelbase)}
+        ${slider("Altura eixos (Y)", "_axleY", -1, 1, 0.01, axleY)}
+      </div>
+      <details><summary style="cursor:pointer;font-size:11px;opacity:0.8;margin-top:6px;">Ajuste fino por roda</summary>
+        ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
+      </details>
       <div style="display:flex;gap:6px;margin-top:8px;">
         <button id="ctSave" style="flex:1;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar</button>
         ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no modelo</button>` : ""}
@@ -8210,16 +8442,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       </div>`;
     const draft = JSON.parse(JSON.stringify(r));
     if (!draft.wheel_offsets) draft.wheel_offsets = JSON.parse(JSON.stringify(DEFAULT_WHEEL_OFFSETS));
+    if (draft.wheel_offsets.scale == null) draft.wheel_offsets.scale = 1;
     const applyDraft = () => {
       Object.assign(c.row, draft);
       c.chassisGroup.position.y = draft.chassis_offset_y || 0;
       c.chassisGroup.scale.setScalar(draft.chassis_scale || 1);
       c.group.rotation.y = draft.rotation_y || 0;
       c.state.yaw = draft.rotation_y || 0;
-      for (const k of ["fl","fr","rl","rr"]) {
-        const off = draft.wheel_offsets[k] || DEFAULT_WHEEL_OFFSETS[k];
-        c.wheels[k].position.set(off.x, off.y, off.z);
-      }
+      applyWheelTransforms(c, draft.wheel_offsets);
     };
     wrap.querySelectorAll("[data-tk]").forEach(inp => {
       inp.addEventListener("input", () => {
@@ -8228,10 +8458,33 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const lbl = wrap.querySelector(`[data-v="${key}"]`);
         if (lbl) lbl.textContent = val.toFixed(2);
         if (key === "_rot_deg") draft.rotation_y = val * Math.PI / 180;
-        else if (key.startsWith("wheel_offsets.")) {
-          const [, k, axis] = key.split(".");
-          if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
-          draft.wheel_offsets[k][axis] = val;
+        else if (key === "_trackF") {
+          const h = val/2;
+          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), x: -h };
+          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), x: h };
+        } else if (key === "_trackR") {
+          const h = val/2;
+          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), x: -h };
+          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), x: h };
+        } else if (key === "_wheelbase") {
+          const h = val/2;
+          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), z: -h };
+          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), z: -h };
+          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), z: h };
+          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), z: h };
+        } else if (key === "_axleY") {
+          for (const k of ["fl","fr","rl","rr"]) {
+            draft.wheel_offsets[k] = { ...(draft.wheel_offsets[k]||{}), y: val };
+          }
+        } else if (key.startsWith("wheel_offsets.")) {
+          const parts = key.split(".");
+          if (parts.length === 2 && parts[1] === "scale") {
+            draft.wheel_offsets.scale = val;
+          } else {
+            const [, k, axis] = parts;
+            if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
+            draft.wheel_offsets[k][axis] = val;
+          }
         } else draft[key] = val;
         applyDraft();
       });
