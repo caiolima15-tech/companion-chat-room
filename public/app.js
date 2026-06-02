@@ -150,6 +150,7 @@ let presenceChannel = null;
 let movementChannel = null;
 let mapChannel = null;
 let chatChannel = null;
+let voiceChannel = null;
 let catalogChannel = null;
 let userAvatarsChannel = null;
 let profilesChannel = null;
@@ -2191,6 +2192,27 @@ async function setupRoomChannels(mapId) {
     })
     .subscribe();
 
+  // Voz por proximidade — push-to-talk
+  if (voiceChannel) await supabase.removeChannel(voiceChannel);
+  voiceChannel = supabase.channel(`room-voice:${mapId}`, {
+    config: { broadcast: { self: false } },
+  });
+  voiceChannel
+    .on("broadcast", { event: "voice-start" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteStart?.(payload.id);
+    })
+    .on("broadcast", { event: "voice-end" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteEnd?.(payload.id);
+    })
+    .on("broadcast", { event: "voice-blob" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteBlob?.(payload.id, payload.b64, payload.mime);
+    })
+    .subscribe();
+  window.__voice?.setChannel?.(voiceChannel);
+
   // Catálogo, user_avatars e profiles permanecem globais — definidos abaixo (uma vez).
   await setupGlobalSecondaryChannels();
 }
@@ -2310,6 +2332,7 @@ async function switchRoom(newMapId) {
     if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
     if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
     if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
+    if (voiceChannel) { await supabase.removeChannel(voiceChannel); voiceChannel = null; window.__voice?.setChannel?.(null); }
 
     // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
     for (const [id, entity] of Array.from(playerEntities)) {
@@ -8993,4 +9016,276 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { bindHud(); bindAdminPanel(); });
   else { bindHud(); bindAdminPanel(); }
+})();
+
+// ============ Voz por proximidade (push-to-talk) ============
+(function setupProximityVoice() {
+  const VOICE_FULL = 3.5;   // unidades de mundo: volume cheio até essa distância
+  const VOICE_MAX  = 14;    // além disso: silencioso
+  const MAX_REC_MS = 20000; // limite de gravação por aperto
+  const REMOTE_INDICATOR_FADE_MS = 600;
+
+  let btn = null;
+  let mediaStream = null;
+  let mediaRecorder = null;
+  let chunks = [];
+  let recording = false;
+  let recStartTs = 0;
+  let recTimer = null;
+  let chan = null;
+  let audioCtx = null;
+  let selfSpeakingUntil = 0;
+
+  // Por id remoto: { gain, lastPlayedAt, queue: [{src, gainNode, until}] }
+  const remoteSpeakers = new Map();
+
+  function ensureCtx() {
+    if (audioCtx && audioCtx.state !== "closed") return audioCtx;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    audioCtx = new AC();
+    return audioCtx;
+  }
+
+  function distanceGainFor(speakerId) {
+    const a = playerEntities.get(speakerId)?.group?.position;
+    const b = playerEntities.get(myId)?.group?.position;
+    if (!a || !b) return 0.6;
+    const dx = a.x - b.x, dz = a.z - b.z;
+    const d = Math.hypot(dx, dz);
+    if (d <= VOICE_FULL) return 1;
+    if (d >= VOICE_MAX) return 0;
+    // suaviza a queda
+    const t = 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL);
+    return t * t;
+  }
+
+  function setSpeakingClass(id, on) {
+    const ent = playerEntities.get(id);
+    if (!ent?.plate) return;
+    ent.plate.classList.toggle("is-speaking", !!on);
+  }
+
+  function pickMime() {
+    const cands = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4;codecs=mp4a.40.2",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+    for (const m of cands) {
+      try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch {}
+    }
+    return "";
+  }
+
+  async function getStream() {
+    if (mediaStream) return mediaStream;
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
+    return mediaStream;
+  }
+
+  async function blobToBase64(blob) {
+    const buf = await blob.arrayBuffer();
+    let bin = "";
+    const bytes = new Uint8Array(buf);
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(bin);
+  }
+
+  function base64ToArrayBuffer(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out.buffer;
+  }
+
+  async function startRecording() {
+    if (recording) return;
+    if (!chan) return;
+    try { ensureCtx()?.resume?.(); } catch {}
+    let stream;
+    try {
+      stream = await getStream();
+    } catch (e) {
+      console.warn("Mic negado:", e);
+      btn?.classList.add("is-denied");
+      btn?.setAttribute("title", "Microfone negado. Permita o acesso e tente de novo.");
+      return;
+    }
+    const mime = pickMime();
+    try {
+      mediaRecorder = mime
+        ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 24000 })
+        : new MediaRecorder(stream);
+    } catch (e) {
+      console.warn("MediaRecorder não suportado:", e);
+      return;
+    }
+    chunks = [];
+    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      const type = mediaRecorder.mimeType || mime || "audio/webm";
+      const blob = new Blob(chunks, { type });
+      chunks = [];
+      try {
+        if (blob.size > 0 && chan) {
+          const b64 = await blobToBase64(blob);
+          // Supabase realtime aceita ~256KB por payload; truncamos com aviso se passar.
+          if (b64.length < 240_000) {
+            chan.send({ type: "broadcast", event: "voice-blob", payload: { id: myId, b64, mime: type } });
+          } else {
+            console.warn("Áudio muito longo, descartado.");
+          }
+        }
+      } catch (err) {
+        console.warn("Falha enviando voz:", err);
+      }
+      try { chan?.send({ type: "broadcast", event: "voice-end", payload: { id: myId } }); } catch {}
+    };
+    recording = true;
+    recStartTs = performance.now();
+    selfSpeakingUntil = recStartTs + 99999;
+    setSpeakingClass(myId, true);
+    btn?.classList.add("is-recording");
+    try { chan.send({ type: "broadcast", event: "voice-start", payload: { id: myId } }); } catch {}
+    mediaRecorder.start();
+    recTimer = setTimeout(() => stopRecording(), MAX_REC_MS);
+  }
+
+  function stopRecording() {
+    if (!recording) return;
+    recording = false;
+    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    btn?.classList.remove("is-recording");
+    selfSpeakingUntil = 0;
+    setSpeakingClass(myId, false);
+    try { mediaRecorder?.state !== "inactive" && mediaRecorder?.stop(); } catch {}
+  }
+
+  function ensureRemote(id) {
+    let r = remoteSpeakers.get(id);
+    if (!r) {
+      r = { queue: [], playingUntil: 0, lastSignalAt: 0 };
+      remoteSpeakers.set(id, r);
+    }
+    return r;
+  }
+
+  function markRemoteSpeaking(id) {
+    const r = ensureRemote(id);
+    r.lastSignalAt = performance.now();
+    setSpeakingClass(id, true);
+  }
+
+  async function onRemoteBlob(id, b64, mime) {
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    try { await ctx.resume(); } catch {}
+    let audioBuf;
+    try {
+      audioBuf = await ctx.decodeAudioData(base64ToArrayBuffer(b64));
+    } catch (e) {
+      console.warn("Decode falhou:", e);
+      return;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = audioBuf;
+    const gainNode = ctx.createGain();
+    gainNode.gain.value = distanceGainFor(id);
+    src.connect(gainNode).connect(ctx.destination);
+    const r = ensureRemote(id);
+    const item = { src, gainNode, speakerId: id, endsAt: 0 };
+    src.onended = () => {
+      r.queue = r.queue.filter((x) => x !== item);
+      if (r.queue.length === 0 && performance.now() - r.lastSignalAt > REMOTE_INDICATOR_FADE_MS) {
+        setSpeakingClass(id, false);
+      }
+    };
+    r.queue.push(item);
+    src.start();
+    item.endsAt = performance.now() + audioBuf.duration * 1000;
+    markRemoteSpeaking(id);
+  }
+
+  function tick() {
+    const now = performance.now();
+    for (const [id, r] of remoteSpeakers) {
+      // Atualiza ganho dos sources tocando
+      for (const item of r.queue) {
+        const g = distanceGainFor(id);
+        try { item.gainNode.gain.setTargetAtTime(g, audioCtx.currentTime, 0.08); } catch {}
+      }
+      if (r.queue.length === 0 && now - r.lastSignalAt > REMOTE_INDICATOR_FADE_MS) {
+        setSpeakingClass(id, false);
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function bind() {
+    btn = document.getElementById("voicePttBtn");
+    if (!btn) return;
+    // Mostra o botão só depois que o usuário entrou no mundo
+    const refreshVisibility = () => {
+      const inWorld = document.body.classList.contains("in-world");
+      btn.hidden = !inWorld;
+    };
+    refreshVisibility();
+    const mo = new MutationObserver(refreshVisibility);
+    mo.observe(document.body, { attributes: true, attributeFilter: ["class"] });
+
+    const press = (e) => {
+      e.preventDefault();
+      try { btn.setPointerCapture?.(e.pointerId); } catch {}
+      startRecording();
+    };
+    const release = (e) => {
+      try { btn.releasePointerCapture?.(e.pointerId); } catch {}
+      stopRecording();
+    };
+    btn.addEventListener("pointerdown", press);
+    btn.addEventListener("pointerup", release);
+    btn.addEventListener("pointercancel", release);
+    btn.addEventListener("pointerleave", (e) => { if (recording) release(e); });
+    btn.addEventListener("contextmenu", (e) => e.preventDefault());
+    // Atalho desktop: barra de espaço (segurar)
+    document.addEventListener("keydown", (e) => {
+      if (e.repeat) return;
+      if (e.target?.matches?.("input, textarea")) return;
+      if (e.code === "KeyV") { e.preventDefault(); startRecording(); }
+    });
+    document.addEventListener("keyup", (e) => {
+      if (e.code === "KeyV") { e.preventDefault(); stopRecording(); }
+    });
+    requestAnimationFrame(tick);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+
+  window.__voice = {
+    setChannel(c) { chan = c; },
+    onRemoteStart(id) { markRemoteSpeaking(id); },
+    onRemoteEnd(id) {
+      const r = remoteSpeakers.get(id);
+      if (r) r.lastSignalAt = 0;
+      // Se nada estiver tocando, esconde já
+      if (!r || r.queue.length === 0) setSpeakingClass(id, false);
+    },
+    onRemoteBlob,
+  };
 })();
