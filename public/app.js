@@ -4037,12 +4037,21 @@ function updateRenderDistanceCulling() {
   const carsRoot = scene.getObjectByName("CarsRoot");
   if (carsRoot) _lodCullChildren(carsRoot);
 
-  // Malhas do mapa (envGroup) — mantém o chão base sempre visível
+  // Malhas do mapa (envGroup) — usa o centro do bounding sphere (em world)
+  // para não esconder uma malha enorme só porque o pivô dela está longe.
+  envGroup.updateMatrixWorld(true);
   envGroup.traverse((node) => {
-    if (!node.isMesh) return;
+    if (!node.isMesh || !node.geometry) return;
     if (node === envBaseFloor) { node.visible = true; return; }
-    node.getWorldPosition(_lodTmp);
-    node.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+    if (!node.geometry.boundingSphere) node.geometry.computeBoundingSphere();
+    const bs = node.geometry.boundingSphere;
+    if (!bs) { node.visible = true; return; }
+    _lodTmp.copy(bs.center).applyMatrix4(node.matrixWorld);
+    // raio escalado aproximado (assume escala ~uniforme)
+    const s = node.matrixWorld.getMaxScaleOnAxis ? node.matrixWorld.getMaxScaleOnAxis() : 1;
+    const r = bs.radius * s;
+    const d = _lodTmp.distanceTo(_lodRef) - r;
+    node.visible = d < RENDER_DISTANCE;
   });
 }
 
