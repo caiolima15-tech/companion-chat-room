@@ -540,23 +540,11 @@ function showRecoveryOverlay() {
   });
 }
 
-if (isRecoveryUrl) {
-  // Aguarda o Supabase processar o token do hash e abrir sessão
-  const waitForRecoverySession = async () => {
-    for (let i = 0; i < 30; i++) {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) break;
-      await new Promise(r => setTimeout(r, 200));
-    }
-    showRecoveryOverlay();
-  };
-  waitForRecoverySession();
-}
+if (window.__isRecoveringPassword) beginRecoveryMode();
 
 supabase.auth.onAuthStateChange(async (event) => {
   if (event === "PASSWORD_RECOVERY") {
-    window.__isRecoveringPassword = true;
-    showRecoveryOverlay();
+    beginRecoveryMode();
   }
 });
 function setAuthBusy(isBusy) {
