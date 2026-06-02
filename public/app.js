@@ -3705,7 +3705,9 @@ function applyHeldMovement(delta) {
     entity.group.position.z = cand.z;
   }
   entity.group.rotation.y = Math.atan2(dir.x, dir.z);
-  entity.__moveDir = { x: dir.x, z: dir.z };
+  // Só auto-rotaciona a câmera para frente/laterais; ré (S) não vira a câmera
+  // (evita flip de 180° quando o jogador anda de costas).
+  entity.__moveDir = (iy >= -0.1) ? { x: dir.x, z: dir.z } : null;
   if (entity.__jumpVy == null) {
     const gy = groundHeightAt(entity.group.position, entity.group.position.y);
     entity.group.position.y += (gy - entity.group.position.y) * Math.min(1, dt * 12);
@@ -3996,7 +3998,7 @@ function animate() {
           let d = wantYaw - curYaw;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const k = Math.min(1, delta * 3.5);
+          const k = Math.min(1, delta * 1.5);
           const newYaw = curYaw + d * k;
           offset.x = Math.sin(newYaw) * r;
           offset.z = Math.cos(newYaw) * r;
