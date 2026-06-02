@@ -8570,11 +8570,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       applyWheelTransforms(c, draft.wheel_offsets);
     };
     wrap.querySelectorAll("[data-tk]").forEach(inp => {
-      inp.addEventListener("input", () => {
+      const handler = () => {
         const key = inp.dataset.tk;
-        const val = parseFloat(inp.value);
+        const isSelect = inp.tagName === "SELECT";
+        const rawVal = isSelect ? inp.value : inp.value;
+        const val = isSelect ? rawVal : parseFloat(rawVal);
         const lbl = wrap.querySelector(`[data-v="${key}"]`);
-        if (lbl) lbl.textContent = val.toFixed(2);
+        if (lbl && !isSelect) lbl.textContent = Number(val).toFixed(2);
         if (key === "_rot_deg") draft.rotation_y = val * Math.PI / 180;
         else if (key === "_trackF") {
           const h = val/2;
@@ -8596,8 +8598,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           }
         } else if (key.startsWith("wheel_offsets.")) {
           const parts = key.split(".");
-          if (parts.length === 2 && parts[1] === "scale") {
-            draft.wheel_offsets.scale = val;
+          if (parts.length === 2) {
+            // wheel_offsets.scale, wheel_offsets.rotY, wheel_offsets.mirror
+            draft.wheel_offsets[parts[1]] = val;
           } else {
             const [, k, axis] = parts;
             if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
