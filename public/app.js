@@ -2332,6 +2332,7 @@ async function switchRoom(newMapId) {
     if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
     if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
     if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
+    if (voiceChannel) { await supabase.removeChannel(voiceChannel); voiceChannel = null; window.__voice?.setChannel?.(null); }
 
     // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
     for (const [id, entity] of Array.from(playerEntities)) {
