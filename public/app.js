@@ -3980,6 +3980,22 @@ function animate() {
       const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
       const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
       controls.target.lerp(desired, delta * 4.0);
+      // Auto-orbit: enquanto se move, gira a câmera para ficar atrás do personagem.
+      const mv = entity.__moveDir;
+      if (mv && !window.__camUserDragging) {
+        const r = Math.hypot(offset.x, offset.z);
+        if (r > 0.001) {
+          const curYaw = Math.atan2(offset.x, offset.z);
+          const wantYaw = Math.atan2(-mv.x, -mv.z);
+          let d = wantYaw - curYaw;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          const k = Math.min(1, delta * 3.5);
+          const newYaw = curYaw + d * k;
+          offset.x = Math.sin(newYaw) * r;
+          offset.z = Math.cos(newYaw) * r;
+        }
+      }
       camera.position.copy(controls.target).add(offset);
     }
   }
