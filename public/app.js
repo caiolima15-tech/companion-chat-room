@@ -2388,6 +2388,30 @@ function notifyLeaveAndUntrack() {
   } catch {}
   try { presenceChannel?.untrack(); } catch {}
   try { lobbyChannel?.untrack(); } catch {}
+  // Se estiver dirigindo um carro, persiste a posição atual antes de sair
+  // (assim o carro fica estacionado onde parou pra todo mundo).
+  try {
+    const dc = window.__drivingCar;
+    if (dc && dc.row && dc.group) {
+      const payload = JSON.stringify({
+        x: dc.group.position.x, y: dc.group.position.y, z: dc.group.position.z,
+        rotation_y: dc.state.yaw, driver_user_id: null, driver_since: null,
+      });
+      const url = `${window.__SUPABASE_REST_URL || ""}/map_cars?id=eq.${dc.row.id}`;
+      // sendBeacon não suporta PATCH; usa fetch keepalive como fallback confiável.
+      fetch(url, {
+        method: "PATCH",
+        keepalive: true,
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": window.__SUPABASE_ANON_KEY || "",
+          "Authorization": `Bearer ${window.__SUPABASE_ACCESS_TOKEN || window.__SUPABASE_ANON_KEY || ""}`,
+          "Prefer": "return=minimal",
+        },
+        body: payload,
+      }).catch(() => {});
+    }
+  } catch {}
 }
 window.addEventListener("pagehide", notifyLeaveAndUntrack);
 window.addEventListener("beforeunload", notifyLeaveAndUntrack);
