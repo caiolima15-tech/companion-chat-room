@@ -2258,6 +2258,19 @@ body.driving-on #interactionPrompt { display:none !important; }
 #carsAdminPanel .car-row .car-name { flex:1; font-weight:600; }
 #carsAdminPanel .car-row button { background:#2a3040; color:#fff; border:1px solid #3a4050; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:11px; }
 #carsAdminPanel .car-row button.danger { background:#5a1f1f; }
+#carsAdminPanel {
+  min-height: 360px;
+}
+#carsAdminPanel .panel-body {
+  height: 100%;
+  max-height: none;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto;
+  scrollbar-color: #5d86a6 rgba(255,255,255,0.12);
+}
+#carsAdminPanel .panel-body::-webkit-scrollbar { width: 12px; }
+#carsAdminPanel .panel-body::-webkit-scrollbar-track { background: rgba(255,255,255,0.12); border-radius: 999px; }
+#carsAdminPanel .panel-body::-webkit-scrollbar-thumb { background: #5d86a6; border-radius: 999px; border: 2px solid rgba(10,10,20,.94); }
 #carsAdminPanel .ct-row { display:flex; flex-direction:column; gap:3px; }
 #carsAdminPanel .ct-row label { font-size:11px; opacity:0.8; display:flex; justify-content:space-between; }
 #carsAdminPanel .ct-row input[type=range] { width:100%; }
