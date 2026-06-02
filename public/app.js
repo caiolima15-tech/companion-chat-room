@@ -7850,8 +7850,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!meshCount) return null;
     const box = new THREE.Box3().setFromObject(scene);
     const size = box.getSize(new THREE.Vector3());
-    if (Math.max(size.x, size.z) > 1.2) {
-      console.warn("[cars] GLB da roda parece conter o carro/várias rodas — usando rodas procedurais.");
+    // Só rejeita se for claramente o carro inteiro (várias rodas + tamanho de chassi).
+    if (Math.max(size.x, size.z) > 2.5) {
+      console.warn("[cars] GLB da roda parece conter o carro inteiro — usando rodas procedurais.", { size });
       return null;
     }
     const clone = scene.clone(true);
