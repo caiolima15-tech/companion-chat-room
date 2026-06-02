@@ -7908,6 +7908,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       } catch (e) { console.warn("[cars] wheel load fail", e); }
     }
     const wheels = {};
+    const rotY = ((wheelOffsets.rotY ?? 0) * Math.PI) / 180;
+    const mirror = wheelOffsets.mirror || "xz"; // "xz" | "x" | "z" | "none"
     for (const k of ["fl","fr","rl","rr"]) {
       const off = wheelOffsets[k] || DEFAULT_WHEEL_OFFSETS[k];
       const node = new THREE.Group();
@@ -7918,13 +7920,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       let visual;
       if (wheelTemplate) {
         visual = wheelTemplate.clone(true);
-        const sx = (k === "fr" || k === "rr") ? -1 : 1;
-        visual.scale.set(sx, 1, sx);
+        const isRight = (k === "fr" || k === "rr");
+        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        visual.scale.set(sx, 1, sz);
+        visual.rotation.y = rotY;
       } else {
         visual = makeWheelFallback(radius);
       }
       spinPivot.add(visual);
       node.userData.spin = spinPivot;
+      node.userData.visual = visual;
       group.add(node);
       wheels[k] = node;
     }
@@ -7933,10 +7939,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function applyWheelTransforms(c, wo) {
     const scl = wo.scale ?? 1;
+    const rotY = ((wo.rotY ?? 0) * Math.PI) / 180;
+    const mirror = wo.mirror || "xz";
     for (const k of ["fl","fr","rl","rr"]) {
       const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
       c.wheels[k].position.set(off.x, off.y, off.z);
       c.wheels[k].userData.spin.scale.setScalar(scl);
+      const vis = c.wheels[k].userData.visual;
+      if (vis) {
+        const isRight = (k === "fr" || k === "rr");
+        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        vis.scale.set(sx, 1, sz);
+        vis.rotation.y = rotY;
+      }
     }
   }
 
@@ -8524,6 +8540,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ${slider("Bitola traseira (X)", "_trackR", 0.5, 3, 0.01, trackR)}
         ${slider("Distância eixos (Z)", "_wheelbase", 0.8, 5, 0.01, wheelbase)}
         ${slider("Altura eixos (Y)", "_axleY", -1, 1, 0.01, axleY)}
+        ${slider("Rotação Y° rodas (GLB)", "wheel_offsets.rotY", -180, 180, 1, wo.rotY ?? 0)}
+        <div class="ct-row"><label>Espelhar L/R</label>
+          <select data-tk="wheel_offsets.mirror" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:4px;font:12px system-ui;">
+            <option value="xz" ${(wo.mirror||"xz")==="xz"?"selected":""}>XZ (padrão)</option>
+            <option value="x" ${wo.mirror==="x"?"selected":""}>Só X</option>
+            <option value="z" ${wo.mirror==="z"?"selected":""}>Só Z</option>
+            <option value="none" ${wo.mirror==="none"?"selected":""}>Nenhum</option>
+          </select>
+        </div>
       </div>
       <details><summary style="cursor:pointer;font-size:11px;opacity:0.8;margin-top:6px;">Ajuste fino por roda</summary>
         ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
@@ -8545,11 +8570,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       applyWheelTransforms(c, draft.wheel_offsets);
     };
     wrap.querySelectorAll("[data-tk]").forEach(inp => {
-      inp.addEventListener("input", () => {
+      const handler = () => {
         const key = inp.dataset.tk;
-        const val = parseFloat(inp.value);
+        const isSelect = inp.tagName === "SELECT";
+        const rawVal = isSelect ? inp.value : inp.value;
+        const val = isSelect ? rawVal : parseFloat(rawVal);
         const lbl = wrap.querySelector(`[data-v="${key}"]`);
-        if (lbl) lbl.textContent = val.toFixed(2);
+        if (lbl && !isSelect) lbl.textContent = Number(val).toFixed(2);
         if (key === "_rot_deg") draft.rotation_y = val * Math.PI / 180;
         else if (key === "_trackF") {
           const h = val/2;
@@ -8571,8 +8598,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           }
         } else if (key.startsWith("wheel_offsets.")) {
           const parts = key.split(".");
-          if (parts.length === 2 && parts[1] === "scale") {
-            draft.wheel_offsets.scale = val;
+          if (parts.length === 2) {
+            // wheel_offsets.scale, wheel_offsets.rotY, wheel_offsets.mirror
+            draft.wheel_offsets[parts[1]] = val;
           } else {
             const [, k, axis] = parts;
             if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
@@ -8580,7 +8608,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           }
         } else draft[key] = val;
         applyDraft();
-      });
+      };
+      inp.addEventListener("input", handler);
+      inp.addEventListener("change", handler);
     });
     wrap.querySelector("#ctClose")?.addEventListener("click", () => { wrap.hidden = true; });
     wrap.querySelector("#ctSave")?.addEventListener("click", async () => {
