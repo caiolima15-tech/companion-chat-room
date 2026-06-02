@@ -2086,11 +2086,15 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 .topbar .status { min-width: 0; }
 .logout-btn { font-weight: 800; }
 
-/* Chat panel: preto sólido com leve transparência (NÃO o roxo de antes) */
+/* Chat panel: bem transparente, com leve blur (igual ao desktop) */
 .chat-panel,
-.chat-panel.is-collapsed { background: rgba(0, 0, 0, 0.82) !important; }
+.chat-panel.is-collapsed {
+  background: rgba(10, 10, 18, 0.42) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+}
 .chat-log { background: transparent !important; }
-.chat-form { background: rgba(0, 0, 0, 0.5) !important; border-top: 1px solid rgba(255,255,255,0.06) !important; }
+.chat-form { background: rgba(0, 0, 0, 0.35) !important; border-top: 1px solid rgba(255,255,255,0.06) !important; }
 
 /* Bolhas: usuário (eu) lilás, outros pretos */
 .chat-bubble,
@@ -2108,7 +2112,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   font-weight: 600;
 }
 
-/* Mobile: chat-text segue o mesmo padrão */
+/* Mobile: chat-text segue o mesmo padrão, e barra inferior fica transparente */
 @media (max-width: 600px) {
   .chat-text { background: #1a1a1a !important; color: #fff !important; }
   .chat-item.is-self .chat-text { background: #a78bfa !important; color: #1a1033 !important; }
@@ -2116,21 +2120,13 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   /* Esconde o chevron "▾" flutuante quando o chat está minimizado */
   body:not(.mobile-show-chat) .chat-panel::before { display: none !important; }
 
-  /* Preenche o vão abaixo do mobile-bar com a cor pedida */
+  /* Sem faixa escura embaixo da mobile-bar — fica totalmente transparente */
   .mobile-bar {
-    background: #231e24 !important;
+    background: transparent !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
-  .mobile-bar::after {
-    content: "";
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    height: calc(34px + env(safe-area-inset-bottom));
-    background: #231e24;
-    z-index: -1;
-    pointer-events: none;
-  }
+  .mobile-bar::after { display: none !important; content: none !important; }
 }
 
 /* Force hidden attribute to always win, even over inline display:flex and .is-admin rules */
