@@ -4017,10 +4017,10 @@ function exportCharacter() {
 // Carrega/renderiza apenas o que está perto do jogador para aliviar o desempenho.
 const RENDER_DISTANCE_KEY = "neon-render-distance";
 const RENDER_DISTANCE_VERSION_KEY = "neon-render-distance-version";
-const RENDER_DISTANCE_CONFIG_VERSION = "2";
-const RENDER_DISTANCE_DEFAULT = 160;
+const RENDER_DISTANCE_CONFIG_VERSION = "3";
+const RENDER_DISTANCE_DEFAULT = 260;
 const RENDER_DISTANCE_MIN = 40;
-const RENDER_DISTANCE_MAX = 600;
+const RENDER_DISTANCE_MAX = 800;
 function readInitialRenderDistance() {
   let stored = NaN;
   let shouldUpgrade = true;
