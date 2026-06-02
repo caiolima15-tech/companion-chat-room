@@ -431,24 +431,80 @@ if (authForgot) {
   });
 }
 
-// Detecta evento de recuperação de senha (link do email)
+// Detecta link de recuperação de senha (hash #recovery ou type=recovery)
+const isRecoveryUrl = /(^|[#&?])(type=recovery|recovery)(&|$)/.test(window.location.hash || "");
+window.__isRecoveringPassword = isRecoveryUrl;
+
+function showRecoveryOverlay() {
+  if (document.getElementById("recoveryOverlay")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "recoveryOverlay";
+  wrap.className = "auth-overlay";
+  wrap.style.display = "grid";
+  wrap.style.zIndex = "9999";
+  wrap.innerHTML = `
+    <form class="auth-card" id="recoveryForm">
+      <h2>Definir nova senha</h2>
+      <p class="auth-hint">Digite sua nova senha para concluir a recuperação.</p>
+      <input id="recoveryPass1" type="password" placeholder="Nova senha (min. 6)" minlength="6" required autocomplete="new-password">
+      <input id="recoveryPass2" type="password" placeholder="Confirmar nova senha" minlength="6" required autocomplete="new-password">
+      <div id="recoveryError" class="auth-error" hidden></div>
+      <button type="submit" id="recoverySubmit">Salvar nova senha</button>
+    </form>`;
+  document.body.appendChild(wrap);
+  try { document.body.classList.remove("in-world"); } catch {}
+  try { authOverlay.hidden = true; authOverlay.style.display = "none"; } catch {}
+
+  const form = wrap.querySelector("#recoveryForm");
+  const p1 = wrap.querySelector("#recoveryPass1");
+  const p2 = wrap.querySelector("#recoveryPass2");
+  const err = wrap.querySelector("#recoveryError");
+  const btn = wrap.querySelector("#recoverySubmit");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    err.hidden = true;
+    const a = p1.value.trim(), b = p2.value.trim();
+    if (a.length < 6) { err.textContent = "Senha precisa ter pelo menos 6 caracteres."; err.hidden = false; return; }
+    if (a !== b) { err.textContent = "As senhas não coincidem."; err.hidden = false; return; }
+    btn.disabled = true;
+    try {
+      const { error } = await supabase.auth.updateUser({ password: a });
+      if (error) throw error;
+      window.__isRecoveringPassword = false;
+      await supabase.auth.signOut();
+      try { history.replaceState(null, "", window.location.pathname); } catch {}
+      wrap.remove();
+      showAuth("signin");
+      authError.hidden = false;
+      authError.style.color = "#7CFCAB";
+      authError.textContent = "Senha atualizada! Entre com sua nova senha.";
+    } catch (ex) {
+      console.error("[auth] update password", ex);
+      err.textContent = ex?.message || "Não foi possível atualizar a senha.";
+      err.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+if (isRecoveryUrl) {
+  // Aguarda o Supabase processar o token do hash e abrir sessão
+  const waitForRecoverySession = async () => {
+    for (let i = 0; i < 30; i++) {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) break;
+      await new Promise(r => setTimeout(r, 200));
+    }
+    showRecoveryOverlay();
+  };
+  waitForRecoverySession();
+}
+
 supabase.auth.onAuthStateChange(async (event) => {
-  if (event !== "PASSWORD_RECOVERY") return;
-  let newPass = "";
-  while (true) {
-    newPass = (window.prompt("Digite sua nova senha (mínimo 6 caracteres):") || "").trim();
-    if (newPass === "") return;
-    if (newPass.length >= 6) break;
-    window.alert("A senha precisa ter pelo menos 6 caracteres.");
-  }
-  try {
-    const { error } = await supabase.auth.updateUser({ password: newPass });
-    if (error) throw error;
-    window.alert("Senha atualizada com sucesso! Você já pode entrar.");
-    try { history.replaceState(null, "", window.location.pathname); } catch {}
-  } catch (err) {
-    console.error("[auth] update password", err);
-    window.alert("Não foi possível atualizar a senha: " + (err?.message || "tente novamente."));
+  if (event === "PASSWORD_RECOVERY") {
+    window.__isRecoveringPassword = true;
+    showRecoveryOverlay();
   }
 });
 function setAuthBusy(isBusy) {
@@ -539,6 +595,7 @@ logoutButton.addEventListener("click", async () => {
 // TEMP: login desativado para teste. Entra direto como convidado local.
 if (!LOGIN_DISABLED_FOR_TEST) {
   supabase.auth.onAuthStateChange((_event, session) => {
+    if (window.__isRecoveringPassword) return;
     if (session?.user) {
       hideAuth();
       bootstrapSession(session.user);
@@ -548,6 +605,7 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 
 (async () => {
   hideAuth();
+  if (window.__isRecoveringPassword) { showRecoveryOverlay(); return; }
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
