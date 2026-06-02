@@ -8341,10 +8341,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // a aba sem sair pelo botão, o carro fica onde parou pra todos.)
     if (!c.__lastDbSave || now - c.__lastDbSave > 3000) {
       c.__lastDbSave = now;
+      const driverSince = new Date().toISOString();
+      c.row.driver_since = driverSince;
+      c.row.driver_user_id = myId;
       try {
         supabase.from("map_cars").update({
           x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
           rotation_y: c.state.yaw,
+          driver_user_id: myId, driver_since: driverSince,
         }).eq("id", c.row.id).then(() => {});
       } catch {}
     }
@@ -8382,7 +8386,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!prompt) return;
     if (c) {
       promptCarId = c.row.id;
-      promptCarOccupied = !!c.row.driver_user_id;
+      promptCarOccupied = isCarOccupied(c);
+      if (c.row.driver_user_id && !promptCarOccupied) clearStaleDriver(c).then(() => updatePrompt()).catch(() => {});
       const txt = prompt.querySelector(".car-prompt-text");
       const enterBtn = document.getElementById("carEnterBtn");
       const rideBtn = document.getElementById("carRideBtn");
