@@ -272,6 +272,33 @@ export type Database = {
         }
         Relationships: []
       }
+      friend_requests: {
+        Row: {
+          created_at: string
+          from_user: string
+          id: string
+          status: string
+          to_user: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          from_user: string
+          id?: string
+          status?: string
+          to_user: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          from_user?: string
+          id?: string
+          status?: string
+          to_user?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       map_asset_interactions: {
         Row: {
           animation_key: string
