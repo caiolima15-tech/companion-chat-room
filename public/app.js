@@ -7993,7 +7993,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const { data, error } = await supabase.from("map_cars").select("*").eq("map_id", mapId);
     if (error) { console.warn("[cars] load", error); return; }
     for (const row of data || []) {
-      try { await upsertCarFromRow(row); } catch (e) { console.warn("[cars] spawn", e); }
+      try {
+        const c = await upsertCarFromRow(row);
+        await clearStaleDriver(c);
+      } catch (e) { console.warn("[cars] spawn", e); }
     }
     renderAdminList();
   }
