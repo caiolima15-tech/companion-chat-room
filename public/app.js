@@ -8737,10 +8737,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), x: h };
         } else if (key === "_wheelbase") {
           const h = val/2;
-          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), z: -h };
-          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), z: -h };
-          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), z: h };
-          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), z: h };
+          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), z: h };
+          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), z: h };
+          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), z: -h };
+          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), z: -h };
         } else if (key === "_axleY") {
           for (const k of ["fl","fr","rl","rr"]) {
             draft.wheel_offsets[k] = { ...(draft.wheel_offsets[k]||{}), y: val };
