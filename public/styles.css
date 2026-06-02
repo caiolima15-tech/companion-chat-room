@@ -2133,7 +2133,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 .football-hud .fb-exit { pointer-events:auto; }
 .fb-left { position:absolute; left:18px; bottom:140px; display:flex; flex-direction:column;
   align-items:center; gap:14px; }
-.joy-hud { position:absolute; left:18px; bottom:24px; z-index:35; pointer-events:none; }
+.joy-hud { position:absolute; left:18px; bottom:calc(140px + env(safe-area-inset-bottom)); z-index:35; pointer-events:none; }
 .joy-hud .fb-joy { pointer-events:auto; }
 .fb-joy { position:relative; width:124px; height:124px; border-radius:50%;
   background:linear-gradient(135deg, rgba(255,255,255,0.18), rgba(255,255,255,0.05));
