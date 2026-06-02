@@ -8506,13 +8506,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (driving && driving.row.id === c.row.id) continue;
       const t = c.__netTarget;
       if (t) {
-        c.group.position.x += (t.x - c.group.position.x) * Math.min(1, delta * 10);
-        c.group.position.y += (t.y - c.group.position.y) * Math.min(1, delta * 8);
-        c.group.position.z += (t.z - c.group.position.z) * Math.min(1, delta * 10);
+        // Lerp mais firme quando estamos de carona neste carro (reduz travamento percebido)
+        const ridingThis = riding && riding.row.id === c.row.id;
+        const kxz = Math.min(1, delta * (ridingThis ? 18 : 10));
+        const ky  = Math.min(1, delta * (ridingThis ? 14 : 8));
+        const kr  = Math.min(1, delta * (ridingThis ? 18 : 10));
+        c.group.position.x += (t.x - c.group.position.x) * kxz;
+        c.group.position.y += (t.y - c.group.position.y) * ky;
+        c.group.position.z += (t.z - c.group.position.z) * kxz;
         let dy = t.yaw - c.state.yaw;
         while (dy > Math.PI) dy -= Math.PI*2;
         while (dy < -Math.PI) dy += Math.PI*2;
-        c.state.yaw += dy * Math.min(1, delta * 10);
+        c.state.yaw += dy * kr;
         c.group.rotation.y = c.state.yaw;
         // Roda visual com base na velocidade transmitida
         const wr = c.row.wheel_radius || 0.35;
