@@ -321,8 +321,15 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 2.5;
 controls.maxDistance = 60;
+controls.enablePan = false; // shift+drag continua girando a câmera (sem panorâmica)
 const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
+
+controls.addEventListener("start", () => { window.__camUserDragging = true; });
+controls.addEventListener("end", () => {
+  window.__camUserDragging = false;
+  window.__camUserHoldUntil = performance.now() + 600;
+});
 
 const stage = new THREE.Group();
 scene.add(stage);
@@ -3672,6 +3679,7 @@ function applyHeldMovement(delta) {
     entity.running = false;
     if (me) me.running = false;
     entity.target.copy(entity.group.position);
+    entity.__moveDir = null;
     setPlayerAction(entity, "idle");
     return;
   }
@@ -3697,6 +3705,7 @@ function applyHeldMovement(delta) {
     entity.group.position.z = cand.z;
   }
   entity.group.rotation.y = Math.atan2(dir.x, dir.z);
+  entity.__moveDir = { x: dir.x, z: dir.z };
   if (entity.__jumpVy == null) {
     const gy = groundHeightAt(entity.group.position, entity.group.position.y);
     entity.group.position.y += (gy - entity.group.position.y) * Math.min(1, dt * 12);
@@ -3977,6 +3986,22 @@ function animate() {
       const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
       const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
       controls.target.lerp(desired, delta * 4.0);
+      // Auto-orbit: enquanto se move, gira a câmera para ficar atrás do personagem.
+      const mv = entity.__moveDir;
+      if (mv && !window.__camUserDragging && performance.now() > (window.__camUserHoldUntil || 0)) {
+        const r = Math.hypot(offset.x, offset.z);
+        if (r > 0.001) {
+          const curYaw = Math.atan2(offset.x, offset.z);
+          const wantYaw = Math.atan2(-mv.x, -mv.z);
+          let d = wantYaw - curYaw;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          const k = Math.min(1, delta * 3.5);
+          const newYaw = curYaw + d * k;
+          offset.x = Math.sin(newYaw) * r;
+          offset.z = Math.cos(newYaw) * r;
+        }
+      }
       camera.position.copy(controls.target).add(offset);
     }
   }
