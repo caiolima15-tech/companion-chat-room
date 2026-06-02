@@ -8277,6 +8277,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       } catch {}
       try { trackMe?.(false); } catch {}
     }
+    // Persiste posição no DB a cada ~3s (assim, se o motorista cair / fechar
+    // a aba sem sair pelo botão, o carro fica onde parou pra todos.)
+    if (!c.__lastDbSave || now - c.__lastDbSave > 3000) {
+      c.__lastDbSave = now;
+      try {
+        supabase.from("map_cars").update({
+          x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
+          rotation_y: c.state.yaw,
+        }).eq("id", c.row.id).then(() => {});
+      } catch {}
+    }
   }
 
   // Lerp visual dos carros que NÃO estamos dirigindo (usa último broadcast OU posição do DB)
