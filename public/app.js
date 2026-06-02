@@ -7993,7 +7993,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const { data, error } = await supabase.from("map_cars").select("*").eq("map_id", mapId);
     if (error) { console.warn("[cars] load", error); return; }
     for (const row of data || []) {
-      try { await upsertCarFromRow(row); } catch (e) { console.warn("[cars] spawn", e); }
+      try {
+        const c = await upsertCarFromRow(row);
+        await clearStaleDriver(c);
+      } catch (e) { console.warn("[cars] spawn", e); }
     }
     renderAdminList();
   }
@@ -8036,6 +8039,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = myId ? playerEntities.get(myId) : null;
     return ent?.group?.position || null;
   }
+
+  const DRIVER_HEARTBEAT_MS = 12000;
+  function isDriverFresh(row) {
+    if (!row?.driver_user_id) return false;
+    const t = Date.parse(row.driver_since || "");
+    return Number.isFinite(t) && (Date.now() - t) < DRIVER_HEARTBEAT_MS;
+  }
+  function isCarOccupied(c) {
+    return !!(c?.row?.driver_user_id && isDriverFresh(c.row));
+  }
+  async function clearStaleDriver(c) {
+    if (!c?.row?.driver_user_id || isDriverFresh(c.row)) return false;
+    c.row.driver_user_id = null;
+    c.row.driver_since = null;
+    try {
+      await supabase.from("map_cars").update({ driver_user_id: null, driver_since: null }).eq("id", c.row.id);
+    } catch {}
+    return true;
+  }
+
   // Retorna o carro mais próximo (livre OU ocupado). Sinaliza se está ocupado.
   function nearestCarAny(maxDist = 3.2) {
     const p = myPos();
@@ -8050,6 +8073,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function enterCar(c) {
     if (driving || riding || !c) return;
+    await clearStaleDriver(c);
     const { data, error } = await supabase
       .from("map_cars")
       .update({ driver_user_id: myId, driver_since: new Date().toISOString() })
@@ -8120,6 +8144,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Esse carro está vazio — entre como motorista (F).");
       return;
     }
+    if (!isCarOccupied(c)) {
+      clearStaleDriver(c);
+      addSystemLine?.("Esse carro está vazio — entre como motorista (F).");
+      return;
+    }
     riding = c;
     window.__ridingCar = c;
     document.body.classList.add("driving-on");
@@ -8163,7 +8192,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!riding) return;
     const c = riding;
     // Sai automaticamente se o motorista saiu (carro virou livre)
-    if (!c.row.driver_user_id) { exitPassenger(); return; }
+    if (!isCarOccupied(c)) { clearStaleDriver(c); exitPassenger(); return; }
     const ent = playerEntities.get(myId);
     if (!ent) return;
     // Posiciona o player no banco do carona (lado direito atrás)
@@ -8315,10 +8344,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // a aba sem sair pelo botão, o carro fica onde parou pra todos.)
     if (!c.__lastDbSave || now - c.__lastDbSave > 3000) {
       c.__lastDbSave = now;
+      const driverSince = new Date().toISOString();
+      c.row.driver_since = driverSince;
+      c.row.driver_user_id = myId;
       try {
         supabase.from("map_cars").update({
           x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
           rotation_y: c.state.yaw,
+          driver_user_id: myId, driver_since: driverSince,
         }).eq("id", c.row.id).then(() => {});
       } catch {}
     }
@@ -8356,7 +8389,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!prompt) return;
     if (c) {
       promptCarId = c.row.id;
-      promptCarOccupied = !!c.row.driver_user_id;
+      promptCarOccupied = isCarOccupied(c);
+      if (c.row.driver_user_id && !promptCarOccupied) clearStaleDriver(c).then(() => updatePrompt()).catch(() => {});
       const txt = prompt.querySelector(".car-prompt-text");
       const enterBtn = document.getElementById("carEnterBtn");
       const rideBtn = document.getElementById("carRideBtn");
