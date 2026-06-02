@@ -8750,9 +8750,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       <details><summary style="cursor:pointer;font-size:11px;opacity:0.8;margin-top:6px;">Ajuste fino por roda</summary>
         ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
       </details>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <button id="ctSave" style="flex:1;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar</button>
-        ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no modelo</button>` : ""}
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button id="ctSave" style="flex:1 1 100%;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">💾 Salvar neste carro (permanente)</button>
+        ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar como padrão do modelo</button>` : ""}
         <button id="ctClose" style="background:#333;color:#fff;border:none;border-radius:4px;padding:8px 10px;cursor:pointer;">Fechar</button>
       </div>`;
     const draft = JSON.parse(JSON.stringify(r));
