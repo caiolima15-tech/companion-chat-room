@@ -2184,3 +2184,83 @@ body.world-ready #mapAdminPanel:not([hidden]) {
 #speedAdminPanel .sp-row { display:flex; flex-direction:column; gap:3px; }
 #speedAdminPanel .sp-row span { opacity:0.7; font-size:11px; }
 #speedAdminPanel input[type=range] { width:100%; }
+
+/* ============ Car prompt + driving HUD ============ */
+.car-prompt {
+  position:absolute; left:50%; bottom:140px; transform:translateX(-50%);
+  display:flex; gap:10px; align-items:center;
+  padding:10px 14px; border-radius:14px;
+  background:rgba(10,12,20,0.55); backdrop-filter:blur(14px) saturate(1.4);
+  -webkit-backdrop-filter:blur(14px) saturate(1.4);
+  border:1px solid rgba(255,255,255,0.18); color:#fff;
+  font:600 13px/1 system-ui; z-index:40;
+  box-shadow:0 8px 28px rgba(0,0,0,0.4);
+  animation:carPromptIn 220ms ease-out;
+}
+@keyframes carPromptIn { from{opacity:0;transform:translateX(-50%) translateY(8px);} to{opacity:1;transform:translateX(-50%) translateY(0);} }
+.car-prompt-key {
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:8px;
+  background:rgba(255,255,255,0.18); border:1px solid rgba(255,255,255,0.25);
+  font-weight:700;
+}
+.car-prompt-text { opacity:0.95; }
+.car-prompt-btn {
+  background:linear-gradient(135deg,#29d3bd,#1ba897); color:#001a17;
+  border:none; border-radius:10px; padding:6px 12px; font-weight:700; cursor:pointer;
+}
+
+.car-hud {
+  position:absolute; inset:0; pointer-events:none; z-index:38;
+}
+.car-hud .car-speed {
+  position:absolute; top:60px; left:50%; transform:translateX(-50%);
+  pointer-events:none;
+  padding:6px 14px; border-radius:14px;
+  background:rgba(10,12,20,0.55); backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,0.18); color:#fff;
+  font:700 18px/1 system-ui;
+}
+.car-hud .car-speed small { font-size:11px; opacity:0.7; font-weight:500; }
+.car-hud .car-exit {
+  position:absolute; top:60px; right:16px; pointer-events:auto;
+  background:rgba(220,60,60,0.32); color:#fff;
+  border:1px solid rgba(255,255,255,0.22); border-radius:12px;
+  padding:8px 14px; font:700 13px/1 system-ui; cursor:pointer;
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+}
+.car-hud .car-exit:disabled { opacity:0.4; cursor:not-allowed; }
+.car-hud .car-pad {
+  position:absolute; right:16px; bottom:24px; pointer-events:auto;
+  display:grid; grid-template-columns:48px 48px 48px; grid-template-rows:48px 48px 48px;
+  gap:6px;
+}
+.car-hud .car-btn {
+  background:rgba(10,12,20,0.55); color:#fff;
+  border:1px solid rgba(255,255,255,0.2); border-radius:14px;
+  font:700 18px/1 system-ui; cursor:pointer; user-select:none;
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  touch-action:none;
+}
+.car-hud .car-btn:active { background:rgba(41,211,189,0.35); }
+.car-hud #carBtnL { grid-column:1; grid-row:2; }
+.car-hud #carBtnR { grid-column:3; grid-row:2; }
+.car-hud #carBtnFwd { grid-column:2; grid-row:1; }
+.car-hud #carBtnBack { grid-column:2; grid-row:3; }
+.car-hud #carBtnBrake { grid-column:2; grid-row:2; background:rgba(220,60,60,0.32); }
+
+body.driving-on #joyHud,
+body.driving-on .emote-cluster,
+body.driving-on #interactionPrompt { display:none !important; }
+
+#carsAdminPanel .car-row { display:flex; align-items:center; gap:6px; padding:6px 8px; background:rgba(255,255,255,0.04); border-radius:6px; }
+#carsAdminPanel .car-row .car-name { flex:1; font-weight:600; }
+#carsAdminPanel .car-row button { background:#2a3040; color:#fff; border:1px solid #3a4050; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:11px; }
+#carsAdminPanel .car-row button.danger { background:#5a1f1f; }
+#carsAdminPanel .ct-row { display:flex; flex-direction:column; gap:3px; }
+#carsAdminPanel .ct-row label { font-size:11px; opacity:0.8; display:flex; justify-content:space-between; }
+#carsAdminPanel .ct-row input[type=range] { width:100%; }
+#carsAdminPanel .ct-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
+#carsAdminPanel .ct-section { border-top:1px dashed #2a3040; padding-top:6px; margin-top:4px; }
+#carsAdminPanel .ct-section h5 { margin:0 0 4px; font-size:11px; color:#9aa; text-transform:uppercase; letter-spacing:0.06em; }

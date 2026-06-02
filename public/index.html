@@ -49,6 +49,22 @@
           <div id="joyHud" class="joy-hud" aria-label="Joystick de movimento">
             <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
           </div>
+          <div id="carPrompt" class="car-prompt" hidden>
+            <span class="car-prompt-key">F</span>
+            <span class="car-prompt-text">Entrar no carro</span>
+            <button id="carEnterBtn" type="button" class="car-prompt-btn">Entrar</button>
+          </div>
+          <div id="carHud" class="car-hud" hidden aria-label="Controles do veículo">
+            <div class="car-speed"><span id="carSpeedVal">0</span> <small>km/h</small></div>
+            <button id="carExitBtn" type="button" class="car-exit" title="Sair (apenas com carro parado)">🚪 Sair</button>
+            <div class="car-pad">
+              <button id="carBtnL" type="button" class="car-btn">◀</button>
+              <button id="carBtnFwd" type="button" class="car-btn car-btn-fwd">▲</button>
+              <button id="carBtnBack" type="button" class="car-btn">▼</button>
+              <button id="carBtnR" type="button" class="car-btn">▶</button>
+              <button id="carBtnBrake" type="button" class="car-btn car-btn-brake">⏹</button>
+            </div>
+          </div>
           <div id="footballHud" class="football-hud" hidden aria-label="Controles de futebol">
             <div class="fb-actions">
               <button id="fbExit" type="button" class="fb-exit">Sair ✕</button>
@@ -195,6 +211,40 @@
             </div>
           </div>
 
+          <div id="carsAdminPanel" class="admin-only floating-panel" hidden data-panel-id="cars" style="position:absolute;top:60px;left:540px;background:rgba(10,10,20,.94);color:#eee;padding:0;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:360px;max-height:80vh;backdrop-filter:blur(8px);border:1px solid #333;display:flex;flex-direction:column;">
+            <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:move;background:rgba(255,255,255,0.04);border-bottom:1px solid #222;border-radius:10px 10px 0 0;gap:6px;">
+              <strong>🚗 Carros do mapa</strong>
+              <div style="display:flex;gap:4px;">
+                <button data-panel-min type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">−</button>
+                <button data-panel-close type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">×</button>
+              </div>
+            </div>
+            <div class="panel-body" style="padding:10px 12px;overflow-y:auto;">
+              <div style="display:flex;gap:6px;margin-bottom:8px;">
+                <select id="carCatalogPicker" style="flex:1;padding:6px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;"></select>
+                <button id="carSpawnFromCatalog" type="button" style="background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:6px 10px;cursor:pointer;font-weight:600;">+ No mapa</button>
+              </div>
+              <details style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;">
+                <summary style="cursor:pointer;padding:6px 8px;background:rgba(255,255,255,0.04);font-weight:600;">📚 Cadastrar novo modelo</summary>
+                <div style="padding:8px;display:flex;flex-direction:column;gap:6px;">
+                  <input id="carNewName" type="text" placeholder="Nome (ex: BYD Seal)" maxlength="40" style="padding:6px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;">
+                  <label class="file-picker" style="text-align:center;">
+                    <input id="carNewChassisFile" type="file" accept=".glb,model/gltf-binary">
+                    Chassi .glb
+                  </label>
+                  <label class="file-picker" style="text-align:center;">
+                    <input id="carNewWheelFile" type="file" accept=".glb,model/gltf-binary,.gltf">
+                    Roda .glb (opcional)
+                  </label>
+                  <div id="carNewStatus" style="font-size:11px;color:#9aa;min-height:14px;"></div>
+                  <button id="carNewSave" type="button" style="background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no catálogo</button>
+                </div>
+              </details>
+              <div id="carsAdminList" style="display:flex;flex-direction:column;gap:6px;"></div>
+              <div id="carTunePanel" hidden style="margin-top:10px;border-top:1px solid #333;padding-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
+            </div>
+          </div>
+
           <div id="layersPanel" class="admin-only" hidden style="position:absolute;top:60px;right:12px;background:rgba(10,10,20,.92);color:#eee;padding:12px;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:280px;max-height:75vh;overflow-y:auto;backdrop-filter:blur(8px);border:1px solid #333;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px;">
               <strong>🗂️ Camadas</strong>
@@ -300,6 +350,7 @@
             <button type="button" class="admin-dock-item" id="adminDockAssets"><span class="admin-dock-icon">🧱</span>GLBs no mapa</button>
             <button type="button" class="admin-dock-item" data-dock-target="#freeCamToggleBtn" data-dock-toggle><span class="admin-dock-icon">🎥</span>Câmera Livre</button>
             <button type="button" class="admin-dock-item" data-dock-target="#boundsToggleBtn" data-dock-toggle><span class="admin-dock-icon">📐</span>Limites</button>
+            <button type="button" class="admin-dock-item" id="carsAdminToggle" data-dock-panel="#carsAdminPanel"><span class="admin-dock-icon">🚗</span>Carros</button>
           </aside>
 
           <input id="replaceMapGlbInput" type="file" accept=".glb,model/gltf-binary" hidden>
