@@ -251,9 +251,18 @@ window.__fbPose = kickPose;
 
 // ============ Speed config (admin tunable) ============
 const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
-const SPEED_DEFAULTS = { walkN: 1.4, runN: 3.2, walkFb: 2.3, runFb: 4.4, walkAnim: 1.0, runAnim: 1.0 };
+const SPEED_CFG_VERSION_KEY = "neon-tap-room-speed-cfg-version";
+const SPEED_CFG_VERSION = "2";
+const SPEED_DEFAULTS = { walkN: 1.8, runN: 5.0, walkFb: 2.8, runFb: 5.6, walkAnim: 1.0, runAnim: 1.15 };
 function loadSpeedCfg() {
   try {
+    const ver = localStorage.getItem(SPEED_CFG_VERSION_KEY);
+    if (ver !== SPEED_CFG_VERSION) {
+      // força upgrade dos defaults p/ todos os usuários
+      localStorage.removeItem(SPEED_CFG_KEY);
+      localStorage.setItem(SPEED_CFG_VERSION_KEY, SPEED_CFG_VERSION);
+      return { ...SPEED_DEFAULTS };
+    }
     const raw = localStorage.getItem(SPEED_CFG_KEY);
     if (raw) return { ...SPEED_DEFAULTS, ...JSON.parse(raw) };
   } catch {}
@@ -3811,6 +3820,8 @@ function updatePlayerAnimation(delta) {
       if (entity.mixer) entity.mixer.update(delta);
       continue;
     }
+    const isRemote = entity.player?.id !== myId;
+    const culled = isRemote && entity.group.visible === false;
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
     const distance = Math.hypot(dxArr, dzArr);
@@ -3821,17 +3832,20 @@ function updatePlayerAnimation(delta) {
       const step = Math.min(distance, speed * delta);
       const dir = new THREE.Vector3(dxArr, 0, dzArr).normalize();
       const candidate = before.clone().addScaledVector(dir, step);
-      if (collidesAt(before, candidate)) {
-        // Blocked by wall — cancel target so we stop here
+      // Para jogadores remotos não rodamos collidesAt (raycast caro); confiamos no broadcast.
+      const blocked = isRemote ? false : collidesAt(before, candidate);
+      if (blocked) {
         entity.target.x = before.x;
         entity.target.z = before.z;
         setPlayerAction(entity, "idle");
       } else {
         entity.group.position.x = candidate.x;
         entity.group.position.z = candidate.z;
-        // Follow terrain: stairs, ramps, raised floors
-        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        // Follow terrain: stairs, ramps, raised floors. Pula raycast quando culled.
+        if (!culled) {
+          const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+          entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        }
         const moved = entity.group.position.clone().sub(before);
         if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
           entity.group.rotation.y = Math.atan2(moved.x, moved.z);
@@ -3841,15 +3855,25 @@ function updatePlayerAnimation(delta) {
     } else {
       entity.group.position.x = entity.target.x;
       entity.group.position.z = entity.target.z;
-      // Mantém Y do terreno mesmo parado
-      const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-      entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+      // Mantém Y do terreno mesmo parado (pula se invisível)
+      if (!culled) {
+        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+      }
       entity.running = false;
       if (entity.player?.id === myId && me) me.running = false;
       setPlayerAction(entity, "idle");
     }
-    if (entity.mixer) entity.mixer.update(delta);
-    if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
+    // Mixer também é caro: se culled, atualiza só a cada ~3 frames.
+    if (entity.mixer) {
+      if (culled) {
+        entity._mixerAccum = (entity._mixerAccum || 0) + delta;
+        if (entity._mixerAccum > 0.1) { entity.mixer.update(entity._mixerAccum); entity._mixerAccum = 0; }
+      } else {
+        entity.mixer.update(delta);
+      }
+    }
+    if (entity.loadingFx && !culled) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
 
@@ -4008,10 +4032,10 @@ function exportCharacter() {
 // Carrega/renderiza apenas o que está perto do jogador para aliviar o desempenho.
 const RENDER_DISTANCE_KEY = "neon-render-distance";
 const RENDER_DISTANCE_VERSION_KEY = "neon-render-distance-version";
-const RENDER_DISTANCE_CONFIG_VERSION = "2";
-const RENDER_DISTANCE_DEFAULT = 160;
+const RENDER_DISTANCE_CONFIG_VERSION = "3";
+const RENDER_DISTANCE_DEFAULT = 260;
 const RENDER_DISTANCE_MIN = 40;
-const RENDER_DISTANCE_MAX = 600;
+const RENDER_DISTANCE_MAX = 800;
 function readInitialRenderDistance() {
   let stored = NaN;
   let shouldUpgrade = true;
