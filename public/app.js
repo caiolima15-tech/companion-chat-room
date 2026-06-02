@@ -4093,6 +4093,8 @@ function animate() {
     controls.update();
     updateCameraOcclusion();
   }
+  _lodAccum += delta;
+  if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
   renderer.render(scene, camera);
   updateNameplates();
 }
