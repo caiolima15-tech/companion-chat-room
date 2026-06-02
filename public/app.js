@@ -7811,6 +7811,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         if (r.key === "walkAnim" || r.key === "runAnim") window.__applyAnimSpeeds?.();
       });
     }
+    // Slider: distância de renderização
+    const rd = document.getElementById("spRenderDist");
+    const rdv = document.getElementById("spRenderDistVal");
+    if (rd) {
+      rd.value = String(window.RENDER_DISTANCE || parseFloat(localStorage.getItem("neon-render-distance") || "80"));
+      if (rdv) rdv.textContent = String(Math.round(+rd.value));
+      rd.addEventListener("input", () => {
+        if (rdv) rdv.textContent = String(Math.round(+rd.value));
+        window.setRenderDistance?.(+rd.value);
+      });
+    }
     btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
     panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
