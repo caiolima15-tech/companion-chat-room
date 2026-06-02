@@ -38,6 +38,66 @@ export type Database = {
         }
         Relationships: []
       }
+      cars_catalog: {
+        Row: {
+          acceleration: number
+          brake_force: number
+          chassis_offset_y: number
+          chassis_scale: number
+          chassis_url: string
+          created_at: string
+          created_by: string | null
+          id: string
+          max_speed: number
+          name: string
+          slug: string
+          thumb: string
+          turn_speed: number
+          updated_at: string
+          wheel_offsets: Json
+          wheel_radius: number
+          wheel_url: string | null
+        }
+        Insert: {
+          acceleration?: number
+          brake_force?: number
+          chassis_offset_y?: number
+          chassis_scale?: number
+          chassis_url: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          max_speed?: number
+          name: string
+          slug: string
+          thumb?: string
+          turn_speed?: number
+          updated_at?: string
+          wheel_offsets?: Json
+          wheel_radius?: number
+          wheel_url?: string | null
+        }
+        Update: {
+          acceleration?: number
+          brake_force?: number
+          chassis_offset_y?: number
+          chassis_scale?: number
+          chassis_url?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          max_speed?: number
+          name?: string
+          slug?: string
+          thumb?: string
+          turn_speed?: number
+          updated_at?: string
+          wheel_offsets?: Json
+          wheel_radius?: number
+          wheel_url?: string | null
+        }
+        Relationships: []
+      }
       characters: {
         Row: {
           base_url: string | null
@@ -379,6 +439,92 @@ export type Database = {
           z?: number
         }
         Relationships: []
+      }
+      map_cars: {
+        Row: {
+          acceleration: number
+          brake_force: number
+          catalog_id: string | null
+          chassis_offset_y: number
+          chassis_scale: number
+          chassis_url: string
+          created_at: string
+          created_by: string | null
+          driver_since: string | null
+          driver_user_id: string | null
+          id: string
+          map_id: string
+          max_speed: number
+          name: string
+          rotation_y: number
+          turn_speed: number
+          updated_at: string
+          wheel_offsets: Json
+          wheel_radius: number
+          wheel_url: string | null
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          acceleration?: number
+          brake_force?: number
+          catalog_id?: string | null
+          chassis_offset_y?: number
+          chassis_scale?: number
+          chassis_url: string
+          created_at?: string
+          created_by?: string | null
+          driver_since?: string | null
+          driver_user_id?: string | null
+          id?: string
+          map_id: string
+          max_speed?: number
+          name?: string
+          rotation_y?: number
+          turn_speed?: number
+          updated_at?: string
+          wheel_offsets?: Json
+          wheel_radius?: number
+          wheel_url?: string | null
+          x?: number
+          y?: number
+          z?: number
+        }
+        Update: {
+          acceleration?: number
+          brake_force?: number
+          catalog_id?: string | null
+          chassis_offset_y?: number
+          chassis_scale?: number
+          chassis_url?: string
+          created_at?: string
+          created_by?: string | null
+          driver_since?: string | null
+          driver_user_id?: string | null
+          id?: string
+          map_id?: string
+          max_speed?: number
+          name?: string
+          rotation_y?: number
+          turn_speed?: number
+          updated_at?: string
+          wheel_offsets?: Json
+          wheel_radius?: number
+          wheel_url?: string | null
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_cars_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "cars_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       map_lights: {
         Row: {
