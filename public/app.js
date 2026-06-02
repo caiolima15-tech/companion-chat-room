@@ -2684,6 +2684,7 @@ function clearEnvironment() {
   if (envBaseFloor) walkableMeshes.push(envBaseFloor);
   _fadedNow.clear();
   _fadedPrev.clear();
+  invalidateEnvCullCache?.();
 }
 
 let currentEnvRoot = null;       // o gltf.scene atualmente carregado
