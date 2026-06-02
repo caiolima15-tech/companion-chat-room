@@ -225,6 +225,24 @@ h1 {
 }
 .player-popup-actions button:hover { background: rgba(110,90,255,0.22); transform: translateX(2px); }
 .player-popup-actions button:disabled { opacity: 0.55; cursor: default; transform: none; }
+.player-popup-confirm { display: flex; flex-direction: column; gap: 10px; min-width: 200px; }
+.player-popup-confirm-text { font-size: 0.85rem; line-height: 1.35; color: #d8d6ff; }
+.player-popup-confirm-text b { color: #fff; }
+.player-popup-error { color: #ff9aa2; }
+.player-popup-confirm-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.player-popup-confirm-actions button {
+  background: rgba(110,90,255,0.14);
+  color: #efeaff;
+  border: 1px solid rgba(160,140,255,0.28);
+  border-radius: 9px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.player-popup-confirm-actions button:hover { background: rgba(110,90,255,0.26); }
+.player-popup-confirm-actions button.primary { background: linear-gradient(135deg, #6e5aff, #29d3bd); border-color: transparent; color: #0b0820; font-weight: 700; }
+.player-popup-confirm-actions button.primary:hover { transform: translateY(-1px); }
 @keyframes pp-pop {
   from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)) scale(0.96); }
   to   { opacity: 1; transform: translate(-50%, calc(-100% - 12px)) scale(1); }

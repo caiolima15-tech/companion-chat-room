@@ -9663,19 +9663,110 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           alert("Falha ao enviar pedido: " + (err?.message || err));
         }
       } else if (act === "follow-loc") {
-        const target = playerEntities.get(peerId);
-        if (!target) { close(); return; }
-        // posição um pouco à frente do alvo (offset de 1.2u em direção aleatória)
-        const ang = Math.random() * Math.PI * 2;
-        const offX = Math.cos(ang) * 1.2;
-        const offZ = Math.sin(ang) * 1.2;
-        const pos = target.group.position;
-        try {
-          moveToWorld({ x: pos.x + offX, z: pos.z + offZ });
-        } catch {}
-        close();
+        await handleFollowLocation(peerId, name);
       }
     });
+  }
+
+  function teleportNear(peerId) {
+    const target = playerEntities.get(peerId);
+    if (!target) return false;
+    const ang = Math.random() * Math.PI * 2;
+    const offX = Math.cos(ang) * 1.2;
+    const offZ = Math.sin(ang) * 1.2;
+    const pos = target.group.position;
+    try { moveToWorld({ x: pos.x + offX, z: pos.z + offZ }); return true; } catch { return false; }
+  }
+
+  function waitForPeerEntity(peerId, timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      const t0 = Date.now();
+      const tick = () => {
+        if (playerEntities.get(peerId)) return resolve(true);
+        if (Date.now() - t0 > timeoutMs) return resolve(false);
+        setTimeout(tick, 120);
+      };
+      tick();
+    });
+  }
+
+  function renderConfirmStep(mapName) {
+    if (!popup) return;
+    popup.innerHTML = `
+      <div class="player-popup-confirm">
+        <div class="player-popup-confirm-text">Esse usuário está na sala <b>${escapeHtml(mapName)}</b>. Ir até lá?</div>
+        <div class="player-popup-confirm-actions">
+          <button data-act="cancel">Cancelar</button>
+          <button data-act="go" class="primary">Ir</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderErrorStep(msg) {
+    if (!popup) return;
+    popup.innerHTML = `
+      <div class="player-popup-confirm">
+        <div class="player-popup-confirm-text player-popup-error">${escapeHtml(msg)}</div>
+        <div class="player-popup-confirm-actions">
+          <button data-act="cancel" class="primary">Fechar</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderLoadingStep(msg) {
+    if (!popup) return;
+    popup.innerHTML = `<div class="player-popup-confirm"><div class="player-popup-confirm-text">${escapeHtml(msg)}</div></div>`;
+  }
+
+  async function handleFollowLocation(peerId, peerName) {
+    // Peer na mesma sala? Move direto.
+    if (playerEntities.get(peerId)) {
+      teleportNear(peerId);
+      close();
+      return;
+    }
+    // Descobre a sala do peer via lobby presence
+    let peerMapId = null;
+    try {
+      const state = lobbyChannel?.presenceState?.() || {};
+      const entry = state[peerId]?.[0];
+      peerMapId = entry?.map_id || null;
+    } catch {}
+    if (!peerMapId) { renderErrorStep("Esse usuário não está online."); return; }
+    if (peerMapId === currentMapId) {
+      // Está na sala mas a entidade ainda não carregou; aguarda um pouco.
+      renderLoadingStep("Localizando…");
+      const ok = await waitForPeerEntity(peerId, 2500);
+      if (ok && teleportNear(peerId)) close();
+      else renderErrorStep("Não foi possível localizar esse usuário.");
+      return;
+    }
+    const mapInfo = (Array.isArray(MAPS) ? MAPS : []).find((m) => m.id === peerMapId);
+    if (!mapInfo) { renderErrorStep("Não foi possível entrar nessa sala."); return; }
+
+    renderConfirmStep(mapInfo.name || peerMapId);
+    popup.addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button[data-act]");
+      if (!b) return;
+      const a = b.dataset.act;
+      if (a === "cancel") { close(); return; }
+      if (a === "go") {
+        renderLoadingStep(`Indo para ${mapInfo.name || peerMapId}…`);
+        try {
+          if (typeof switchRoom !== "function") throw new Error("switchRoom indisponível");
+          await switchRoom(peerMapId);
+        } catch (err) {
+          renderErrorStep("Não foi possível entrar nessa sala.");
+          return;
+        }
+        const appeared = await waitForPeerEntity(peerId, 4000);
+        if (!appeared) { renderErrorStep("Esse usuário saiu da sala."); return; }
+        if (!teleportNear(peerId)) { renderErrorStep("Não foi possível chegar até ele."); return; }
+        close();
+      }
+    }, { once: false });
   }
 
   function positionPopup(anchorEl) {
