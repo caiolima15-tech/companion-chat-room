@@ -8231,6 +8231,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     camera.position.lerp(camWant, Math.min(1, delta * 4));
     controls.target.lerp(camTarget, Math.min(1, delta * 6));
     camera.lookAt(controls.target);
+    // Mantém a entidade do jogador acompanhando o carro (evita "snap" ao sair
+    // e garante que outros players vejam o avatar junto do carro).
+    const ent = playerEntities.get(myId);
+    if (ent) {
+      ent.group.position.copy(c.group.position);
+      ent.group.rotation.y = c.state.yaw;
+      ent.target.copy(c.group.position);
+    }
+    if (me) {
+      const pct = percentFromWorld(c.group.position.x, c.group.position.z);
+      me.x = Math.max(0, Math.min(100, pct.x));
+      me.y = Math.max(0, Math.min(100, pct.y));
+    }
     // Broadcast a posição p/ outros players (a cada ~80ms)
     const now = performance.now();
     if (!c.__lastBcast || now - c.__lastBcast > 80) {
@@ -8246,6 +8259,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           },
         });
       } catch {}
+      try { trackMe?.(false); } catch {}
     }
   }
 
