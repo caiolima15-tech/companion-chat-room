@@ -7908,6 +7908,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       } catch (e) { console.warn("[cars] wheel load fail", e); }
     }
     const wheels = {};
+    const rotY = ((wheelOffsets.rotY ?? 0) * Math.PI) / 180;
+    const mirror = wheelOffsets.mirror || "xz"; // "xz" | "x" | "z" | "none"
     for (const k of ["fl","fr","rl","rr"]) {
       const off = wheelOffsets[k] || DEFAULT_WHEEL_OFFSETS[k];
       const node = new THREE.Group();
@@ -7918,13 +7920,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       let visual;
       if (wheelTemplate) {
         visual = wheelTemplate.clone(true);
-        const sx = (k === "fr" || k === "rr") ? -1 : 1;
-        visual.scale.set(sx, 1, sx);
+        const isRight = (k === "fr" || k === "rr");
+        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        visual.scale.set(sx, 1, sz);
+        visual.rotation.y = rotY;
       } else {
         visual = makeWheelFallback(radius);
       }
       spinPivot.add(visual);
       node.userData.spin = spinPivot;
+      node.userData.visual = visual;
       group.add(node);
       wheels[k] = node;
     }
@@ -7933,10 +7939,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function applyWheelTransforms(c, wo) {
     const scl = wo.scale ?? 1;
+    const rotY = ((wo.rotY ?? 0) * Math.PI) / 180;
+    const mirror = wo.mirror || "xz";
     for (const k of ["fl","fr","rl","rr"]) {
       const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
       c.wheels[k].position.set(off.x, off.y, off.z);
       c.wheels[k].userData.spin.scale.setScalar(scl);
+      const vis = c.wheels[k].userData.visual;
+      if (vis) {
+        const isRight = (k === "fr" || k === "rr");
+        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        vis.scale.set(sx, 1, sz);
+        vis.rotation.y = rotY;
+      }
     }
   }
 
