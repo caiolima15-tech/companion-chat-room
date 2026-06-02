@@ -49,6 +49,22 @@
           <div id="joyHud" class="joy-hud" aria-label="Joystick de movimento">
             <div id="fbJoy" class="fb-joy"><div id="fbJoyKnob" class="fb-joy-knob"></div></div>
           </div>
+          <div id="carPrompt" class="car-prompt" hidden>
+            <span class="car-prompt-key">F</span>
+            <span class="car-prompt-text">Entrar no carro</span>
+            <button id="carEnterBtn" type="button" class="car-prompt-btn">Entrar</button>
+          </div>
+          <div id="carHud" class="car-hud" hidden aria-label="Controles do veículo">
+            <div class="car-speed"><span id="carSpeedVal">0</span> <small>km/h</small></div>
+            <button id="carExitBtn" type="button" class="car-exit" title="Sair (apenas com carro parado)">🚪 Sair</button>
+            <div class="car-pad">
+              <button id="carBtnL" type="button" class="car-btn">◀</button>
+              <button id="carBtnFwd" type="button" class="car-btn car-btn-fwd">▲</button>
+              <button id="carBtnBack" type="button" class="car-btn">▼</button>
+              <button id="carBtnR" type="button" class="car-btn">▶</button>
+              <button id="carBtnBrake" type="button" class="car-btn car-btn-brake">⏹</button>
+            </div>
+          </div>
           <div id="footballHud" class="football-hud" hidden aria-label="Controles de futebol">
             <div class="fb-actions">
               <button id="fbExit" type="button" class="fb-exit">Sair ✕</button>
@@ -300,6 +316,7 @@
             <button type="button" class="admin-dock-item" id="adminDockAssets"><span class="admin-dock-icon">🧱</span>GLBs no mapa</button>
             <button type="button" class="admin-dock-item" data-dock-target="#freeCamToggleBtn" data-dock-toggle><span class="admin-dock-icon">🎥</span>Câmera Livre</button>
             <button type="button" class="admin-dock-item" data-dock-target="#boundsToggleBtn" data-dock-toggle><span class="admin-dock-icon">📐</span>Limites</button>
+            <button type="button" class="admin-dock-item" id="carsAdminToggle" data-dock-panel="#carsAdminPanel"><span class="admin-dock-icon">🚗</span>Carros</button>
           </aside>
 
           <input id="replaceMapGlbInput" type="file" accept=".glb,model/gltf-binary" hidden>
