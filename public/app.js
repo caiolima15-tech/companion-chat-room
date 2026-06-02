@@ -8339,13 +8339,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ent.group.position.copy(pos);
     ent.group.rotation.y = yaw;
     ent.target.copy(pos);
-    // Câmera 3a pessoa do carro
+    // Câmera 3a pessoa do carro (segue firme, sem double-smoothing)
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     const camWant = c.group.position.clone()
       .addScaledVector(fwd, -6.5)
       .add(new THREE.Vector3(0, 3.2, 0));
-    camera.position.lerp(camWant, Math.min(1, delta * 4));
-    controls.target.lerp(camTarget, Math.min(1, delta * 6));
+    const camK = Math.min(1, delta * 12);
+    const tgtK = Math.min(1, delta * 16);
+    camera.position.lerp(camWant, camK);
+    controls.target.lerp(camTarget, tgtK);
     camera.lookAt(controls.target);
     // Broadcast posição p/ outros players verem o passageiro andando
     if (me) {
