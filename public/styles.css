@@ -2239,7 +2239,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   border-radius:50%;
   background:radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95), rgba(255,255,255,0.55) 60%, rgba(255,255,255,0.35));
   box-shadow:0 6px 14px rgba(0,0,0,0.45), inset 0 1px 2px rgba(255,255,255,0.7); }
-.fb-actions { position:absolute; right:18px; bottom:60px; display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+.fb-actions { position:absolute; right:18px; bottom:calc(182px + env(safe-area-inset-bottom)); display:flex; flex-direction:column; align-items:flex-end; gap:10px; z-index:1101; }
 .fb-kick-row { display:flex; align-items:flex-end; gap:10px; }
 .fb-force { width:14px; height:96px; border-radius:8px;
   background:linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04));
