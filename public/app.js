@@ -1396,12 +1396,6 @@ mapGrid?.addEventListener("click", (e) => {
   selectedMapId = tile.dataset.mapId;
   renderMapTiles();
   updateConfirmMapButton();
-  // Confirmação rápida para entrar direto na sala clicada
-  const mapMeta = MAPS.find((m) => m.id === selectedMapId);
-  const name = mapMeta?.name || "esta sala";
-  if (window.confirm(`Entrar em "${name}"?`)) {
-    confirmMapButton?.click();
-  }
 });
 mapSelectBack?.addEventListener("click", () => {
   closeMapSelect();
