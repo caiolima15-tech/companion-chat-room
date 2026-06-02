@@ -8051,7 +8051,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function upsertCarFromRow(row) {
     const existing = cars.get(row.id);
     if (existing) {
+      const isLocalDriver = driving && driving.row.id === row.id;
+      const livePose = isLocalDriver
+        ? {
+            x: existing.group.position.x,
+            y: existing.group.position.y,
+            z: existing.group.position.z,
+            rotation_y: existing.state.yaw,
+          }
+        : null;
       Object.assign(existing.row, row);
+      if (livePose) Object.assign(existing.row, livePose);
       if (!driving || driving.row.id !== row.id) {
         existing.__netTarget = existing.__netTarget || {};
         existing.__netTarget.x = row.x||0;
@@ -8063,6 +8073,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       applyWheelTransforms(existing, wo);
       existing.chassisGroup.position.y = row.chassis_offset_y || 0;
       existing.chassisGroup.scale.setScalar(row.chassis_scale || 1);
+      if (isLocalDriver) {
+        existing.state.yaw = livePose.rotation_y;
+        existing.group.position.set(livePose.x, livePose.y, livePose.z);
+        existing.group.rotation.y = livePose.rotation_y;
+      }
       return existing;
     }
     const mesh = await spawnCarMesh(row);
