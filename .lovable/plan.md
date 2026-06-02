@@ -1,32 +1,11 @@
-## Painel admin para excluir usuários
+Vou corrigir o reset de senha do jeito esperado: ao clicar no link do email, a pessoa verá somente o painel “Digite sua nova senha”, sem cair na tela de login.
 
-### O que será adicionado
+Plano:
+1. Ajustar a detecção do link de recuperação em `public/app.js` para reconhecer todos os formatos que o provedor de autenticação pode retornar: `code`, `type=recovery`, `access_token`, `refresh_token`, `token_hash` e o marcador `?recovery=1`.
+2. Impedir que qualquer inicialização automática do app chame `showAuth("signin")` enquanto o modo de recuperação estiver ativo.
+3. Trocar a tela dinâmica atual por um estado dedicado de recuperação dentro do próprio overlay de login, reutilizando os campos já existentes como “Nova senha” e “Confirmar nova senha”. Isso evita disputa entre dois overlays.
+4. Ao abrir o link, criar/confirmar a sessão de recuperação antes de permitir salvar a nova senha; se o link estiver expirado, mostrar erro na própria tela de nova senha.
+5. Ao salvar, chamar `supabase.auth.updateUser({ password })`, limpar os parâmetros do link e só então voltar para o login com a mensagem “Senha atualizada! Entre com sua nova senha.”
 
-1. **Botão "Painel Admin"** no menu/configurações — visível apenas para quem tem `role = 'admin'` (verificação via tabela `user_roles` existente).
-
-2. **Modal/tela de administração** listando todos os usuários com:
-   - Avatar, nickname, email, data de cadastro, último login
-   - Botão "Excluir conta" (vermelho) com confirmação dupla ("Tem certeza? Esta ação é irreversível")
-
-3. **Exclusão permanente e imediata** que apaga:
-   - Conta em `auth.users` (via service role)
-   - `profiles`, `profile_photos`, `user_avatars`, `user_roles`, `follows`, `chat_messages`, `direct_messages` do usuário
-   - Arquivos do usuário no storage (`avatars`, `profile-photos`, `characters`) quando aplicável
-
-### Como funciona tecnicamente
-
-- **Server function** `listUsers` (protegida por `requireSupabaseAuth` + checagem `has_role admin`) usando `supabaseAdmin.auth.admin.listUsers()` para juntar dados de auth + profiles.
-- **Server function** `deleteUserAccount({ userId })` (mesma proteção admin):
-  1. Limpa linhas relacionadas nas tabelas públicas
-  2. Limpa arquivos do storage do usuário
-  3. Chama `supabaseAdmin.auth.admin.deleteUser(userId)`
-  4. Bloqueia auto-exclusão do próprio admin logado para evitar lockout
-- **Frontend** em `public/app.js` + `public/index.html` + `public/styles.css`: novo botão no menu, novo overlay/modal de admin com lista + busca + botão excluir.
-
-### Segurança
-
-- Toda a lógica de exclusão roda no servidor com service role — nunca no cliente.
-- Dupla checagem do papel admin: middleware de auth + `has_role(auth.uid(), 'admin')` antes de qualquer ação destrutiva.
-- Confirmação dupla na UI (texto "EXCLUIR" digitado pelo admin) antes do delete real.
-
-Quer que eu siga com isso?
+Arquivos previstos:
+- `public/app.js`
