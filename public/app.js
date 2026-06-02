@@ -406,6 +406,51 @@ function showAuthError(msg) {
   authError.hidden = false;
 }
 authSwitch.addEventListener("click", () => showAuth(authMode === "signin" ? "signup" : "signin"));
+
+const authForgot = document.getElementById("authForgot");
+if (authForgot) {
+  authForgot.addEventListener("click", async () => {
+    const email = (authEmail.value || "").trim().toLowerCase()
+      || (window.prompt("Digite seu email para receber o link de redefinição:") || "").trim().toLowerCase();
+    if (!email) return;
+    authForgot.disabled = true;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + window.location.pathname + "#recovery",
+      });
+      if (error) throw error;
+      authError.hidden = false;
+      authError.style.color = "#7CFCAB";
+      authError.textContent = "Enviamos um link de redefinição para " + email + ". Confira sua caixa de entrada.";
+    } catch (err) {
+      console.error("[auth] reset", err);
+      showAuthError(translateAuthError(err));
+    } finally {
+      authForgot.disabled = false;
+    }
+  });
+}
+
+// Detecta evento de recuperação de senha (link do email)
+supabase.auth.onAuthStateChange(async (event) => {
+  if (event !== "PASSWORD_RECOVERY") return;
+  let newPass = "";
+  while (true) {
+    newPass = (window.prompt("Digite sua nova senha (mínimo 6 caracteres):") || "").trim();
+    if (newPass === "") return;
+    if (newPass.length >= 6) break;
+    window.alert("A senha precisa ter pelo menos 6 caracteres.");
+  }
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPass });
+    if (error) throw error;
+    window.alert("Senha atualizada com sucesso! Você já pode entrar.");
+    try { history.replaceState(null, "", window.location.pathname); } catch {}
+  } catch (err) {
+    console.error("[auth] update password", err);
+    window.alert("Não foi possível atualizar a senha: " + (err?.message || "tente novamente."));
+  }
+});
 function setAuthBusy(isBusy) {
   authSubmit.disabled = isBusy;
   authSwitch.disabled = isBusy;
