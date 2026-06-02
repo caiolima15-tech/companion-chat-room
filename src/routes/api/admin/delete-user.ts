@@ -57,7 +57,7 @@ export const Route = createFileRoute("/api/admin/delete-user")({
         ];
         for (const t of tables) {
           try {
-            await supabaseAdmin.from(t.table).delete().eq(t.col, targetId);
+            await (supabaseAdmin.from(t.table as any) as any).delete().eq(t.col, targetId);
           } catch (e) {
             console.error("cleanup", t, e);
           }
