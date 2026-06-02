@@ -3698,6 +3698,7 @@ function applyHeldMovement(delta) {
     entity.group.position.z = cand.z;
   }
   entity.group.rotation.y = Math.atan2(dir.x, dir.z);
+  entity.__moveDir = { x: dir.x, z: dir.z };
   if (entity.__jumpVy == null) {
     const gy = groundHeightAt(entity.group.position, entity.group.position.y);
     entity.group.position.y += (gy - entity.group.position.y) * Math.min(1, dt * 12);
