@@ -4037,7 +4037,29 @@ window.setRenderDistance = function (d) {
 };
 const _lodRef = new THREE.Vector3();
 const _lodTmp = new THREE.Vector3();
+const _lodLastRef = new THREE.Vector3(Infinity, Infinity, Infinity);
+let _lodLastDistance = -1;
 let _lodAccum = 0;
+let _envCullCache = null; // [{node, cx,cy,cz, r}]
+let _envCullDirty = true;
+function invalidateEnvCullCache() { _envCullDirty = true; }
+window.invalidateEnvCullCache = invalidateEnvCullCache;
+function _rebuildEnvCullCache() {
+  envGroup.updateMatrixWorld(true);
+  const list = [];
+  envGroup.traverse((node) => {
+    if (!node.isMesh || !node.geometry) return;
+    if (node === envBaseFloor) return;
+    if (!node.geometry.boundingSphere) node.geometry.computeBoundingSphere();
+    const bs = node.geometry.boundingSphere;
+    if (!bs) return;
+    _lodTmp.copy(bs.center).applyMatrix4(node.matrixWorld);
+    const s = node.matrixWorld.getMaxScaleOnAxis ? node.matrixWorld.getMaxScaleOnAxis() : 1;
+    list.push({ node, cx: _lodTmp.x, cy: _lodTmp.y, cz: _lodTmp.z, r: bs.radius * s });
+  });
+  _envCullCache = list;
+  _envCullDirty = false;
+}
 function _lodCullChildren(group) {
   if (!group || !group.children) return;
   for (const child of group.children) {
@@ -4045,10 +4067,16 @@ function _lodCullChildren(group) {
     child.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
   }
 }
-function updateRenderDistanceCulling() {
+function updateRenderDistanceCulling(force = false) {
   const ent = myId ? playerEntities.get(myId) : null;
   if (ent) _lodRef.copy(ent.group.position);
   else _lodRef.copy(controls.target);
+
+  // Pula se o player não se moveu o suficiente e a distância não mudou.
+  const moved = _lodRef.distanceToSquared(_lodLastRef);
+  if (!force && !_envCullDirty && moved < 1.0 && _lodLastDistance === RENDER_DISTANCE) return;
+  _lodLastRef.copy(_lodRef);
+  _lodLastDistance = RENDER_DISTANCE;
 
   // Outros jogadores
   for (const [id, e] of playerEntities) {
@@ -4062,22 +4090,17 @@ function updateRenderDistanceCulling() {
   const carsRoot = scene.getObjectByName("CarsRoot");
   if (carsRoot) _lodCullChildren(carsRoot);
 
-  // Malhas do mapa (envGroup) — usa o centro do bounding sphere (em world)
-  // para não esconder uma malha enorme só porque o pivô dela está longe.
-  envGroup.updateMatrixWorld(true);
-  envGroup.traverse((node) => {
-    if (!node.isMesh || !node.geometry) return;
-    if (node === envBaseFloor) { node.visible = true; return; }
-    if (!node.geometry.boundingSphere) node.geometry.computeBoundingSphere();
-    const bs = node.geometry.boundingSphere;
-    if (!bs) { node.visible = true; return; }
-    _lodTmp.copy(bs.center).applyMatrix4(node.matrixWorld);
-    // raio escalado aproximado (assume escala ~uniforme)
-    const s = node.matrixWorld.getMaxScaleOnAxis ? node.matrixWorld.getMaxScaleOnAxis() : 1;
-    const r = bs.radius * s;
-    const d = _lodTmp.distanceTo(_lodRef) - r;
-    node.visible = d < RENDER_DISTANCE;
-  });
+  // Malhas do mapa via cache (estático): só compara distância ao quadrado.
+  if (_envCullDirty || !_envCullCache) _rebuildEnvCullCache();
+  const cache = _envCullCache;
+  const rx = _lodRef.x, ry = _lodRef.y, rz = _lodRef.z;
+  for (let i = 0; i < cache.length; i++) {
+    const m = cache[i];
+    const dx = m.cx - rx, dy = m.cy - ry, dz = m.cz - rz;
+    const lim = RENDER_DISTANCE + m.r;
+    m.node.visible = (dx*dx + dy*dy + dz*dz) < (lim * lim);
+  }
+  if (envBaseFloor) envBaseFloor.visible = true;
 }
 
 function animate() {
