@@ -8608,7 +8608,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           }
         } else draft[key] = val;
         applyDraft();
-      });
+      };
+      inp.addEventListener("input", handler);
+      inp.addEventListener("change", handler);
     });
     wrap.querySelector("#ctClose")?.addEventListener("click", () => { wrap.hidden = true; });
     wrap.querySelector("#ctSave")?.addEventListener("click", async () => {
