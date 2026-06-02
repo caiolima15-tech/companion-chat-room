@@ -8540,6 +8540,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ${slider("Bitola traseira (X)", "_trackR", 0.5, 3, 0.01, trackR)}
         ${slider("Distância eixos (Z)", "_wheelbase", 0.8, 5, 0.01, wheelbase)}
         ${slider("Altura eixos (Y)", "_axleY", -1, 1, 0.01, axleY)}
+        ${slider("Rotação Y° rodas (GLB)", "wheel_offsets.rotY", -180, 180, 1, wo.rotY ?? 0)}
+        <div class="ct-row"><label>Espelhar L/R</label>
+          <select data-tk="wheel_offsets.mirror" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:4px;font:12px system-ui;">
+            <option value="xz" ${(wo.mirror||"xz")==="xz"?"selected":""}>XZ (padrão)</option>
+            <option value="x" ${wo.mirror==="x"?"selected":""}>Só X</option>
+            <option value="z" ${wo.mirror==="z"?"selected":""}>Só Z</option>
+            <option value="none" ${wo.mirror==="none"?"selected":""}>Nenhum</option>
+          </select>
+        </div>
       </div>
       <details><summary style="cursor:pointer;font-size:11px;opacity:0.8;margin-top:6px;">Ajuste fino por roda</summary>
         ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
