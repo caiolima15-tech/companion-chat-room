@@ -3673,6 +3673,7 @@ function applyHeldMovement(delta) {
     entity.running = false;
     if (me) me.running = false;
     entity.target.copy(entity.group.position);
+    entity.__moveDir = null;
     setPlayerAction(entity, "idle");
     return;
   }
