@@ -3820,6 +3820,8 @@ function updatePlayerAnimation(delta) {
       if (entity.mixer) entity.mixer.update(delta);
       continue;
     }
+    const isRemote = entity.player?.id !== myId;
+    const culled = isRemote && entity.group.visible === false;
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
     const distance = Math.hypot(dxArr, dzArr);
@@ -3830,17 +3832,20 @@ function updatePlayerAnimation(delta) {
       const step = Math.min(distance, speed * delta);
       const dir = new THREE.Vector3(dxArr, 0, dzArr).normalize();
       const candidate = before.clone().addScaledVector(dir, step);
-      if (collidesAt(before, candidate)) {
-        // Blocked by wall — cancel target so we stop here
+      // Para jogadores remotos não rodamos collidesAt (raycast caro); confiamos no broadcast.
+      const blocked = isRemote ? false : collidesAt(before, candidate);
+      if (blocked) {
         entity.target.x = before.x;
         entity.target.z = before.z;
         setPlayerAction(entity, "idle");
       } else {
         entity.group.position.x = candidate.x;
         entity.group.position.z = candidate.z;
-        // Follow terrain: stairs, ramps, raised floors
-        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        // Follow terrain: stairs, ramps, raised floors. Pula raycast quando culled.
+        if (!culled) {
+          const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+          entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        }
         const moved = entity.group.position.clone().sub(before);
         if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
           entity.group.rotation.y = Math.atan2(moved.x, moved.z);
@@ -3850,15 +3855,25 @@ function updatePlayerAnimation(delta) {
     } else {
       entity.group.position.x = entity.target.x;
       entity.group.position.z = entity.target.z;
-      // Mantém Y do terreno mesmo parado
-      const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-      entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+      // Mantém Y do terreno mesmo parado (pula se invisível)
+      if (!culled) {
+        const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
+        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+      }
       entity.running = false;
       if (entity.player?.id === myId && me) me.running = false;
       setPlayerAction(entity, "idle");
     }
-    if (entity.mixer) entity.mixer.update(delta);
-    if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
+    // Mixer também é caro: se culled, atualiza só a cada ~3 frames.
+    if (entity.mixer) {
+      if (culled) {
+        entity._mixerAccum = (entity._mixerAccum || 0) + delta;
+        if (entity._mixerAccum > 0.1) { entity.mixer.update(entity._mixerAccum); entity._mixerAccum = 0; }
+      } else {
+        entity.mixer.update(delta);
+      }
+    }
+    if (entity.loadingFx && !culled) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
 
