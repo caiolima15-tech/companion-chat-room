@@ -8672,7 +8672,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       el.addEventListener("pointercancel", off);
       el.addEventListener("pointerleave", off);
     };
-    bind("carBtnFwd","fwd"); bind("carBtnBack","back");
+    bind("carBtnFwd","fwd");
+    bind("carBtnBack","brake"); // pedal esquerdo é freio
     bind("carBtnL","left"); bind("carBtnR","right"); bind("carBtnBrake","brake");
   }
 
