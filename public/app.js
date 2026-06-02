@@ -3881,7 +3881,13 @@ function updatePlayerAnimation(delta) {
 function updateNameplates() {
   const rect = renderer.domElement.getBoundingClientRect();
   const projected = new THREE.Vector3();
-  for (const entity of playerEntities.values()) {
+  const hidden = window.__hiddenDrivers;
+  for (const [id, entity] of playerEntities) {
+    if (hidden && hidden.has(id)) {
+      entity.plate.style.opacity = "0";
+      if (entity.loadingSpinner) entity.loadingSpinner.style.opacity = "0";
+      continue;
+    }
     projected.copy(entity.group.position);
     projected.y += 1.8;
     projected.project(camera);
@@ -4105,8 +4111,10 @@ function updateRenderDistanceCulling(force = false) {
   _lodLastRef.copy(_lodRef);
   _lodLastDistance = RENDER_DISTANCE;
 
-  // Outros jogadores
+  // Outros jogadores (esconde quem está dirigindo um carro)
+  const hidden = window.__hiddenDrivers;
   for (const [id, e] of playerEntities) {
+    if (hidden && hidden.has(id)) { e.group.visible = false; continue; }
     if (id === myId) { e.group.visible = true; continue; }
     e.group.getWorldPosition(_lodTmp);
     e.group.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
@@ -8247,7 +8255,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.__drivingCar = c;
     c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
     const ent = playerEntities.get(myId);
-    if (ent) ent.group.visible = true; // mantém o personagem visível sentado no carro
+    if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
@@ -8588,6 +8596,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     else if (riding) updatePassengerFrame(delta);
     else updatePrompt();
     updateRemoteCars(delta);
+    // Esconde personagens (e nameplates) de quem está dentro de um carro
+    const hide = new Set();
+    for (const c of cars.values()) {
+      const dId = c?.row?.driver_user_id;
+      if (dId && isDriverFresh(c.row)) hide.add(dId);
+    }
+    window.__hiddenDrivers = hide;
+    for (const [id, ent] of playerEntities) {
+      if (hide.has(id)) {
+        if (ent.group.visible) ent.group.visible = false;
+        if (ent.plate) ent.plate.style.opacity = "0";
+        if (ent.loadingSpinner) ent.loadingSpinner.style.opacity = "0";
+      }
+    }
   };
 
   // ============ INPUT ============
