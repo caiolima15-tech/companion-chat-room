@@ -8070,6 +8070,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function enterCar(c) {
     if (driving || riding || !c) return;
+    await clearStaleDriver(c);
     const { data, error } = await supabase
       .from("map_cars")
       .update({ driver_user_id: myId, driver_since: new Date().toISOString() })
@@ -8140,6 +8141,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Esse carro está vazio — entre como motorista (F).");
       return;
     }
+    if (!isCarOccupied(c)) {
+      clearStaleDriver(c);
+      addSystemLine?.("Esse carro está vazio — entre como motorista (F).");
+      return;
+    }
     riding = c;
     window.__ridingCar = c;
     document.body.classList.add("driving-on");
@@ -8183,7 +8189,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!riding) return;
     const c = riding;
     // Sai automaticamente se o motorista saiu (carro virou livre)
-    if (!c.row.driver_user_id) { exitPassenger(); return; }
+    if (!isCarOccupied(c)) { clearStaleDriver(c); exitPassenger(); return; }
     const ent = playerEntities.get(myId);
     if (!ent) return;
     // Posiciona o player no banco do carona (lado direito atrás)
