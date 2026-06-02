@@ -58,13 +58,16 @@
           <div id="carHud" class="car-hud" hidden aria-label="Controles do veículo">
             <div class="car-speed"><span id="carSpeedVal">0</span> <small>km/h</small></div>
             <button id="carExitBtn" type="button" class="car-exit" title="Sair (apenas com carro parado)">🚪 Sair</button>
-            <div class="car-pad">
-              <button id="carBtnL" type="button" class="car-btn">◀</button>
-              <button id="carBtnFwd" type="button" class="car-btn car-btn-fwd">▲</button>
-              <button id="carBtnBack" type="button" class="car-btn">▼</button>
-              <button id="carBtnR" type="button" class="car-btn">▶</button>
-              <button id="carBtnBrake" type="button" class="car-btn car-btn-brake">⏹</button>
+            <div class="car-pad car-pad-steer">
+              <button id="carBtnL" type="button" class="car-btn car-btn-steer">◀</button>
+              <button id="carBtnR" type="button" class="car-btn car-btn-steer">▶</button>
             </div>
+            <div class="car-pad car-pad-pedals">
+              <button id="carBtnBack" type="button" class="car-btn car-btn-brake" title="Freio / Ré">BRAKE</button>
+              <button id="carBtnFwd" type="button" class="car-btn car-btn-throttle" title="Acelerador">GÁS</button>
+            </div>
+            <button id="carBtnBrake" type="button" hidden></button>
+          </div>
           </div>
           <div id="footballHud" class="football-hud" hidden aria-label="Controles de futebol">
             <div class="fb-actions">
