@@ -3988,7 +3988,7 @@ function animate() {
       controls.target.lerp(desired, delta * 4.0);
       // Auto-orbit: enquanto se move, gira a câmera para ficar atrás do personagem.
       const mv = entity.__moveDir;
-      if (mv && !window.__camUserDragging) {
+      if (mv && !window.__camUserDragging && performance.now() > (window.__camUserHoldUntil || 0)) {
         const r = Math.hypot(offset.x, offset.z);
         if (r > 0.001) {
           const curYaw = Math.atan2(offset.x, offset.z);
