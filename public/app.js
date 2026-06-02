@@ -558,6 +558,8 @@ async function enterRoom() {
   connectRealtime().catch(() => {});
   Promise.resolve().then(() => window.radioEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
+  Promise.resolve().then(() => window.carsEnterRoom?.(currentMapId)).catch(() => {});
+
 }
 
 function randomColor() {
@@ -2256,6 +2258,7 @@ async function switchRoom(newMapId) {
   window.showWorldLoading?.("Carregando o mundo");
   try { await window.radioLeaveRoom?.(); } catch {}
   try { await window.interactionsLeaveRoom?.(); } catch {}
+  try { await window.carsLeaveRoom?.(); } catch {}
 
   try {
     // Tira do canal antigo: derruba presence/movement/chat
@@ -2302,6 +2305,7 @@ async function switchRoom(newMapId) {
     setupRoomChannels(newMapId).then(() => trackLobby()).catch(() => {});
     Promise.resolve().then(() => window.radioEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => window.carsEnterRoom?.(newMapId)).catch(() => {});
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
@@ -3618,6 +3622,7 @@ function applyJoystickMoveNormal(jx, jy, mag) {
 }
 
 function applyHeldMovement() {
+  if (window.__drivingCar) return; // dirigindo carro: controles do veículo
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
@@ -3880,9 +3885,10 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
   if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
+  if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
   applyHeldMovement();
   updatePlayerAnimation(delta);
-  if (myId && !window.__freeCameraMode && !window.__footballMode) {
+  if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
     if (entity) {
       const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
