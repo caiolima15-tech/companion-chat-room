@@ -331,6 +331,20 @@ controls.addEventListener("end", () => {
   window.__camUserHoldUntil = performance.now() + 600;
 });
 
+// OrbitControls trata shift/ctrl/meta + drag como PAN; como pan está desligado,
+// isso bloqueia a rotação enquanto o jogador segura Shift pra correr. Aqui
+// removemos as modificadoras do pointerdown ANTES do OrbitControls processar,
+// preservando rotate e zoom com Shift segurado.
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    try {
+      Object.defineProperty(e, "shiftKey", { value: false, configurable: true });
+      Object.defineProperty(e, "ctrlKey",  { value: false, configurable: true });
+      Object.defineProperty(e, "metaKey",  { value: false, configurable: true });
+    } catch {}
+  }
+}, true);
+
 const stage = new THREE.Group();
 scene.add(stage);
 
