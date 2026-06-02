@@ -9769,7 +9769,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }, { once: false });
   }
 
-
+  function positionPopup(anchorEl) {
     if (!popup || !anchorEl) return;
     const r = anchorEl.getBoundingClientRect();
     popup.style.left = (r.left + r.width / 2) + "px";
