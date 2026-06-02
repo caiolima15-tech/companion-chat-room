@@ -1426,6 +1426,28 @@ body.admin-ui-hidden .admin-only { display: none !important; }
   .char-secondary-btn { flex: 1 1 0; font-size: 0.86rem; padding: 0 6px; }
 }
 
+/* Map select: card precisa rolar internamente em telas menores
+   (ex.: iPhone 14 Pro), garantindo acesso ao botão "Entrar no local". */
+#mapSelectOverlay .char-card {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+#mapSelectOverlay #mapGrid { flex: 0 0 auto; }
+#mapSelectOverlay #confirmMapButton {
+  position: sticky;
+  bottom: 0;
+  margin-top: 4px;
+  z-index: 2;
+  box-shadow: 0 -10px 20px rgba(8, 10, 14, 0.6);
+}
+@media (max-width: 640px), (max-height: 760px) {
+  #mapSelectOverlay .char-card {
+    height: auto;
+    max-height: 100%;
+  }
+}
+
 
 /* ============ Character admin overlay ============ */
 .char-admin { width: min(820px, 100%); }
