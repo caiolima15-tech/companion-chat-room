@@ -8223,7 +8223,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.__drivingCar = c;
     c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
     const ent = playerEntities.get(myId);
-    if (ent) ent.group.visible = false;
+    if (ent) ent.group.visible = true; // mantém o personagem visível sentado no carro
     document.body.classList.add("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
@@ -8339,13 +8339,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ent.group.position.copy(pos);
     ent.group.rotation.y = yaw;
     ent.target.copy(pos);
-    // Câmera 3a pessoa do carro
+    // Câmera 3a pessoa do carro (segue firme, sem double-smoothing)
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
     const camWant = c.group.position.clone()
       .addScaledVector(fwd, -6.5)
       .add(new THREE.Vector3(0, 3.2, 0));
-    camera.position.lerp(camWant, Math.min(1, delta * 4));
-    controls.target.lerp(camTarget, Math.min(1, delta * 6));
+    const camK = Math.min(1, delta * 12);
+    const tgtK = Math.min(1, delta * 16);
+    camera.position.lerp(camWant, camK);
+    controls.target.lerp(camTarget, tgtK);
     camera.lookAt(controls.target);
     // Broadcast posição p/ outros players verem o passageiro andando
     if (me) {
@@ -8448,9 +8450,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // e garante que outros players vejam o avatar junto do carro).
     const ent = playerEntities.get(myId);
     if (ent) {
-      ent.group.position.copy(c.group.position);
+      // Posiciona no banco do motorista (lado esquerdo, sentado)
+      const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const seat = c.group.position.clone()
+        .addScaledVector(side, -0.55)
+        .addScaledVector(fwd, -0.2);
+      seat.y = c.group.position.y + 0.9;
+      ent.group.position.copy(seat);
       ent.group.rotation.y = c.state.yaw;
-      ent.target.copy(c.group.position);
+      ent.target.copy(seat);
+      ent.group.visible = true;
     }
     if (me) {
       const pct = percentFromWorld(c.group.position.x, c.group.position.z);
@@ -8497,13 +8506,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (driving && driving.row.id === c.row.id) continue;
       const t = c.__netTarget;
       if (t) {
-        c.group.position.x += (t.x - c.group.position.x) * Math.min(1, delta * 10);
-        c.group.position.y += (t.y - c.group.position.y) * Math.min(1, delta * 8);
-        c.group.position.z += (t.z - c.group.position.z) * Math.min(1, delta * 10);
+        // Lerp mais firme quando estamos de carona neste carro (reduz travamento percebido)
+        const ridingThis = riding && riding.row.id === c.row.id;
+        const kxz = Math.min(1, delta * (ridingThis ? 18 : 10));
+        const ky  = Math.min(1, delta * (ridingThis ? 14 : 8));
+        const kr  = Math.min(1, delta * (ridingThis ? 18 : 10));
+        c.group.position.x += (t.x - c.group.position.x) * kxz;
+        c.group.position.y += (t.y - c.group.position.y) * ky;
+        c.group.position.z += (t.z - c.group.position.z) * kxz;
         let dy = t.yaw - c.state.yaw;
         while (dy > Math.PI) dy -= Math.PI*2;
         while (dy < -Math.PI) dy += Math.PI*2;
-        c.state.yaw += dy * Math.min(1, delta * 10);
+        c.state.yaw += dy * kr;
         c.group.rotation.y = c.state.yaw;
         // Roda visual com base na velocidade transmitida
         const wr = c.row.wheel_radius || 0.35;
