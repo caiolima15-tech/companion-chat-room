@@ -415,8 +415,9 @@ if (authForgot) {
     if (!email) return;
     authForgot.disabled = true;
     try {
+      try { localStorage.setItem("neon-tap-room-password-recovery", String(Date.now())); } catch {}
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + window.location.pathname + "#recovery",
+        redirectTo: window.location.origin + window.location.pathname + "?recovery=1",
       });
       if (error) throw error;
       authError.hidden = false;
@@ -431,9 +432,58 @@ if (authForgot) {
   });
 }
 
-// Detecta link de recuperação de senha (hash #recovery ou type=recovery)
-const isRecoveryUrl = /(^|[#&?])(type=recovery|recovery)(&|$)/.test(window.location.hash || "");
-window.__isRecoveringPassword = isRecoveryUrl;
+// Detecta link de recuperação de senha antes de abrir a tela normal de login.
+function getRecoveryUrlInfo() {
+  const url = new URL(window.location.href);
+  const hashText = (window.location.hash || "").replace(/^#/, "").replace(/#/g, "&");
+  const hashParams = new URLSearchParams(hashText);
+  const search = url.searchParams;
+  const pendingAt = Number(localStorage.getItem("neon-tap-room-password-recovery") || 0);
+  const pendingRecent = pendingAt && Date.now() - pendingAt < 1000 * 60 * 60 * 2;
+  const isRecovery =
+    search.get("recovery") === "1" ||
+    search.get("type") === "recovery" ||
+    hashParams.get("type") === "recovery" ||
+    /(^|[&#])recovery([&#=]|$)/i.test(hashText) ||
+    (pendingRecent && (search.has("code") || hashParams.has("access_token") || hashParams.has("refresh_token")));
+
+  return {
+    isRecovery,
+    code: search.get("code"),
+    accessToken: hashParams.get("access_token"),
+    refreshToken: hashParams.get("refresh_token"),
+    error: search.get("error_description") || hashParams.get("error_description") || search.get("error") || hashParams.get("error"),
+  };
+}
+
+window.__isRecoveringPassword = getRecoveryUrlInfo().isRecovery;
+
+async function ensureRecoverySession() {
+  const info = getRecoveryUrlInfo();
+  if (info.error) throw new Error(decodeURIComponent(info.error).replace(/\+/g, " "));
+  if (info.accessToken && info.refreshToken) {
+    const { error } = await supabase.auth.setSession({ access_token: info.accessToken, refresh_token: info.refreshToken });
+    if (error) throw error;
+  } else if (info.code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(info.code);
+    if (error && !/already|invalid.*code/i.test(error.message || "")) throw error;
+  }
+  const { data } = await supabase.auth.getSession();
+  if (!data.session) throw new Error("Link inválido ou expirado. Peça um novo link de redefinição.");
+  return data.session;
+}
+
+function beginRecoveryMode() {
+  window.__isRecoveringPassword = true;
+  showRecoveryOverlay();
+  ensureRecoverySession().catch((err) => {
+    const box = document.getElementById("recoveryError");
+    if (box) {
+      box.textContent = translateAuthError(err);
+      box.hidden = false;
+    }
+  });
+}
 
 function showRecoveryOverlay() {
   if (document.getElementById("recoveryOverlay")) return;
@@ -444,8 +494,8 @@ function showRecoveryOverlay() {
   wrap.style.zIndex = "9999";
   wrap.innerHTML = `
     <form class="auth-card" id="recoveryForm">
-      <h2>Definir nova senha</h2>
-      <p class="auth-hint">Digite sua nova senha para concluir a recuperação.</p>
+      <h2>Digite sua nova senha</h2>
+      <p class="auth-hint">Escolha uma nova senha para sua conta.</p>
       <input id="recoveryPass1" type="password" placeholder="Nova senha (min. 6)" minlength="6" required autocomplete="new-password">
       <input id="recoveryPass2" type="password" placeholder="Confirmar nova senha" minlength="6" required autocomplete="new-password">
       <div id="recoveryError" class="auth-error" hidden></div>
@@ -468,9 +518,11 @@ function showRecoveryOverlay() {
     if (a !== b) { err.textContent = "As senhas não coincidem."; err.hidden = false; return; }
     btn.disabled = true;
     try {
+      await ensureRecoverySession();
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
       window.__isRecoveringPassword = false;
+      try { localStorage.removeItem("neon-tap-room-password-recovery"); } catch {}
       await supabase.auth.signOut();
       try { history.replaceState(null, "", window.location.pathname); } catch {}
       wrap.remove();
@@ -488,23 +540,11 @@ function showRecoveryOverlay() {
   });
 }
 
-if (isRecoveryUrl) {
-  // Aguarda o Supabase processar o token do hash e abrir sessão
-  const waitForRecoverySession = async () => {
-    for (let i = 0; i < 30; i++) {
-      const { data } = await supabase.auth.getSession();
-      if (data.session) break;
-      await new Promise(r => setTimeout(r, 200));
-    }
-    showRecoveryOverlay();
-  };
-  waitForRecoverySession();
-}
+if (window.__isRecoveringPassword) beginRecoveryMode();
 
 supabase.auth.onAuthStateChange(async (event) => {
   if (event === "PASSWORD_RECOVERY") {
-    window.__isRecoveringPassword = true;
-    showRecoveryOverlay();
+    beginRecoveryMode();
   }
 });
 function setAuthBusy(isBusy) {
