@@ -3260,6 +3260,8 @@ function createPlayerEntity(player) {
 
   const plate = document.createElement("div");
   plate.className = "nameplate";
+  plate.dataset.user = player.id;
+  if (player.id !== myId) plate.classList.add("is-clickable");
   nameplatesLayer.appendChild(plate);
 
 
@@ -6648,18 +6650,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.42;
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260527";
+  const RADIO_DEFAULT_VOLUME = 0.12;
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260602";
 
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
   let initialVolume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
-  if (Number.isFinite(savedVol) && localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
-    initialVolume = Math.min(1, Math.max(0, initialVolume * 0.6));
+  if (localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
+    // Migração: rádio passa a iniciar bem baixo; usuário aumenta se quiser.
+    initialVolume = RADIO_DEFAULT_VOLUME;
     localStorage.setItem("radio.volume", String(initialVolume));
+    localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   }
-  localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   audio.volume = initialVolume;
   audio.muted = savedMuted;
   if (volSlider) volSlider.value = String(Math.round(audio.volume * 100));
@@ -9161,34 +9164,44 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   else { bindHud(); bindAdminPanel(); }
 })();
 
-// ============ Voz por proximidade (push-to-talk) ============
+// ============ Voz por proximidade (streaming quase real-time) ============
 (function setupProximityVoice() {
-  const VOICE_FULL = 3.5;   // unidades de mundo: volume cheio até essa distância
-  const VOICE_MAX  = 14;    // além disso: silencioso
-  const MAX_REC_MS = 20000; // limite de gravação por aperto
-  const REMOTE_INDICATOR_FADE_MS = 600;
+  const VOICE_FULL = 3.5;
+  const VOICE_MAX  = 14;
+  const MAX_REC_MS = 30000;
+  const CHUNK_MS   = 280;          // tamanho de cada segmento enviado
+  const REMOTE_INDICATOR_FADE_MS = 800;
 
   let btn = null;
   let mediaStream = null;
-  let mediaRecorder = null;
-  let chunks = [];
+  let currentRecorder = null;
   let recording = false;
   let recStartTs = 0;
   let recTimer = null;
   let chan = null;
   let audioCtx = null;
   let selfSpeakingUntil = 0;
+  let chosenMime = "";
 
-  // Por id remoto: { gain, lastPlayedAt, queue: [{src, gainNode, until}] }
+  // Por id remoto: { queue, nextStartAt, lastSignalAt }
   const remoteSpeakers = new Map();
 
   function ensureCtx() {
     if (audioCtx && audioCtx.state !== "closed") return audioCtx;
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return null;
-    audioCtx = new AC();
+    audioCtx = new AC({ latencyHint: "interactive" });
     return audioCtx;
   }
+
+  // Garante que o contexto de áudio esteja "running" — assim quem só escuta
+  // (sem habilitar microfone) também ouve os colegas próximos.
+  const resumeOnGesture = () => {
+    try { ensureCtx()?.resume?.(); } catch {}
+  };
+  document.addEventListener("pointerdown", resumeOnGesture, { passive: true });
+  document.addEventListener("keydown", resumeOnGesture);
+  document.addEventListener("touchstart", resumeOnGesture, { passive: true });
 
   function distanceGainFor(speakerId) {
     const a = playerEntities.get(speakerId)?.group?.position;
@@ -9198,7 +9211,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const d = Math.hypot(dx, dz);
     if (d <= VOICE_FULL) return 1;
     if (d >= VOICE_MAX) return 0;
-    // suaviza a queda
     const t = 1 - (d - VOICE_FULL) / (VOICE_MAX - VOICE_FULL);
     return t * t;
   }
@@ -9210,6 +9222,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   function pickMime() {
+    if (chosenMime) return chosenMime;
     const cands = [
       "audio/webm;codecs=opus",
       "audio/webm",
@@ -9218,21 +9231,39 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       "audio/ogg;codecs=opus",
     ];
     for (const m of cands) {
-      try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch {}
+      try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { chosenMime = m; return m; } } catch {}
     }
     return "";
   }
 
   async function getStream() {
-    if (mediaStream) return mediaStream;
+    if (mediaStream && mediaStream.active) return mediaStream;
     mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
+        channelCount: 1,
+        sampleRate: 48000,
       },
     });
     return mediaStream;
+  }
+
+  // Pré-aquece o microfone na primeira interação após entrar na sala,
+  // para que apertar o botão "fale" não tenha latência de permissão.
+  let prewarmed = false;
+  async function tryPrewarm() {
+    if (prewarmed) return;
+    if (!document.body.classList.contains("world-ready")) return;
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    try {
+      // só pré-aquece se a permissão já foi concedida antes
+      const perm = await navigator.permissions?.query?.({ name: "microphone" }).catch(() => null);
+      if (!perm || perm.state !== "granted") return;
+      await getStream();
+      prewarmed = true;
+    } catch {}
   }
 
   async function blobToBase64(blob) {
@@ -9253,56 +9284,67 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return out.buffer;
   }
 
+  // Grava em segmentos pequenos e independentes (cada um com cabeçalho próprio),
+  // enviando assim que cada segmento termina — latência ~CHUNK_MS.
+  function startSegment() {
+    if (!recording || !chan) return;
+    const mime = pickMime();
+    let rec;
+    try {
+      rec = mime
+        ? new MediaRecorder(mediaStream, { mimeType: mime, audioBitsPerSecond: 20000 })
+        : new MediaRecorder(mediaStream);
+    } catch (e) {
+      console.warn("MediaRecorder não suportado:", e);
+      recording = false;
+      return;
+    }
+    currentRecorder = rec;
+    const localChunks = [];
+    rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) localChunks.push(e.data); };
+    rec.onstop = async () => {
+      const type = rec.mimeType || mime || "audio/webm";
+      const blob = new Blob(localChunks, { type });
+      try {
+        if (blob.size > 0 && chan) {
+          const b64 = await blobToBase64(blob);
+          if (b64.length < 240_000) {
+            chan.send({ type: "broadcast", event: "voice-blob", payload: { id: myId, b64, mime: type } });
+          }
+        }
+      } catch (err) {
+        console.warn("Falha enviando voz:", err);
+      }
+      if (recording) {
+        // emenda imediatamente o próximo segmento
+        startSegment();
+      } else {
+        try { chan?.send({ type: "broadcast", event: "voice-end", payload: { id: myId } }); } catch {}
+      }
+    };
+    rec.start();
+    setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch {} }, CHUNK_MS);
+  }
+
   async function startRecording() {
     if (recording) return;
     if (!chan) return;
     try { ensureCtx()?.resume?.(); } catch {}
-    let stream;
     try {
-      stream = await getStream();
+      await getStream();
     } catch (e) {
       console.warn("Mic negado:", e);
       btn?.classList.add("is-denied");
       btn?.setAttribute("title", "Microfone negado. Permita o acesso e tente de novo.");
       return;
     }
-    const mime = pickMime();
-    try {
-      mediaRecorder = mime
-        ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 24000 })
-        : new MediaRecorder(stream);
-    } catch (e) {
-      console.warn("MediaRecorder não suportado:", e);
-      return;
-    }
-    chunks = [];
-    mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-    mediaRecorder.onstop = async () => {
-      const type = mediaRecorder.mimeType || mime || "audio/webm";
-      const blob = new Blob(chunks, { type });
-      chunks = [];
-      try {
-        if (blob.size > 0 && chan) {
-          const b64 = await blobToBase64(blob);
-          // Supabase realtime aceita ~256KB por payload; truncamos com aviso se passar.
-          if (b64.length < 240_000) {
-            chan.send({ type: "broadcast", event: "voice-blob", payload: { id: myId, b64, mime: type } });
-          } else {
-            console.warn("Áudio muito longo, descartado.");
-          }
-        }
-      } catch (err) {
-        console.warn("Falha enviando voz:", err);
-      }
-      try { chan?.send({ type: "broadcast", event: "voice-end", payload: { id: myId } }); } catch {}
-    };
     recording = true;
     recStartTs = performance.now();
-    selfSpeakingUntil = recStartTs + 99999;
+    selfSpeakingUntil = recStartTs + MAX_REC_MS;
     setSpeakingClass(myId, true);
     btn?.classList.add("is-recording");
     try { chan.send({ type: "broadcast", event: "voice-start", payload: { id: myId } }); } catch {}
-    mediaRecorder.start();
+    startSegment();
     recTimer = setTimeout(() => stopRecording(), MAX_REC_MS);
   }
 
@@ -9313,13 +9355,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     btn?.classList.remove("is-recording");
     selfSpeakingUntil = 0;
     setSpeakingClass(myId, false);
-    try { mediaRecorder?.state !== "inactive" && mediaRecorder?.stop(); } catch {}
+    try { if (currentRecorder && currentRecorder.state !== "inactive") currentRecorder.stop(); } catch {}
   }
 
   function ensureRemote(id) {
     let r = remoteSpeakers.get(id);
     if (!r) {
-      r = { queue: [], playingUntil: 0, lastSignalAt: 0 };
+      r = { queue: [], nextStartAt: 0, lastSignalAt: 0 };
       remoteSpeakers.set(id, r);
     }
     return r;
@@ -9339,38 +9381,44 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     try {
       audioBuf = await ctx.decodeAudioData(base64ToArrayBuffer(b64));
     } catch (e) {
-      console.warn("Decode falhou:", e);
+      // segmento corrompido — descarta sem barulho
       return;
     }
+    const r = ensureRemote(id);
     const src = ctx.createBufferSource();
     src.buffer = audioBuf;
     const gainNode = ctx.createGain();
     gainNode.gain.value = distanceGainFor(id);
     src.connect(gainNode).connect(ctx.destination);
-    const r = ensureRemote(id);
-    const item = { src, gainNode, speakerId: id, endsAt: 0 };
+
+    // Encadeia os segmentos sem gap perceptível: começa onde o anterior termina,
+    // mas nunca mais de 120ms no futuro pra evitar acúmulo de atraso.
+    const now = ctx.currentTime;
+    const minStart = now + 0.02;
+    const maxStart = now + 0.12;
+    let startAt = Math.max(r.nextStartAt || 0, minStart);
+    if (startAt > maxStart) startAt = maxStart;
+
+    const item = { src, gainNode, speakerId: id };
     src.onended = () => {
       r.queue = r.queue.filter((x) => x !== item);
-      if (r.queue.length === 0 && performance.now() - r.lastSignalAt > REMOTE_INDICATOR_FADE_MS) {
-        setSpeakingClass(id, false);
+      if (r.queue.length === 0) {
+        r.nextStartAt = 0;
+        if (performance.now() - r.lastSignalAt > REMOTE_INDICATOR_FADE_MS) setSpeakingClass(id, false);
       }
     };
     r.queue.push(item);
-    src.start();
-    item.endsAt = performance.now() + audioBuf.duration * 1000;
+    try { src.start(startAt); } catch { try { src.start(); } catch {} }
+    r.nextStartAt = startAt + audioBuf.duration;
     markRemoteSpeaking(id);
   }
 
   function tick() {
-    const now = performance.now();
+    const t = audioCtx?.currentTime ?? 0;
     for (const [id, r] of remoteSpeakers) {
-      // Atualiza ganho dos sources tocando
       for (const item of r.queue) {
         const g = distanceGainFor(id);
-        try { item.gainNode.gain.setTargetAtTime(g, audioCtx.currentTime, 0.08); } catch {}
-      }
-      if (r.queue.length === 0 && now - r.lastSignalAt > REMOTE_INDICATOR_FADE_MS) {
-        setSpeakingClass(id, false);
+        try { item.gainNode.gain.setTargetAtTime(g, t, 0.08); } catch {}
       }
     }
     requestAnimationFrame(tick);
@@ -9379,10 +9427,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function bind() {
     btn = document.getElementById("voicePttBtn");
     if (!btn) return;
-    // Mostra o botão só depois que o usuário entrou no mundo
     const refreshVisibility = () => {
       const inRoom = document.body.classList.contains("world-ready");
       btn.hidden = !inRoom;
+      if (inRoom) tryPrewarm();
     };
     refreshVisibility();
     const mo = new MutationObserver(refreshVisibility);
@@ -9402,7 +9450,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     btn.addEventListener("pointercancel", release);
     btn.addEventListener("pointerleave", (e) => { if (recording) release(e); });
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
-    // Atalho desktop: barra de espaço (segurar)
     document.addEventListener("keydown", (e) => {
       if (e.repeat) return;
       if (e.target?.matches?.("input, textarea")) return;
@@ -9426,7 +9473,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     onRemoteEnd(id) {
       const r = remoteSpeakers.get(id);
       if (r) r.lastSignalAt = 0;
-      // Se nada estiver tocando, esconde já
       if (!r || r.queue.length === 0) setSpeakingClass(id, false);
     },
     onRemoteBlob,
@@ -9552,5 +9598,98 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const row = btn.closest(".user-row");
     const uid = row?.dataset.uid;
     if (uid) doDelete(uid, btn);
+  });
+})();
+
+// ============ Popup ao clicar em outro jogador no mapa ============
+(function setupPlayerPopup() {
+  let popup = null;
+  let currentPeerId = null;
+
+  function close() {
+    if (popup) { popup.remove(); popup = null; currentPeerId = null; }
+  }
+
+  document.addEventListener("pointerdown", (e) => {
+    if (popup && !popup.contains(e.target) && !e.target.closest?.(".nameplate")) close();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+
+  async function open(peerId, anchorEl) {
+    if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
+    close();
+    currentPeerId = peerId;
+    const { data: peer } = await supabase.from("profiles").select("id,nickname,avatar_url").eq("id", peerId).maybeSingle();
+    if (currentPeerId !== peerId) return;
+    const name = peer?.nickname || "Usuário";
+    const avatar = peer?.avatar_url || "";
+
+    popup = document.createElement("div");
+    popup.className = "player-popup";
+    popup.innerHTML = `
+      <div class="player-popup-header">
+        <div class="player-popup-avatar" style="${avatar ? `background-image:url('${avatar.replace(/'/g, "%27")}');` : ''}"></div>
+        <div class="player-popup-name">${escapeHtml(name)}</div>
+      </div>
+      <div class="player-popup-actions">
+        <button data-act="profile">👤 Ver perfil</button>
+        <button data-act="friend">🤝 Solicitar amizade</button>
+        <button data-act="follow-loc">📍 Ir até onde está</button>
+      </div>
+    `;
+    document.body.appendChild(popup);
+    positionPopup(anchorEl);
+
+    popup.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-act]");
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === "profile") {
+        close();
+        if (typeof openProfile === "function") openProfile(peerId);
+        else window.dispatchEvent(new CustomEvent("open-profile", { detail: peerId }));
+      } else if (act === "friend") {
+        btn.disabled = true; btn.textContent = "Enviando…";
+        try {
+          await supabase.from("direct_messages").insert({
+            from_user: myId,
+            to_user: peerId,
+            content: "🤝 Olá! Quer ser meu amigo?",
+          });
+          btn.textContent = "✅ Pedido enviado";
+          setTimeout(close, 900);
+        } catch (err) {
+          btn.disabled = false; btn.textContent = "🤝 Solicitar amizade";
+          alert("Falha ao enviar pedido: " + (err?.message || err));
+        }
+      } else if (act === "follow-loc") {
+        const target = playerEntities.get(peerId);
+        if (!target) { close(); return; }
+        // posição um pouco à frente do alvo (offset de 1.2u em direção aleatória)
+        const ang = Math.random() * Math.PI * 2;
+        const offX = Math.cos(ang) * 1.2;
+        const offZ = Math.sin(ang) * 1.2;
+        const pos = target.group.position;
+        try {
+          moveToWorld({ x: pos.x + offX, z: pos.z + offZ });
+        } catch {}
+        close();
+      }
+    });
+  }
+
+  function positionPopup(anchorEl) {
+    if (!popup || !anchorEl) return;
+    const r = anchorEl.getBoundingClientRect();
+    popup.style.left = (r.left + r.width / 2) + "px";
+    popup.style.top = r.top + "px";
+  }
+
+  // delegação no layer de nameplates
+  document.addEventListener("click", (e) => {
+    const plate = e.target.closest?.(".nameplate.is-clickable");
+    if (!plate) return;
+    const uid = plate.dataset.user;
+    if (uid) { e.stopPropagation(); open(uid, plate); }
   });
 })();
