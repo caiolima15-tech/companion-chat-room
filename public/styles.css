@@ -2298,3 +2298,51 @@ body.driving-on #interactionPrompt { display:none !important; }
 #carsAdminPanel .ct-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; }
 #carsAdminPanel .ct-section { border-top:1px dashed #2a3040; padding-top:6px; margin-top:4px; }
 #carsAdminPanel .ct-section h5 { margin:0 0 4px; font-size:11px; color:#9aa; text-transform:uppercase; letter-spacing:0.06em; }
+
+/* ============ Desktop chat fix (faixa fixa, transparente, acima do mobile-bar) ============ */
+@media (min-width: 601px) {
+  .chat-panel {
+    bottom: calc(120px + env(safe-area-inset-bottom)) !important;
+    width: 380px !important;
+    height: 440px !important;
+    max-height: 60vh !important;
+    z-index: 1100 !important;
+    background: rgba(10, 10, 18, 0.42) !important;
+    backdrop-filter: blur(18px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+    border-color: rgba(255,255,255,0.10) !important;
+    grid-template-rows: minmax(0,1fr) auto !important;
+  }
+  .chat-panel .identity { display: none !important; }
+  .chat-panel .chat-log {
+    background: transparent !important;
+    padding: 12px 12px 8px !important;
+  }
+  .chat-panel .chat-form {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom)) !important;
+    background: rgba(0,0,0,0.45) !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+  }
+  .chat-panel .chat-form input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.14);
+    padding: 0 14px;
+    font-size: 0.92rem;
+  }
+  .chat-panel .chat-form button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 76px;
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+  }
+}
