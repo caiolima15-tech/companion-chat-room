@@ -2808,6 +2808,7 @@ async function loadEnvironment(mapId, opts = {}) {
           });
           registerCollidable(env);
           envGroup.add(env);
+          invalidateEnvCullCache?.();
           syncMapAdminPanel();
         } finally {
           safeResolve();
