@@ -6394,7 +6394,112 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         openProfile(currentProfileId);
       }
     };
+
+    // ===== Amigos =====
+    await renderFriendsSection(userId, isMe);
   }
+
+  async function renderFriendsSection(userId, isMe) {
+    const friendsList = $("profileFriendsList");
+    const friendsCount = $("profileFriendsCount");
+    const requestsSection = $("profileRequestsSection");
+    const requestsList = $("profileRequestsList");
+    const requestsCount = $("profileRequestsCount");
+    if (!friendsList) return;
+
+    // Pedidos pendentes recebidos (apenas no próprio perfil)
+    if (isMe && myId) {
+      const { data: reqs } = await supabase
+        .from("friend_requests")
+        .select("id,from_user,created_at")
+        .eq("to_user", myId)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      const pending = reqs || [];
+      if (pending.length === 0) {
+        requestsSection.hidden = true;
+      } else {
+        requestsSection.hidden = false;
+        requestsCount.textContent = pending.length;
+        const ids = pending.map((r) => r.from_user);
+        const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", ids);
+        const pm = new Map((profs || []).map((p) => [p.id, p]));
+        requestsList.innerHTML = pending.map((r) => {
+          const p = pm.get(r.from_user) || {};
+          const av = p.avatar_url || `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
+          const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
+          return `
+            <div class="ig-req-item" data-uid="${r.from_user}">
+              <img src="${av}" alt="" class="ig-req-avatar" data-act="open-profile" data-uid="${r.from_user}">
+              <div class="ig-req-name" data-act="open-profile" data-uid="${r.from_user}">${nm}</div>
+              <button class="ig-btn ig-btn-primary" data-act="accept" data-req="${r.id}">Aceitar</button>
+              <button class="ig-btn" data-act="reject" data-req="${r.id}">Recusar</button>
+            </div>`;
+        }).join("");
+      }
+    } else {
+      requestsSection.hidden = true;
+    }
+
+    // Lista de amigos (aceitos) — para qualquer perfil
+    const { data: accepted } = await supabase
+      .from("friend_requests")
+      .select("from_user,to_user")
+      .or(`from_user.eq.${userId},to_user.eq.${userId}`)
+      .eq("status", "accepted");
+    const friendIds = (accepted || []).map((r) => (r.from_user === userId ? r.to_user : r.from_user));
+    friendsCount.textContent = friendIds.length;
+    if (friendIds.length === 0) {
+      friendsList.innerHTML = `<p style="color:var(--muted);font-size:0.85rem;padding:8px 4px;">Sem amigos ainda.</p>`;
+      return;
+    }
+    const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", friendIds);
+    friendsList.innerHTML = (profs || []).map((p) => {
+      const av = p.avatar_url || `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
+      const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
+      return `
+        <div class="ig-friend-item" data-uid="${p.id}">
+          <img src="${av}" alt="" class="ig-friend-avatar" data-act="open-profile" data-uid="${p.id}">
+          <div class="ig-friend-name">${nm}</div>
+          <div class="ig-friend-actions">
+            <button class="ig-mini-btn" title="Ver perfil" data-act="open-profile" data-uid="${p.id}">👤</button>
+            <button class="ig-mini-btn" title="Mandar DM" data-act="dm" data-uid="${p.id}">💬</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  // Delega cliques nas seções de amigos e pedidos
+  document.getElementById("profileFriendsList")?.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-act]");
+    if (!el) return;
+    const uid = el.dataset.uid;
+    const act = el.dataset.act;
+    if (act === "open-profile" && uid) openProfile(uid);
+    else if (act === "dm" && uid) openDm(uid);
+  });
+  document.getElementById("profileRequestsList")?.addEventListener("click", async (e) => {
+    const el = e.target.closest("[data-act]");
+    if (!el) return;
+    const act = el.dataset.act;
+    if (act === "open-profile" && el.dataset.uid) { openProfile(el.dataset.uid); return; }
+    const reqId = el.dataset.req;
+    if (!reqId) return;
+    el.disabled = true;
+    if (act === "accept") {
+      await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", reqId);
+    } else if (act === "reject") {
+      await supabase.from("friend_requests").update({ status: "rejected" }).eq("id", reqId);
+    }
+    if (currentProfileId) openProfile(currentProfileId);
+  });
+
+  // Abrir DM por evento externo (popup do jogador)
+  window.addEventListener("open-dm", (e) => {
+    const uid = e?.detail;
+    if (uid) { overlay.hidden = true; openDm(uid); }
+  });
+
 
   $("profileFollowBtn").onclick = async () => {
     if (!myId || !currentProfileId) return;
