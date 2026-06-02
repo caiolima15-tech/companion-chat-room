@@ -7636,3 +7636,610 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();
 })();
+
+
+// ============ CARS MODULE ============
+// Sistema arcade de carros: carros vivem em map_cars (Lovable Cloud).
+// Admin: catálogo + tuning de rodas/velocidade. Usuário: F (ou botão) p/ entrar
+// quando próximo; sai apenas com velocidade = 0.
+(function carsModule() {
+  const DEFAULT_WHEEL_OFFSETS = {
+    fl:{x:-0.78,y:0.1,z:-1.25}, fr:{x:0.75,y:0.1,z:-1.25},
+    rl:{x:-0.78,y:0.1,z:1.25},  rr:{x:0.75,y:0.1,z:1.25},
+  };
+  const cars = new Map(); // id -> { row, group, chassisGroup, wheels{fl,fr,rl,rr}, state{vel,steer,yaw,wheelSpin} }
+  let catalog = []; // [{id,name,...}]
+  let channel = null;
+  let currentMap = null;
+  let driving = null; // car instance currently driven
+  let promptCarId = null;
+  const carKeys = new Set();
+  // botões on-screen
+  const padState = { fwd:false, back:false, left:false, right:false, brake:false };
+
+  const carsGroup = new THREE.Group();
+  carsGroup.name = "CarsRoot";
+  scene.add(carsGroup);
+
+  function disposeCar(c) {
+    if (!c) return;
+    carsGroup.remove(c.group);
+    c.group.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry?.dispose?.();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose?.());
+      }
+    });
+  }
+
+  async function loadCatalog() {
+    const { data, error } = await supabase.from("cars_catalog").select("*").order("name");
+    if (error) { console.warn("[cars] catalog", error); return; }
+    catalog = data || [];
+    renderCatalogPicker();
+  }
+
+  function makeWheelFallback(radius) {
+    const g = new THREE.CylinderGeometry(radius, radius, radius*0.55, 18);
+    g.rotateZ(Math.PI/2);
+    const m = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.65, metalness: 0.2 });
+    return new THREE.Mesh(g, m);
+  }
+
+  async function spawnCarMesh(row) {
+    const group = new THREE.Group();
+    group.name = `Car:${row.name}`;
+    group.position.set(row.x || 0, row.y || 0, row.z || 0);
+    group.rotation.y = row.rotation_y || 0;
+    const chassisGroup = new THREE.Group();
+    chassisGroup.position.y = row.chassis_offset_y || 0;
+    chassisGroup.scale.setScalar(row.chassis_scale || 1);
+    group.add(chassisGroup);
+    // load chassis
+    try {
+      const gltf = await new Promise((res, rej) => loader.load(row.chassis_url, res, undefined, rej));
+      const m = gltf.scene || gltf.scenes?.[0];
+      if (m) {
+        m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        chassisGroup.add(m);
+      }
+    } catch (e) {
+      console.warn("[cars] chassis load fail", row.chassis_url, e);
+      const fallback = new THREE.Mesh(
+        new THREE.BoxGeometry(1.8, 0.9, 4),
+        new THREE.MeshStandardMaterial({ color: 0xaa3333 })
+      );
+      fallback.position.y = 0.5;
+      chassisGroup.add(fallback);
+    }
+    // wheels
+    const wheelOffsets = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const radius = row.wheel_radius || 0.35;
+    let wheelTemplate = null;
+    if (row.wheel_url) {
+      try {
+        const gltf = await new Promise((res, rej) => loader.load(row.wheel_url, res, undefined, rej));
+        wheelTemplate = gltf.scene || gltf.scenes?.[0];
+        wheelTemplate?.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+      } catch (e) { console.warn("[cars] wheel load fail", e); }
+    }
+    const wheels = {};
+    for (const k of ["fl","fr","rl","rr"]) {
+      const off = wheelOffsets[k] || DEFAULT_WHEEL_OFFSETS[k];
+      const node = new THREE.Group();
+      node.position.set(off.x, off.y, off.z);
+      const spinPivot = new THREE.Group();
+      node.add(spinPivot);
+      let visual;
+      if (wheelTemplate) {
+        visual = wheelTemplate.clone(true);
+        const sx = (k === "fr" || k === "rr") ? -1 : 1;
+        visual.scale.set(sx, 1, sx);
+      } else {
+        visual = makeWheelFallback(radius);
+      }
+      spinPivot.add(visual);
+      node.userData.spin = spinPivot;
+      group.add(node);
+      wheels[k] = node;
+    }
+    return { group, chassisGroup, wheels };
+  }
+
+  async function upsertCarFromRow(row) {
+    const existing = cars.get(row.id);
+    if (existing) {
+      // Apenas reposicionar/repor tuning sem recriar mesh
+      Object.assign(existing.row, row);
+      if (!driving || driving.row.id !== row.id) {
+        existing.group.position.set(row.x||0, row.y||0, row.z||0);
+        existing.group.rotation.y = row.rotation_y || 0;
+        existing.state.yaw = row.rotation_y || 0;
+      }
+      // Wheel offsets podem ter mudado
+      const wo = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+      for (const k of ["fl","fr","rl","rr"]) {
+        const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
+        existing.wheels[k].position.set(off.x, off.y, off.z);
+      }
+      existing.chassisGroup.position.y = row.chassis_offset_y || 0;
+      existing.chassisGroup.scale.setScalar(row.chassis_scale || 1);
+      return existing;
+    }
+    const mesh = await spawnCarMesh(row);
+    carsGroup.add(mesh.group);
+    const c = {
+      row,
+      group: mesh.group,
+      chassisGroup: mesh.chassisGroup,
+      wheels: mesh.wheels,
+      state: { vel: 0, steer: 0, yaw: row.rotation_y || 0, wheelSpin: 0 },
+    };
+    cars.set(row.id, c);
+    return c;
+  }
+
+  async function loadCarsForMap(mapId) {
+    currentMap = mapId;
+    // limpa existentes
+    for (const c of cars.values()) disposeCar(c);
+    cars.clear();
+    const { data, error } = await supabase.from("map_cars").select("*").eq("map_id", mapId);
+    if (error) { console.warn("[cars] load", error); return; }
+    for (const row of data || []) {
+      try { await upsertCarFromRow(row); } catch (e) { console.warn("[cars] spawn", e); }
+    }
+    renderAdminList();
+  }
+
+  async function carsEnterRoom(mapId) {
+    await loadCatalog();
+    await loadCarsForMap(mapId);
+    if (channel) await supabase.removeChannel(channel);
+    channel = supabase.channel(`cars-${mapId}`)
+      .on("postgres_changes", { event:"*", schema:"public", table:"map_cars", filter:`map_id=eq.${mapId}` }, async (payload) => {
+        if (payload.eventType === "DELETE") {
+          const c = cars.get(payload.old.id);
+          if (c) { disposeCar(c); cars.delete(payload.old.id); }
+          renderAdminList();
+          return;
+        }
+        const row = payload.new;
+        try { await upsertCarFromRow(row); renderAdminList(); } catch {}
+      })
+      .subscribe();
+  }
+  async function carsLeaveRoom() {
+    if (channel) { await supabase.removeChannel(channel); channel = null; }
+    for (const c of cars.values()) disposeCar(c);
+    cars.clear();
+    if (driving) exitCar(true);
+  }
+  window.carsEnterRoom = carsEnterRoom;
+  window.carsLeaveRoom = carsLeaveRoom;
+
+  // ============ DRIVING ============
+  function myPos() {
+    const ent = myId ? playerEntities.get(myId) : null;
+    return ent?.group?.position || null;
+  }
+  function nearestCar(maxDist = 3.2) {
+    const p = myPos();
+    if (!p) return null;
+    let best = null, bestD = Infinity;
+    for (const c of cars.values()) {
+      if (c.row.driver_user_id && c.row.driver_user_id !== myId) continue;
+      const d = c.group.position.distanceTo(p);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return bestD <= maxDist ? best : null;
+  }
+
+  async function enterCar(c) {
+    if (driving || !c) return;
+    // Tenta reclamar o carro
+    const { data, error } = await supabase
+      .from("map_cars")
+      .update({ driver_user_id: myId, driver_since: new Date().toISOString() })
+      .eq("id", c.row.id)
+      .is("driver_user_id", null)
+      .select()
+      .maybeSingle();
+    if (error || !data) {
+      addSystemLine?.("Esse carro já está sendo dirigido.");
+      return;
+    }
+    Object.assign(c.row, data);
+    driving = c;
+    window.__drivingCar = c;
+    c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
+    // esconde personagem
+    const ent = playerEntities.get(myId);
+    if (ent) ent.group.visible = false;
+    // HUD
+    document.body.classList.add("driving-on");
+    const hud = document.getElementById("carHud");
+    if (hud) hud.hidden = false;
+    const prompt = document.getElementById("carPrompt");
+    if (prompt) prompt.hidden = true;
+    if (controls) controls.enabled = false;
+  }
+
+  async function exitCar(force = false) {
+    if (!driving) return;
+    const c = driving;
+    if (!force && Math.abs(c.state.vel) > 0.05) {
+      addSystemLine?.("Pare o carro antes de sair.");
+      return;
+    }
+    // persiste posição final e libera
+    try {
+      await supabase.from("map_cars").update({
+        x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
+        rotation_y: c.state.yaw,
+        driver_user_id: null, driver_since: null,
+      }).eq("id", c.row.id);
+    } catch {}
+    c.row.driver_user_id = null;
+    driving = null;
+    window.__drivingCar = null;
+    document.body.classList.remove("driving-on");
+    const hud = document.getElementById("carHud");
+    if (hud) hud.hidden = true;
+    // teleporta player ao lado do carro
+    const ent = playerEntities.get(myId);
+    if (ent) {
+      ent.group.visible = true;
+      const fwd = new THREE.Vector3(Math.sin(c.state.yaw), 0, Math.cos(c.state.yaw));
+      const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const exitPos = c.group.position.clone().addScaledVector(side, 1.6);
+      ent.group.position.copy(exitPos);
+      ent.target.copy(exitPos);
+      if (me) {
+        const pct = percentFromWorld(exitPos.x, exitPos.z);
+        me.x = Math.max(5, Math.min(95, pct.x));
+        me.y = Math.max(8, Math.min(92, pct.y));
+        trackMe?.(true).catch(() => {});
+      }
+    }
+    if (controls) controls.enabled = true;
+  }
+
+  function carInput() {
+    const fwd = carKeys.has("w") || carKeys.has("arrowup") || padState.fwd ? 1 : 0;
+    const back = carKeys.has("s") || carKeys.has("arrowdown") || padState.back ? 1 : 0;
+    const left = carKeys.has("a") || carKeys.has("arrowleft") || padState.left ? 1 : 0;
+    const right = carKeys.has("d") || carKeys.has("arrowright") || padState.right ? 1 : 0;
+    const brake = carKeys.has(" ") || padState.brake ? 1 : 0;
+    return { throttle: fwd - back, steer: right - left, brake };
+  }
+
+  const _camTmp = new THREE.Vector3();
+  const _camLook = new THREE.Vector3();
+
+  function simulateDriving(delta) {
+    const c = driving;
+    if (!c) return;
+    const r = c.row;
+    const inp = carInput();
+    const maxSpeed = r.max_speed || 20;
+    const accel = r.acceleration || 8;
+    const brakeF = r.brake_force || 14;
+    const turn = r.turn_speed || 2.2;
+    // throttle
+    if (inp.throttle > 0) c.state.vel += accel * delta;
+    else if (inp.throttle < 0) c.state.vel -= accel * 0.7 * delta;
+    else c.state.vel *= Math.pow(0.65, delta); // engine drag
+    if (inp.brake) {
+      const decel = brakeF * delta;
+      if (Math.abs(c.state.vel) <= decel) c.state.vel = 0;
+      else c.state.vel -= Math.sign(c.state.vel) * decel;
+    }
+    c.state.vel = Math.max(-maxSpeed*0.5, Math.min(maxSpeed, c.state.vel));
+    // steering — escala com sqrt(speed) p/ não girar parado
+    const targetSteer = inp.steer * 0.6;
+    c.state.steer += (targetSteer - c.state.steer) * Math.min(1, delta * 8);
+    const speedFactor = Math.min(1, Math.abs(c.state.vel) / 4);
+    c.state.yaw -= c.state.steer * turn * delta * speedFactor * Math.sign(c.state.vel || 1);
+    // move
+    const fwd = new THREE.Vector3(Math.sin(c.state.yaw), 0, Math.cos(c.state.yaw));
+    c.group.position.addScaledVector(fwd, c.state.vel * delta);
+    c.group.rotation.y = c.state.yaw;
+    // visuais rodas
+    const wr = r.wheel_radius || 0.35;
+    c.state.wheelSpin -= (c.state.vel * delta) / wr;
+    for (const k of ["fl","fr","rl","rr"]) {
+      const w = c.wheels[k];
+      if (!w) continue;
+      // direção (steer) só nas frontais
+      if (k === "fl" || k === "fr") w.rotation.y = c.state.steer;
+      w.userData.spin.rotation.x = c.state.wheelSpin;
+    }
+    // velocímetro
+    const sv = document.getElementById("carSpeedVal");
+    if (sv) sv.textContent = String(Math.round(Math.abs(c.state.vel) * 3.6)); // m/s -> km/h aprox
+    const exitBtn = document.getElementById("carExitBtn");
+    if (exitBtn) exitBtn.disabled = Math.abs(c.state.vel) > 0.05;
+    // câmera 3a pessoa
+    const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+    const camWant = c.group.position.clone()
+      .addScaledVector(fwd, -6.5)
+      .add(new THREE.Vector3(0, 3.2, 0));
+    camera.position.lerp(camWant, Math.min(1, delta * 4));
+    controls.target.lerp(camTarget, Math.min(1, delta * 6));
+    camera.lookAt(controls.target);
+  }
+
+  function updatePrompt() {
+    if (driving) return;
+    const c = nearestCar();
+    const prompt = document.getElementById("carPrompt");
+    if (!prompt) return;
+    if (c) {
+      promptCarId = c.row.id;
+      const txt = prompt.querySelector(".car-prompt-text");
+      if (txt) txt.textContent = `Entrar no ${c.row.name}`;
+      prompt.hidden = false;
+    } else {
+      promptCarId = null;
+      prompt.hidden = true;
+    }
+  }
+
+  window.__carsFrame = function (delta) {
+    if (driving) simulateDriving(delta);
+    else updatePrompt();
+  };
+
+  // ============ INPUT ============
+  document.addEventListener("keydown", (e) => {
+    if (e.target?.matches?.("input, textarea")) return;
+    const k = (e.key || "").toLowerCase();
+    if (k === "f" && !driving && promptCarId) {
+      e.preventDefault();
+      const c = cars.get(promptCarId);
+      if (c) enterCar(c);
+      return;
+    }
+    if (k === "f" && driving) {
+      e.preventDefault();
+      exitCar();
+      return;
+    }
+    if (driving) {
+      if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) {
+        e.preventDefault();
+        carKeys.add(k);
+        // remove do keyState normal pra não interferir
+        try { keyState.delete(k); } catch {}
+      }
+    }
+  });
+  document.addEventListener("keyup", (e) => {
+    const k = (e.key || "").toLowerCase();
+    carKeys.delete(k);
+  });
+
+  function bindHud() {
+    document.getElementById("carEnterBtn")?.addEventListener("click", () => {
+      if (driving || !promptCarId) return;
+      const c = cars.get(promptCarId);
+      if (c) enterCar(c);
+    });
+    document.getElementById("carExitBtn")?.addEventListener("click", () => exitCar());
+    const bind = (id, key) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const on = (e) => { e.preventDefault(); padState[key] = true; };
+      const off = (e) => { e.preventDefault(); padState[key] = false; };
+      el.addEventListener("pointerdown", on);
+      el.addEventListener("pointerup", off);
+      el.addEventListener("pointercancel", off);
+      el.addEventListener("pointerleave", off);
+    };
+    bind("carBtnFwd","fwd"); bind("carBtnBack","back");
+    bind("carBtnL","left"); bind("carBtnR","right"); bind("carBtnBrake","brake");
+  }
+
+  // ============ ADMIN PANEL ============
+  function renderCatalogPicker() {
+    const sel = document.getElementById("carCatalogPicker");
+    if (!sel) return;
+    sel.innerHTML = catalog.length
+      ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
+      : `<option value="">— nenhum no catálogo —</option>`;
+  }
+
+  function renderAdminList() {
+    const list = document.getElementById("carsAdminList");
+    if (!list) return;
+    const rows = Array.from(cars.values()).map(c => c.row);
+    if (!rows.length) { list.innerHTML = `<div style="opacity:0.6;font-size:12px;">Nenhum carro neste mapa.</div>`; return; }
+    list.innerHTML = rows.map(r => `
+      <div class="car-row" data-id="${r.id}">
+        <div class="car-name">🚗 ${escapeHtml(r.name)}</div>
+        <button data-tune="${r.id}">Ajustar</button>
+        <button data-here="${r.id}">Trazer</button>
+        <button class="danger" data-del="${r.id}">×</button>
+      </div>
+    `).join("");
+    list.querySelectorAll("[data-tune]").forEach(b => b.addEventListener("click", () => openTune(b.dataset.tune)));
+    list.querySelectorAll("[data-here]").forEach(b => b.addEventListener("click", () => bringHere(b.dataset.here)));
+    list.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => deleteCar(b.dataset.del)));
+  }
+
+  async function bringHere(id) {
+    const c = cars.get(id); if (!c) return;
+    const p = myPos(); if (!p) return;
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+    const spawn = p.clone().addScaledVector(fwd, 3);
+    await supabase.from("map_cars").update({ x: spawn.x, y: 0, z: spawn.z }).eq("id", id);
+  }
+  async function deleteCar(id) {
+    if (!confirm("Excluir este carro do mapa?")) return;
+    await supabase.from("map_cars").delete().eq("id", id);
+  }
+
+  function openTune(id) {
+    const c = cars.get(id);
+    const wrap = document.getElementById("carTunePanel");
+    if (!c || !wrap) return;
+    wrap.hidden = false;
+    const r = c.row;
+    const wo = r.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const slider = (label, key, min, max, step, val) => `
+      <div class="ct-row"><label>${label}<span data-v="${key}">${Number(val).toFixed(2)}</span></label>
+        <input type="range" data-tk="${key}" min="${min}" max="${max}" step="${step}" value="${val}"></div>`;
+    const wheelSliders = (k) => `
+      <div class="ct-section"><h5>Roda ${k.toUpperCase()}</h5>
+        <div class="ct-grid">
+          ${slider("X", `wheel_offsets.${k}.x`, -3, 3, 0.01, wo[k]?.x ?? 0)}
+          ${slider("Y", `wheel_offsets.${k}.y`, -2, 2, 0.01, wo[k]?.y ?? 0)}
+          ${slider("Z", `wheel_offsets.${k}.z`, -3, 3, 0.01, wo[k]?.z ?? 0)}
+        </div></div>`;
+    wrap.innerHTML = `
+      <div style="font-weight:600;font-size:12px;">⚙️ Ajustar: ${escapeHtml(r.name)}</div>
+      <div class="ct-section"><h5>Performance</h5>
+        ${slider("Velocidade máx (m/s)", "max_speed", 1, 60, 0.5, r.max_speed)}
+        ${slider("Aceleração", "acceleration", 1, 30, 0.5, r.acceleration)}
+        ${slider("Freio", "brake_force", 1, 40, 0.5, r.brake_force)}
+        ${slider("Curva", "turn_speed", 0.3, 5, 0.05, r.turn_speed)}
+      </div>
+      <div class="ct-section"><h5>Chassi</h5>
+        ${slider("Escala", "chassis_scale", 0.3, 3, 0.01, r.chassis_scale)}
+        ${slider("Offset Y", "chassis_offset_y", -2, 2, 0.01, r.chassis_offset_y)}
+        ${slider("Rotação Y°", "_rot_deg", -180, 180, 1, (r.rotation_y||0)*180/Math.PI)}
+        ${slider("Raio roda", "wheel_radius", 0.1, 1, 0.01, r.wheel_radius)}
+      </div>
+      ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button id="ctSave" style="flex:1;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar</button>
+        ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no modelo</button>` : ""}
+        <button id="ctClose" style="background:#333;color:#fff;border:none;border-radius:4px;padding:8px 10px;cursor:pointer;">Fechar</button>
+      </div>`;
+    const draft = JSON.parse(JSON.stringify(r));
+    if (!draft.wheel_offsets) draft.wheel_offsets = JSON.parse(JSON.stringify(DEFAULT_WHEEL_OFFSETS));
+    const applyDraft = () => {
+      Object.assign(c.row, draft);
+      c.chassisGroup.position.y = draft.chassis_offset_y || 0;
+      c.chassisGroup.scale.setScalar(draft.chassis_scale || 1);
+      c.group.rotation.y = draft.rotation_y || 0;
+      c.state.yaw = draft.rotation_y || 0;
+      for (const k of ["fl","fr","rl","rr"]) {
+        const off = draft.wheel_offsets[k] || DEFAULT_WHEEL_OFFSETS[k];
+        c.wheels[k].position.set(off.x, off.y, off.z);
+      }
+    };
+    wrap.querySelectorAll("[data-tk]").forEach(inp => {
+      inp.addEventListener("input", () => {
+        const key = inp.dataset.tk;
+        const val = parseFloat(inp.value);
+        const lbl = wrap.querySelector(`[data-v="${key}"]`);
+        if (lbl) lbl.textContent = val.toFixed(2);
+        if (key === "_rot_deg") draft.rotation_y = val * Math.PI / 180;
+        else if (key.startsWith("wheel_offsets.")) {
+          const [, k, axis] = key.split(".");
+          if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
+          draft.wheel_offsets[k][axis] = val;
+        } else draft[key] = val;
+        applyDraft();
+      });
+    });
+    wrap.querySelector("#ctClose")?.addEventListener("click", () => { wrap.hidden = true; });
+    wrap.querySelector("#ctSave")?.addEventListener("click", async () => {
+      const patch = {
+        max_speed: draft.max_speed, acceleration: draft.acceleration,
+        brake_force: draft.brake_force, turn_speed: draft.turn_speed,
+        chassis_scale: draft.chassis_scale, chassis_offset_y: draft.chassis_offset_y,
+        wheel_radius: draft.wheel_radius, wheel_offsets: draft.wheel_offsets,
+        rotation_y: draft.rotation_y,
+      };
+      const { error } = await supabase.from("map_cars").update(patch).eq("id", r.id);
+      if (error) addSystemLine?.("Erro ao salvar carro: " + error.message);
+      else addSystemLine?.("Carro salvo.");
+    });
+    wrap.querySelector("#ctSaveCatalog")?.addEventListener("click", async () => {
+      if (!r.catalog_id) return;
+      const patch = {
+        max_speed: draft.max_speed, acceleration: draft.acceleration,
+        brake_force: draft.brake_force, turn_speed: draft.turn_speed,
+        chassis_scale: draft.chassis_scale, chassis_offset_y: draft.chassis_offset_y,
+        wheel_radius: draft.wheel_radius, wheel_offsets: draft.wheel_offsets,
+      };
+      const { error } = await supabase.from("cars_catalog").update(patch).eq("id", r.catalog_id);
+      if (error) addSystemLine?.("Erro: " + error.message);
+      else addSystemLine?.("Padrão do modelo atualizado.");
+    });
+  }
+
+  async function uploadGlb(file, prefix) {
+    const ext = "glb";
+    const path = `cars/${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const { error } = await supabase.storage.from("map-assets").upload(path, file, {
+      contentType: "model/gltf-binary", upsert: false,
+    });
+    if (error) throw error;
+    const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  function bindAdminPanel() {
+    document.getElementById("carSpawnFromCatalog")?.addEventListener("click", async () => {
+      const sel = document.getElementById("carCatalogPicker");
+      const id = sel?.value;
+      const cat = catalog.find(c => c.id === id);
+      if (!cat) { addSystemLine?.("Cadastre um modelo primeiro."); return; }
+      const p = myPos() || new THREE.Vector3(0,0,0);
+      const fwd = new THREE.Vector3();
+      camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+      const spawn = p.clone().addScaledVector(fwd, 4);
+      const row = {
+        map_id: currentMap, catalog_id: cat.id, name: cat.name,
+        chassis_url: cat.chassis_url, wheel_url: cat.wheel_url,
+        x: spawn.x, y: 0, z: spawn.z, rotation_y: 0,
+        max_speed: cat.max_speed, acceleration: cat.acceleration,
+        brake_force: cat.brake_force, turn_speed: cat.turn_speed,
+        wheel_radius: cat.wheel_radius, chassis_scale: cat.chassis_scale,
+        chassis_offset_y: cat.chassis_offset_y, wheel_offsets: cat.wheel_offsets,
+        created_by: myId,
+      };
+      const { error } = await supabase.from("map_cars").insert(row);
+      if (error) addSystemLine?.("Erro: " + error.message);
+      else addSystemLine?.("Carro adicionado.");
+    });
+
+    document.getElementById("carNewSave")?.addEventListener("click", async () => {
+      const name = document.getElementById("carNewName")?.value?.trim();
+      const chassisFile = document.getElementById("carNewChassisFile")?.files?.[0];
+      const wheelFile = document.getElementById("carNewWheelFile")?.files?.[0];
+      const status = document.getElementById("carNewStatus");
+      if (!name) { status.textContent = "Dê um nome ao modelo."; return; }
+      if (!chassisFile) { status.textContent = "Selecione o GLB do chassi."; return; }
+      status.textContent = "Subindo chassi...";
+      try {
+        const chassisUrl = await uploadGlb(chassisFile, "chassis");
+        let wheelUrl = null;
+        if (wheelFile) {
+          status.textContent = "Subindo roda...";
+          wheelUrl = await uploadGlb(wheelFile, "wheel");
+        }
+        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") + "-" + Date.now().toString(36);
+        const { error } = await supabase.from("cars_catalog").insert({
+          slug, name, chassis_url: chassisUrl, wheel_url: wheelUrl, created_by: myId,
+        });
+        if (error) throw error;
+        status.textContent = "Modelo salvo no catálogo.";
+        document.getElementById("carNewName").value = "";
+        document.getElementById("carNewChassisFile").value = "";
+        if (document.getElementById("carNewWheelFile")) document.getElementById("carNewWheelFile").value = "";
+        await loadCatalog();
+      } catch (e) {
+        status.textContent = "Erro: " + (e.message || e);
+      }
+    });
+  }
+
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { bindHud(); bindAdminPanel(); });
+  else { bindHud(); bindAdminPanel(); }
+})();
