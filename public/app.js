@@ -8448,9 +8448,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // e garante que outros players vejam o avatar junto do carro).
     const ent = playerEntities.get(myId);
     if (ent) {
-      ent.group.position.copy(c.group.position);
+      // Posiciona no banco do motorista (lado esquerdo, sentado)
+      const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const seat = c.group.position.clone()
+        .addScaledVector(side, -0.55)
+        .addScaledVector(fwd, -0.2);
+      seat.y = c.group.position.y + 0.9;
+      ent.group.position.copy(seat);
       ent.group.rotation.y = c.state.yaw;
-      ent.target.copy(c.group.position);
+      ent.target.copy(seat);
+      ent.group.visible = true;
     }
     if (me) {
       const pct = percentFromWorld(c.group.position.x, c.group.position.z);
