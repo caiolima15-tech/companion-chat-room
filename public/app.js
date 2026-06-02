@@ -1543,8 +1543,13 @@ mapGrid?.addEventListener("click", (e) => {
 });
 mapSelectBack?.addEventListener("click", () => {
   closeMapSelect();
-  // Se ainda não entrou na sala, volta pra escolher personagem
-  if (!playerEntities.get(myId)) openCharacterSelect();
+  // Se ainda não entrou na sala, volta pra escolher personagem.
+  // Se já está na sala, restaura a visão do mundo (exitRoomToLobby removeu world-ready).
+  if (!playerEntities.get(myId)) {
+    openCharacterSelect();
+  } else {
+    document.body.classList.add("world-ready");
+  }
 });
 confirmMapButton?.addEventListener("click", async () => {
   if (!selectedMapId) return;
@@ -1562,6 +1567,9 @@ confirmMapButton?.addEventListener("click", async () => {
   } else if (switching) {
     // Já estava na sala — troca canais e chat sem reentrar
     await switchRoom(selectedMapId);
+  } else {
+    // Mesma sala — apenas restaura a visão do mundo
+    document.body.classList.add("world-ready");
   }
 });
 
