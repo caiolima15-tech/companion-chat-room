@@ -4003,12 +4003,37 @@ function exportCharacter() {
 // ============ Animation loop ============
 // ============ Distance-based render culling (LOD) ============
 // Carrega/renderiza apenas o que está perto do jogador para aliviar o desempenho.
-let RENDER_DISTANCE = Math.max(20, Math.min(400, parseFloat(localStorage.getItem("neon-render-distance") || "80")));
+const RENDER_DISTANCE_KEY = "neon-render-distance";
+const RENDER_DISTANCE_VERSION_KEY = "neon-render-distance-version";
+const RENDER_DISTANCE_CONFIG_VERSION = "2";
+const RENDER_DISTANCE_DEFAULT = 160;
+const RENDER_DISTANCE_MIN = 40;
+const RENDER_DISTANCE_MAX = 600;
+function readInitialRenderDistance() {
+  let stored = NaN;
+  let shouldUpgrade = true;
+  try {
+    stored = parseFloat(localStorage.getItem(RENDER_DISTANCE_KEY) || "");
+    shouldUpgrade = localStorage.getItem(RENDER_DISTANCE_VERSION_KEY) !== RENDER_DISTANCE_CONFIG_VERSION;
+  } catch {}
+  let value = Number.isFinite(stored) ? stored : RENDER_DISTANCE_DEFAULT;
+  if (shouldUpgrade && value < RENDER_DISTANCE_DEFAULT) value = RENDER_DISTANCE_DEFAULT;
+  value = Math.max(RENDER_DISTANCE_MIN, Math.min(RENDER_DISTANCE_MAX, value));
+  try {
+    localStorage.setItem(RENDER_DISTANCE_KEY, String(value));
+    localStorage.setItem(RENDER_DISTANCE_VERSION_KEY, RENDER_DISTANCE_CONFIG_VERSION);
+  } catch {}
+  return value;
+}
+let RENDER_DISTANCE = readInitialRenderDistance();
 let RENDER_DISTANCE_SQ = RENDER_DISTANCE * RENDER_DISTANCE;
+window.RENDER_DISTANCE = RENDER_DISTANCE;
 window.setRenderDistance = function (d) {
-  RENDER_DISTANCE = Math.max(20, Math.min(400, +d || 80));
+  RENDER_DISTANCE = Math.max(RENDER_DISTANCE_MIN, Math.min(RENDER_DISTANCE_MAX, +d || RENDER_DISTANCE_DEFAULT));
   RENDER_DISTANCE_SQ = RENDER_DISTANCE * RENDER_DISTANCE;
-  localStorage.setItem("neon-render-distance", String(RENDER_DISTANCE));
+  window.RENDER_DISTANCE = RENDER_DISTANCE;
+  localStorage.setItem(RENDER_DISTANCE_KEY, String(RENDER_DISTANCE));
+  localStorage.setItem(RENDER_DISTANCE_VERSION_KEY, RENDER_DISTANCE_CONFIG_VERSION);
 };
 const _lodRef = new THREE.Vector3();
 const _lodTmp = new THREE.Vector3();
