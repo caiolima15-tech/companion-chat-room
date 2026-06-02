@@ -3881,7 +3881,13 @@ function updatePlayerAnimation(delta) {
 function updateNameplates() {
   const rect = renderer.domElement.getBoundingClientRect();
   const projected = new THREE.Vector3();
-  for (const entity of playerEntities.values()) {
+  const hidden = window.__hiddenDrivers;
+  for (const [id, entity] of playerEntities) {
+    if (hidden && hidden.has(id)) {
+      entity.plate.style.opacity = "0";
+      if (entity.loadingSpinner) entity.loadingSpinner.style.opacity = "0";
+      continue;
+    }
     projected.copy(entity.group.position);
     projected.y += 1.8;
     projected.project(camera);
