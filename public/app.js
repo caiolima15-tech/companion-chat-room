@@ -8427,7 +8427,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      if (k === "fl" || k === "fr") w.rotation.y = c.state.steer;
+      // Front wheels (visually) are rl/rr after the wheel-position swap
+      if (k === "rl" || k === "rr") w.rotation.y = c.state.steer;
       w.userData.spin.rotation.x = c.state.wheelSpin;
     }
     // HUD
