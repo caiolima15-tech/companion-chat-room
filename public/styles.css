@@ -172,6 +172,63 @@ h1 {
   text-align: center;
   transition: opacity 120ms ease;
 }
+.nameplate.is-clickable { pointer-events: auto; cursor: pointer; }
+.nameplate.is-clickable .plate-name { transition: transform 120ms ease, box-shadow 120ms ease; }
+.nameplate.is-clickable:hover .plate-name { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(0,0,0,0.45); }
+
+/* Popup ao clicar em outro jogador */
+.player-popup {
+  position: fixed;
+  z-index: 9000;
+  min-width: 200px;
+  background: linear-gradient(180deg, #1c1b3a 0%, #15142a 100%);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.55), 0 0 0 1px rgba(110,90,255,0.15) inset;
+  padding: 12px;
+  color: #f1f1ff;
+  font-size: 0.85rem;
+  transform: translate(-50%, calc(-100% - 12px));
+  animation: pp-pop 140ms ease-out;
+}
+.player-popup::after {
+  content: "";
+  position: absolute;
+  left: 50%; bottom: -7px;
+  width: 12px; height: 12px;
+  background: #15142a;
+  border-right: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 1px solid rgba(255,255,255,0.12);
+  transform: translateX(-50%) rotate(45deg);
+}
+.player-popup-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.player-popup-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: #2a2750 center/cover no-repeat;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.player-popup-name { font-weight: 700; font-size: 0.92rem; line-height: 1.1; }
+.player-popup-actions { display: flex; flex-direction: column; gap: 6px; }
+.player-popup-actions button {
+  width: 100%;
+  text-align: left;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #fff;
+  padding: 8px 10px;
+  border-radius: 9px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: flex; align-items: center; gap: 8px;
+  transition: background 120ms ease, transform 120ms ease;
+}
+.player-popup-actions button:hover { background: rgba(110,90,255,0.22); transform: translateX(2px); }
+.player-popup-actions button:disabled { opacity: 0.55; cursor: default; transform: none; }
+@keyframes pp-pop {
+  from { opacity: 0; transform: translate(-50%, calc(-100% - 4px)) scale(0.96); }
+  to   { opacity: 1; transform: translate(-50%, calc(-100% - 12px)) scale(1); }
+}
 
 .avatar-spinner {
   position: absolute;
