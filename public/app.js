@@ -2719,6 +2719,7 @@ function applyEnvTransform() {
   currentEnvRoot.rotation.y = t.rotation_y || 0;
   currentEnvRoot.updateMatrixWorld(true);
   updateBoundaryHelper();
+  invalidateEnvCullCache?.();
 }
 
 let __envLoadToken = 0;
