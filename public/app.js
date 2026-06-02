@@ -331,6 +331,20 @@ controls.addEventListener("end", () => {
   window.__camUserHoldUntil = performance.now() + 600;
 });
 
+// OrbitControls trata shift/ctrl/meta + drag como PAN; como pan está desligado,
+// isso bloqueia a rotação enquanto o jogador segura Shift pra correr. Aqui
+// removemos as modificadoras do pointerdown ANTES do OrbitControls processar,
+// preservando rotate e zoom com Shift segurado.
+renderer.domElement.addEventListener("pointerdown", (e) => {
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    try {
+      Object.defineProperty(e, "shiftKey", { value: false, configurable: true });
+      Object.defineProperty(e, "ctrlKey",  { value: false, configurable: true });
+      Object.defineProperty(e, "metaKey",  { value: false, configurable: true });
+    } catch {}
+  }
+}, true);
+
 const stage = new THREE.Group();
 scene.add(stage);
 
@@ -2374,6 +2388,19 @@ function notifyLeaveAndUntrack() {
   } catch {}
   try { presenceChannel?.untrack(); } catch {}
   try { lobbyChannel?.untrack(); } catch {}
+  // Se estiver dirigindo um carro, dispara uma persistência da posição atual
+  // (best-effort) e libera o assento de motorista. O save periódico de 3s
+  // do simulateDriving é a rede de segurança principal.
+  try {
+    const dc = window.__drivingCar;
+    if (dc?.row && dc?.group) {
+      supabase.from("map_cars").update({
+        x: dc.group.position.x, y: dc.group.position.y, z: dc.group.position.z,
+        rotation_y: dc.state.yaw,
+        driver_user_id: null, driver_since: null,
+      }).eq("id", dc.row.id).then(() => {});
+    }
+  } catch {}
 }
 window.addEventListener("pagehide", notifyLeaveAndUntrack);
 window.addEventListener("beforeunload", notifyLeaveAndUntrack);
@@ -8263,6 +8290,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       } catch {}
       try { trackMe?.(false); } catch {}
     }
+    // Persiste posição no DB a cada ~3s (assim, se o motorista cair / fechar
+    // a aba sem sair pelo botão, o carro fica onde parou pra todos.)
+    if (!c.__lastDbSave || now - c.__lastDbSave > 3000) {
+      c.__lastDbSave = now;
+      try {
+        supabase.from("map_cars").update({
+          x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
+          rotation_y: c.state.yaw,
+        }).eq("id", c.row.id).then(() => {});
+      } catch {}
+    }
   }
 
   // Lerp visual dos carros que NÃO estamos dirigindo (usa último broadcast OU posição do DB)
@@ -8426,7 +8464,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   async function deleteCar(id) {
     if (!confirm("Excluir este carro do mapa?")) return;
-    await supabase.from("map_cars").delete().eq("id", id);
+    // Se eu estiver dirigindo/de carona neste carro, sai antes.
+    if (driving && driving.row.id === id) { try { await exitCar(true); } catch {} }
+    if (riding && riding.row.id === id) { try { exitPassenger(); } catch {} }
+    const { error } = await supabase.from("map_cars").delete().eq("id", id);
+    if (error) { alert("Falha ao excluir: " + error.message); return; }
+    // Remoção local imediata (não depende do evento realtime DELETE,
+    // que pode não chegar com filtro em alguns casos).
+    const c = cars.get(id);
+    if (c) { disposeCar(c); cars.delete(id); }
+    renderAdminList();
   }
 
   function openTune(id) {
