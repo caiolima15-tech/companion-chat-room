@@ -9623,14 +9623,39 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
 
+  async function getFriendRel(peerId) {
+    if (!myId || !peerId) return { status: "none" };
+    const { data } = await supabase
+      .from("friend_requests")
+      .select("id,from_user,to_user,status")
+      .or(`and(from_user.eq.${myId},to_user.eq.${peerId}),and(from_user.eq.${peerId},to_user.eq.${myId})`)
+      .maybeSingle();
+    if (!data) return { status: "none" };
+    if (data.status === "accepted") return { status: "accepted", row: data };
+    if (data.status === "rejected") return { status: "rejected", row: data, mine: data.from_user === myId };
+    return { status: "pending", row: data, mine: data.from_user === myId };
+  }
+
+  function friendButtonLabel(rel) {
+    if (rel.status === "accepted") return { text: "✓ Amigos", disabled: true };
+    if (rel.status === "pending" && rel.mine) return { text: "⏳ Pedido enviado", disabled: true };
+    if (rel.status === "pending" && !rel.mine) return { text: "✅ Aceitar pedido", disabled: false, accept: true };
+    if (rel.status === "rejected") return { text: "🤝 Solicitar amizade", disabled: false };
+    return { text: "🤝 Solicitar amizade", disabled: false };
+  }
+
   async function open(peerId, anchorEl) {
     if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
     close();
     currentPeerId = peerId;
-    const { data: peer } = await supabase.from("profiles").select("id,nickname,avatar_url").eq("id", peerId).maybeSingle();
+    const [{ data: peer }, rel] = await Promise.all([
+      supabase.from("profiles").select("id,nickname,avatar_url").eq("id", peerId).maybeSingle(),
+      getFriendRel(peerId),
+    ]);
     if (currentPeerId !== peerId) return;
     const name = peer?.nickname || "Usuário";
     const avatar = peer?.avatar_url || "";
+    const fb = friendButtonLabel(rel);
 
     popup = document.createElement("div");
     popup.className = "player-popup";
@@ -9641,7 +9666,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       </div>
       <div class="player-popup-actions">
         <button data-act="profile">👤 Ver perfil</button>
-        <button data-act="friend">🤝 Solicitar amizade</button>
+        <button data-act="dm">💬 Mandar DM</button>
+        <button data-act="friend" ${fb.disabled ? "disabled" : ""}>${fb.text}</button>
         <button data-act="follow-loc">📍 Ir até onde está</button>
       </div>
     `;
@@ -9656,25 +9682,34 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         close();
         if (typeof openProfile === "function") openProfile(peerId);
         else window.dispatchEvent(new CustomEvent("open-profile", { detail: peerId }));
+      } else if (act === "dm") {
+        close();
+        window.dispatchEvent(new CustomEvent("open-dm", { detail: peerId }));
       } else if (act === "friend") {
-        btn.disabled = true; btn.textContent = "Enviando…";
+        btn.disabled = true;
+        const original = btn.textContent;
+        btn.textContent = fb.accept ? "Aceitando…" : "Enviando…";
         try {
-          await supabase.from("direct_messages").insert({
-            from_user: myId,
-            to_user: peerId,
-            content: "🤝 Olá! Quer ser meu amigo?",
-          });
-          btn.textContent = "✅ Pedido enviado";
+          if (fb.accept) {
+            await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", rel.row.id);
+            btn.textContent = "✓ Amigos";
+          } else {
+            const { error } = await supabase.from("friend_requests").insert({ from_user: myId, to_user: peerId, status: "pending" });
+            if (error) throw error;
+            btn.textContent = "⏳ Pedido enviado";
+          }
           setTimeout(close, 900);
         } catch (err) {
-          btn.disabled = false; btn.textContent = "🤝 Solicitar amizade";
-          alert("Falha ao enviar pedido: " + (err?.message || err));
+          btn.disabled = false;
+          btn.textContent = original;
+          alert("Falha: " + (err?.message || err));
         }
       } else if (act === "follow-loc") {
         await handleFollowLocation(peerId, name);
       }
     });
   }
+
 
   function teleportNear(peerId) {
     const target = playerEntities.get(peerId);
