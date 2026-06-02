@@ -7885,8 +7885,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 // quando próximo; sai apenas com velocidade = 0.
 (function carsModule() {
   const DEFAULT_WHEEL_OFFSETS = {
-    fl:{x:-0.78,y:0.1,z:-1.25}, fr:{x:0.75,y:0.1,z:-1.25},
-    rl:{x:-0.78,y:0.1,z:1.25},  rr:{x:0.75,y:0.1,z:1.25},
+    fl:{x:-0.78,y:0.1,z:1.25}, fr:{x:0.75,y:0.1,z:1.25},
+    rl:{x:-0.78,y:0.1,z:-1.25},  rr:{x:0.75,y:0.1,z:-1.25},
     scale: 1,
   };
   const cars = new Map(); // id -> { row, group, chassisGroup, wheels{fl,fr,rl,rr}, state, __netTarget? }
