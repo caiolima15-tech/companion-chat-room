@@ -8440,7 +8440,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   async function deleteCar(id) {
     if (!confirm("Excluir este carro do mapa?")) return;
-    await supabase.from("map_cars").delete().eq("id", id);
+    // Se eu estiver dirigindo/de carona neste carro, sai antes.
+    if (driving && driving.row.id === id) { try { await exitCar(true); } catch {} }
+    if (riding && riding.row.id === id) { try { exitPassenger(); } catch {} }
+    const { error } = await supabase.from("map_cars").delete().eq("id", id);
+    if (error) { alert("Falha ao excluir: " + error.message); return; }
+    // Remoção local imediata (não depende do evento realtime DELETE,
+    // que pode não chegar com filtro em alguns casos).
+    const c = cars.get(id);
+    if (c) { disposeCar(c); cars.delete(id); }
+    renderAdminList();
   }
 
   function openTune(id) {
