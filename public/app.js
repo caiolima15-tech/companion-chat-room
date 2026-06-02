@@ -321,6 +321,7 @@ controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.minDistance = 2.5;
 controls.maxDistance = 60;
+controls.enablePan = false; // shift+drag continua girando a câmera (sem panorâmica)
 const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
 
