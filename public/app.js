@@ -4105,8 +4105,10 @@ function updateRenderDistanceCulling(force = false) {
   _lodLastRef.copy(_lodRef);
   _lodLastDistance = RENDER_DISTANCE;
 
-  // Outros jogadores
+  // Outros jogadores (esconde quem está dirigindo um carro)
+  const hidden = window.__hiddenDrivers;
   for (const [id, e] of playerEntities) {
+    if (hidden && hidden.has(id)) { e.group.visible = false; continue; }
     if (id === myId) { e.group.visible = true; continue; }
     e.group.getWorldPosition(_lodTmp);
     e.group.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
