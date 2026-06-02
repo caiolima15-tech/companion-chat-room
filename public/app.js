@@ -8247,7 +8247,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.__drivingCar = c;
     c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
     const ent = playerEntities.get(myId);
-    if (ent) ent.group.visible = true; // mantém o personagem visível sentado no carro
+    if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
