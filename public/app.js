@@ -3709,7 +3709,7 @@ function applyHeldMovement(delta) {
   let mag = Math.hypot(ix, iy);
   let running = keyState.has("shift");
   if (mag < 0.01 && usingJoy) {
-    ix = j.x; iy = -j.y; // joystick: y para cima é "frente"
+    ix = j.x; iy = j.y; // joystick: joy.y já é positivo quando o knob vai pra cima
     mag = Math.min(1, Math.hypot(ix, iy));
     running = mag > 0.7;
   }
