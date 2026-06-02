@@ -4001,6 +4001,51 @@ function exportCharacter() {
 }
 
 // ============ Animation loop ============
+// ============ Distance-based render culling (LOD) ============
+// Carrega/renderiza apenas o que está perto do jogador para aliviar o desempenho.
+let RENDER_DISTANCE = Math.max(20, Math.min(400, parseFloat(localStorage.getItem("neon-render-distance") || "80")));
+let RENDER_DISTANCE_SQ = RENDER_DISTANCE * RENDER_DISTANCE;
+window.setRenderDistance = function (d) {
+  RENDER_DISTANCE = Math.max(20, Math.min(400, +d || 80));
+  RENDER_DISTANCE_SQ = RENDER_DISTANCE * RENDER_DISTANCE;
+  localStorage.setItem("neon-render-distance", String(RENDER_DISTANCE));
+};
+const _lodRef = new THREE.Vector3();
+const _lodTmp = new THREE.Vector3();
+let _lodAccum = 0;
+function _lodCullChildren(group) {
+  if (!group || !group.children) return;
+  for (const child of group.children) {
+    child.getWorldPosition(_lodTmp);
+    child.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+  }
+}
+function updateRenderDistanceCulling() {
+  const ent = myId ? playerEntities.get(myId) : null;
+  if (ent) _lodRef.copy(ent.group.position);
+  else _lodRef.copy(controls.target);
+
+  // Outros jogadores
+  for (const [id, e] of playerEntities) {
+    if (id === myId) { e.group.visible = true; continue; }
+    e.group.getWorldPosition(_lodTmp);
+    e.group.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+  }
+  // Bots / luzes customizadas / carros
+  _lodCullChildren(botsGroup);
+  _lodCullChildren(customLightsGroup);
+  const carsRoot = scene.getObjectByName("CarsRoot");
+  if (carsRoot) _lodCullChildren(carsRoot);
+
+  // Malhas do mapa (envGroup) — mantém o chão base sempre visível
+  envGroup.traverse((node) => {
+    if (!node.isMesh) return;
+    if (node === envBaseFloor) { node.visible = true; return; }
+    node.getWorldPosition(_lodTmp);
+    node.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+  });
+}
+
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
