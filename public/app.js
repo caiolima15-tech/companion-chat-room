@@ -3751,6 +3751,13 @@ function updatePlayerAnimation(delta) {
       if (entity.mixer) entity.mixer.update(delta);
       continue;
     }
+    // Jogador local em modo normal: applyHeldMovement já posiciona/anima.
+    // Aqui só atualizamos o mixer e seguimos.
+    if (entity.player?.id === myId && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode) {
+      if (entity.mixer) entity.mixer.update(delta);
+      if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
+      continue;
+    }
     // Sit override (local player only): trava no assento, sem terreno, sem walk
     if (entity.player?.id === myId && window.__sittingInteraction) {
       const s = window.__sittingInteraction;
