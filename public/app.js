@@ -3629,27 +3629,94 @@ function applyJoystickMoveNormal(jx, jy, mag) {
   if (now - lastMoveSent > 90) { lastMoveSent = now; trackMe(false).catch(() => {}); }
 }
 
-function applyHeldMovement() {
+function applyHeldMovement(delta) {
   if (window.__drivingCar) return; // dirigindo carro: controles do veículo
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
   if (window.__sittingInteraction) return;
   // Joystick na tela (modo normal)
   const j = window.__joyState;
-  if (j && j.active) {
-    const mag = Math.min(1, Math.hypot(j.x, j.y));
-    if (mag > 0.12) { applyJoystickMoveNormal(j.x, j.y, mag); return; }
+  const usingJoy = !!(j && j.active && Math.hypot(j.x, j.y) > 0.12);
+  if (!me || !myId) return;
+  const entity = playerEntities.get(myId);
+  if (!entity) return;
+  const dt = Math.min(0.05, delta || 1 / 60);
+
+  // Salto físico (independente do movimento horizontal)
+  if (entity.__jumpVy != null) {
+    entity.__jumpVy -= 22 * dt;
+    entity.group.position.y += entity.__jumpVy * dt;
+    const gy0 = groundHeightAt(entity.group.position, entity.group.position.y);
+    if (entity.group.position.y <= gy0 && entity.__jumpVy <= 0) {
+      entity.group.position.y = gy0;
+      entity.__jumpVy = null;
+    }
   }
-  if (!keyState.size) return;
-  const amount = 0.72;
-  let dx = 0;
-  let dy = 0;
-  if (keyState.has("arrowup") || keyState.has("w")) dy -= amount;
-  if (keyState.has("arrowdown") || keyState.has("s")) dy += amount;
-  if (keyState.has("arrowleft") || keyState.has("a")) dx -= amount;
-  if (keyState.has("arrowright") || keyState.has("d")) dx += amount;
-  if (dx || dy) {
-    move(dx, dy, Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : dy > 0 ? "down" : "up");
+
+  // Direção de entrada (teclado WASD/setas tem prioridade; senão usa joystick)
+  let ix = 0, iy = 0;
+  if (keyState.has("arrowup") || keyState.has("w")) iy += 1;
+  if (keyState.has("arrowdown") || keyState.has("s")) iy -= 1;
+  if (keyState.has("arrowleft") || keyState.has("a")) ix -= 1;
+  if (keyState.has("arrowright") || keyState.has("d")) ix += 1;
+  let mag = Math.hypot(ix, iy);
+  let running = keyState.has("shift");
+  if (mag < 0.01 && usingJoy) {
+    ix = j.x; iy = -j.y; // joystick: y para cima é "frente"
+    mag = Math.min(1, Math.hypot(ix, iy));
+    running = mag > 0.7;
+  }
+
+  if (mag < 0.01) {
+    entity.running = false;
+    if (me) me.running = false;
+    entity.target.copy(entity.group.position);
+    setPlayerAction(entity, "idle");
+    return;
+  }
+
+  // Direção relativa à câmera (igual ao modo futebol — resposta imediata)
+  const camFwd = new THREE.Vector3().copy(entity.group.position).sub(camera.position);
+  camFwd.y = 0;
+  if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
+  camFwd.normalize();
+  const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
+  const dir = new THREE.Vector3()
+    .addScaledVector(camFwd, iy)
+    .addScaledVector(camRight, ix);
+  if (dir.lengthSq() < 1e-5) return;
+  dir.normalize();
+
+  const speed = running ? speedCfg.runN : speedCfg.walkN;
+  const step = speed * dt * (running ? 1 : Math.max(0.5, Math.min(1, mag)));
+  const before = entity.group.position.clone();
+  const cand = before.clone().addScaledVector(dir, step);
+  if (!collidesAt(before, cand)) {
+    entity.group.position.x = cand.x;
+    entity.group.position.z = cand.z;
+  }
+  entity.group.rotation.y = Math.atan2(dir.x, dir.z);
+  if (entity.__jumpVy == null) {
+    const gy = groundHeightAt(entity.group.position, entity.group.position.y);
+    entity.group.position.y += (gy - entity.group.position.y) * Math.min(1, dt * 12);
+  }
+  entity.target.copy(entity.group.position);
+  entity.running = running;
+
+  setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
+
+  if (me) {
+    me.running = running;
+    const pct = percentFromWorld(entity.group.position.x, entity.group.position.z);
+    me.x = Math.max(5, Math.min(95, pct.x));
+    me.y = Math.max(8, Math.min(92, pct.y));
+    me.facing = Math.abs(dir.x) > Math.abs(dir.z)
+      ? (dir.x > 0 ? "right" : "left")
+      : (dir.z > 0 ? "down" : "up");
+    const idx = players.findIndex((p) => p.id === myId);
+    if (idx >= 0) players[idx] = { ...players[idx], ...me };
+    const now = performance.now();
+    if (now - lastMoveSent > 90) { lastMoveSent = now; trackMe(false).catch(() => {}); }
   }
 }
 
