@@ -771,6 +771,22 @@
       </div>
     </div>
     <button id="interactionPrompt" type="button" hidden></button>
+
+    <div id="usersAdminOverlay" class="users-admin-overlay" hidden aria-hidden="true">
+      <div class="users-admin-modal" role="dialog" aria-label="Painel de usuários">
+        <div class="users-admin-head">
+          <div class="users-admin-title">👥 Usuários cadastrados</div>
+          <button type="button" id="usersAdminClose" class="users-admin-close" aria-label="Fechar">✕</button>
+        </div>
+        <div class="users-admin-toolbar">
+          <input id="usersAdminSearch" type="search" placeholder="Buscar por nome ou e-mail…">
+          <button type="button" id="usersAdminRefresh">↻ Atualizar</button>
+        </div>
+        <div id="usersAdminList" class="users-admin-list">
+          <div class="users-admin-empty">Carregando…</div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
 
