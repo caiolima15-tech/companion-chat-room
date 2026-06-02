@@ -5656,6 +5656,10 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   makePanel(document.getElementById("interactionsAdminPanel"));
   // Radio panel idem
   makePanel(document.getElementById("radioAdminPanel"));
+  // Cars panel
+  makePanel(document.getElementById("carsAdminPanel"));
+  // Speed panel
+  makePanel(document.getElementById("speedAdminPanel"));
 
   // Pose debug removido
 
