@@ -2192,6 +2192,27 @@ async function setupRoomChannels(mapId) {
     })
     .subscribe();
 
+  // Voz por proximidade — push-to-talk
+  if (voiceChannel) await supabase.removeChannel(voiceChannel);
+  voiceChannel = supabase.channel(`room-voice:${mapId}`, {
+    config: { broadcast: { self: false } },
+  });
+  voiceChannel
+    .on("broadcast", { event: "voice-start" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteStart?.(payload.id);
+    })
+    .on("broadcast", { event: "voice-end" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteEnd?.(payload.id);
+    })
+    .on("broadcast", { event: "voice-blob" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      window.__voice?.onRemoteBlob?.(payload.id, payload.b64, payload.mime);
+    })
+    .subscribe();
+  window.__voice?.setChannel?.(voiceChannel);
+
   // Catálogo, user_avatars e profiles permanecem globais — definidos abaixo (uma vez).
   await setupGlobalSecondaryChannels();
 }
