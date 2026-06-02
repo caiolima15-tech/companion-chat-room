@@ -4201,6 +4201,22 @@ function animate() {
 // ============ Event wiring ============
 window.addEventListener("resize", resize);
 
+// Teclado mobile: mantém o jogo ancorado e sobe APENAS o chat usando --kb-offset.
+// O visualViewport encolhe quando o teclado aparece (iOS Safari, Chrome Android).
+(function setupKeyboardOffset() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const root = document.documentElement;
+  function update() {
+    // Distância entre o fundo do layout viewport e o fundo do visual viewport
+    const offset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    root.style.setProperty("--kb-offset", offset + "px");
+  }
+  vv.addEventListener("resize", update);
+  vv.addEventListener("scroll", update);
+  update();
+})();
+
 document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
