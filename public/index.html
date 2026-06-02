@@ -364,6 +364,7 @@
             <button type="button" class="admin-dock-item" data-dock-target="#freeCamToggleBtn" data-dock-toggle><span class="admin-dock-icon">🎥</span>Câmera Livre</button>
             <button type="button" class="admin-dock-item" data-dock-target="#boundsToggleBtn" data-dock-toggle><span class="admin-dock-icon">📐</span>Limites</button>
             <button type="button" class="admin-dock-item" id="carsAdminToggle" data-dock-panel="#carsAdminPanel"><span class="admin-dock-icon">🚗</span>Carros</button>
+            <button type="button" class="admin-dock-item" id="usersAdminToggle"><span class="admin-dock-icon">👥</span>Usuários</button>
           </aside>
 
           <input id="replaceMapGlbInput" type="file" accept=".glb,model/gltf-binary" hidden>
@@ -770,6 +771,22 @@
       </div>
     </div>
     <button id="interactionPrompt" type="button" hidden></button>
+
+    <div id="usersAdminOverlay" class="users-admin-overlay" hidden aria-hidden="true">
+      <div class="users-admin-modal" role="dialog" aria-label="Painel de usuários">
+        <div class="users-admin-head">
+          <div class="users-admin-title">👥 Usuários cadastrados</div>
+          <button type="button" id="usersAdminClose" class="users-admin-close" aria-label="Fechar">✕</button>
+        </div>
+        <div class="users-admin-toolbar">
+          <input id="usersAdminSearch" type="search" placeholder="Buscar por nome ou e-mail…">
+          <button type="button" id="usersAdminRefresh">↻ Atualizar</button>
+        </div>
+        <div id="usersAdminList" class="users-admin-list">
+          <div class="users-admin-empty">Carregando…</div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
 

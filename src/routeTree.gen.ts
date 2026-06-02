@@ -10,33 +10,53 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiAdminListUsersRouteImport } from './routes/api/admin/list-users'
+import { Route as ApiAdminDeleteUserRouteImport } from './routes/api/admin/delete-user'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminListUsersRoute = ApiAdminListUsersRouteImport.update({
+  id: '/api/admin/list-users',
+  path: '/api/admin/list-users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAdminDeleteUserRoute = ApiAdminDeleteUserRouteImport.update({
+  id: '/api/admin/delete-user',
+  path: '/api/admin/delete-user',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/admin/delete-user': typeof ApiAdminDeleteUserRoute
+  '/api/admin/list-users': typeof ApiAdminListUsersRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/admin/delete-user': typeof ApiAdminDeleteUserRoute
+  '/api/admin/list-users': typeof ApiAdminListUsersRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/admin/delete-user': typeof ApiAdminDeleteUserRoute
+  '/api/admin/list-users': typeof ApiAdminListUsersRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/admin/delete-user' | '/api/admin/list-users'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/admin/delete-user' | '/api/admin/list-users'
+  id: '__root__' | '/' | '/api/admin/delete-user' | '/api/admin/list-users'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiAdminDeleteUserRoute: typeof ApiAdminDeleteUserRoute
+  ApiAdminListUsersRoute: typeof ApiAdminListUsersRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +68,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/list-users': {
+      id: '/api/admin/list-users'
+      path: '/api/admin/list-users'
+      fullPath: '/api/admin/list-users'
+      preLoaderRoute: typeof ApiAdminListUsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/admin/delete-user': {
+      id: '/api/admin/delete-user'
+      path: '/api/admin/delete-user'
+      fullPath: '/api/admin/delete-user'
+      preLoaderRoute: typeof ApiAdminDeleteUserRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiAdminDeleteUserRoute: ApiAdminDeleteUserRoute,
+  ApiAdminListUsersRoute: ApiAdminListUsersRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
