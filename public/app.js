@@ -325,6 +325,12 @@ controls.enablePan = false; // shift+drag continua girando a cÃ¢mera (sem panorÃ
 const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
 
+controls.addEventListener("start", () => { window.__camUserDragging = true; });
+controls.addEventListener("end", () => {
+  window.__camUserDragging = false;
+  window.__camUserHoldUntil = performance.now() + 600;
+});
+
 const stage = new THREE.Group();
 scene.add(stage);
 
