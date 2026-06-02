@@ -8703,11 +8703,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!draft.wheel_offsets) draft.wheel_offsets = JSON.parse(JSON.stringify(DEFAULT_WHEEL_OFFSETS));
     if (draft.wheel_offsets.scale == null) draft.wheel_offsets.scale = 1;
     const applyDraft = () => {
+      const isDrivingThis = driving && driving.row.id === c.row.id;
+      const liveYaw = c.state.yaw;
       Object.assign(c.row, draft);
       c.chassisGroup.position.y = draft.chassis_offset_y || 0;
       c.chassisGroup.scale.setScalar(draft.chassis_scale || 1);
-      c.group.rotation.y = draft.rotation_y || 0;
-      c.state.yaw = draft.rotation_y || 0;
+      if (!isDrivingThis) {
+        c.group.rotation.y = draft.rotation_y || 0;
+        c.state.yaw = draft.rotation_y || 0;
+      } else {
+        c.group.rotation.y = liveYaw;
+        c.state.yaw = liveYaw;
+        c.row.rotation_y = liveYaw;
+      }
       applyWheelTransforms(c, draft.wheel_offsets);
     };
     wrap.querySelectorAll("[data-tk]").forEach(inp => {
