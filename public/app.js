@@ -8427,7 +8427,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      if (k === "fl" || k === "fr") w.rotation.y = c.state.steer;
+      // Front wheels (visually) are rl/rr after the wheel-position swap
+      if (k === "rl" || k === "rr") w.rotation.y = c.state.steer;
       w.userData.spin.rotation.x = c.state.wheelSpin;
     }
     // HUD
@@ -8618,11 +8619,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // ============ ADMIN PANEL ============
   function renderCatalogPicker() {
     const sel = document.getElementById("carCatalogPicker");
-    if (!sel) return;
-    sel.innerHTML = catalog.length
-      ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
-      : `<option value="">— nenhum no catálogo —</option>`;
+    if (sel) {
+      sel.innerHTML = catalog.length
+        ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
+        : `<option value="">— nenhum no catálogo —</option>`;
+    }
+    const list = document.getElementById("carCatalogList");
+    if (list) {
+      if (!catalog.length) {
+        list.innerHTML = `<div style="opacity:0.6;font-size:11px;">Nenhum modelo cadastrado.</div>`;
+      } else {
+        list.innerHTML = catalog.map(c => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.03);border:1px solid #2a3040;border-radius:4px;">
+            <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>
+            <button data-cat-del="${c.id}" title="Excluir do catálogo" style="background:#3a1020;color:#ff6680;border:1px solid #5a2030;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">×</button>
+          </div>
+        `).join("");
+        list.querySelectorAll("[data-cat-del]").forEach(b =>
+          b.addEventListener("click", () => deleteCatalogCar(b.dataset.catDel))
+        );
+      }
+    }
   }
+
+  async function deleteCatalogCar(id) {
+    const cat = catalog.find(c => c.id === id);
+    if (!cat) return;
+    if (!confirm(`Excluir o modelo "${cat.name}" do catálogo? Carros já no mapa continuam existindo.`)) return;
+    const { error } = await supabase.from("cars_catalog").delete().eq("id", id);
+    if (error) { alert("Falha ao excluir: " + error.message); return; }
+    catalog = catalog.filter(c => c.id !== id);
+    renderCatalogPicker();
+    addSystemLine?.("Modelo removido do catálogo.");
+  }
+
 
   function renderAdminList() {
     const list = document.getElementById("carsAdminList");
@@ -8720,9 +8750,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       <details><summary style="cursor:pointer;font-size:11px;opacity:0.8;margin-top:6px;">Ajuste fino por roda</summary>
         ${wheelSliders("fl")}${wheelSliders("fr")}${wheelSliders("rl")}${wheelSliders("rr")}
       </details>
-      <div style="display:flex;gap:6px;margin-top:8px;">
-        <button id="ctSave" style="flex:1;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar</button>
-        ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no modelo</button>` : ""}
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;">
+        <button id="ctSave" style="flex:1 1 100%;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">💾 Salvar neste carro (permanente)</button>
+        ${r.catalog_id ? `<button id="ctSaveCatalog" style="flex:1;background:#7c5fff;color:#fff;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar como padrão do modelo</button>` : ""}
         <button id="ctClose" style="background:#333;color:#fff;border:none;border-radius:4px;padding:8px 10px;cursor:pointer;">Fechar</button>
       </div>`;
     const draft = JSON.parse(JSON.stringify(r));
