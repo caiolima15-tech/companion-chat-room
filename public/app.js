@@ -1567,6 +1567,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
   const ALL_PANEL_SELECTORS = [
     "#lightsAdminPanel", "#layersPanel", "#botsAdminPanel",
     "#radioAdminPanel", "#interactionsAdminPanel", "#mapAdminPanel",
+    "#carsAdminPanel",
   ];
   dock.addEventListener("click", (ev) => {
     const item = ev.target.closest(".admin-dock-item");
@@ -1597,7 +1598,13 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     }
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
-    if (target) target.click();
+    if (target) {
+      target.click();
+    } else if (panelSel) {
+      // Sem target: alterna o painel diretamente
+      const panel = document.querySelector(panelSel);
+      if (panel) panel.hidden = !panel.hidden;
+    }
     if (item.hasAttribute("data-dock-toggle") && target) {
       setTimeout(() => {
         const on = /\bON\b/i.test(target.textContent || "");
