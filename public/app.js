@@ -7849,7 +7849,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const rd = document.getElementById("spRenderDist");
     const rdv = document.getElementById("spRenderDistVal");
     if (rd) {
-      rd.value = String(window.RENDER_DISTANCE || parseFloat(localStorage.getItem("neon-render-distance") || "80"));
+      rd.value = String(window.RENDER_DISTANCE || parseFloat(localStorage.getItem("neon-render-distance") || "160"));
       if (rdv) rdv.textContent = String(Math.round(+rd.value));
       rd.addEventListener("input", () => {
         if (rdv) rdv.textContent = String(Math.round(+rd.value));
