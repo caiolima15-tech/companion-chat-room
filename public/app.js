@@ -595,6 +595,7 @@ logoutButton.addEventListener("click", async () => {
 // TEMP: login desativado para teste. Entra direto como convidado local.
 if (!LOGIN_DISABLED_FOR_TEST) {
   supabase.auth.onAuthStateChange((_event, session) => {
+    if (window.__isRecoveringPassword) return;
     if (session?.user) {
       hideAuth();
       bootstrapSession(session.user);
@@ -604,6 +605,7 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 
 (async () => {
   hideAuth();
+  if (window.__isRecoveringPassword) { showRecoveryOverlay(); return; }
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
