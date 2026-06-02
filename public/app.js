@@ -3998,7 +3998,7 @@ function animate() {
           let d = wantYaw - curYaw;
           while (d > Math.PI) d -= Math.PI * 2;
           while (d < -Math.PI) d += Math.PI * 2;
-          const k = Math.min(1, delta * 3.5);
+          const k = Math.min(1, delta * 1.5);
           const newYaw = curYaw + d * k;
           offset.x = Math.sin(newYaw) * r;
           offset.z = Math.cos(newYaw) * r;
