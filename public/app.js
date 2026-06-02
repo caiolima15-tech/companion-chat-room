@@ -9432,3 +9432,125 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     onRemoteBlob,
   };
 })();
+
+// ============ Painel admin: gerenciar usuários ============
+(() => {
+  const overlay = document.getElementById("usersAdminOverlay");
+  const list = document.getElementById("usersAdminList");
+  const search = document.getElementById("usersAdminSearch");
+  const closeBtn = document.getElementById("usersAdminClose");
+  const refreshBtn = document.getElementById("usersAdminRefresh");
+  const dockBtn = document.getElementById("usersAdminToggle");
+  if (!overlay || !dockBtn) return;
+
+  let cache = [];
+
+  async function authHeaders() {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  function fmtDate(s) {
+    if (!s) return "—";
+    try { return new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); }
+    catch { return s; }
+  }
+
+  function render(filter = "") {
+    const q = filter.trim().toLowerCase();
+    const rows = cache.filter(u =>
+      !q ||
+      (u.email || "").toLowerCase().includes(q) ||
+      (u.nickname || "").toLowerCase().includes(q)
+    );
+    if (!rows.length) {
+      list.innerHTML = `<div class="users-admin-empty">Nenhum usuário encontrado.</div>`;
+      return;
+    }
+    list.innerHTML = rows.map(u => {
+      const isAdminRow = (u.roles || []).includes("admin");
+      const avatar = u.avatar_url
+        ? `<img src="${u.avatar_url}" alt="">`
+        : `<span>${(u.nickname || u.email || "?").slice(0,1).toUpperCase()}</span>`;
+      return `
+        <div class="user-row" data-uid="${u.id}">
+          <div class="user-row-avatar">${avatar}</div>
+          <div class="user-row-info">
+            <div class="user-row-name">${escapeHtml(u.nickname || "(sem nome)")}${isAdminRow ? '<span class="badge-admin">admin</span>' : ''}</div>
+            <div class="user-row-meta">${escapeHtml(u.email || "—")} · Criado ${fmtDate(u.created_at)} · Último login ${fmtDate(u.last_sign_in_at)}</div>
+          </div>
+          <button type="button" class="user-row-delete" data-act="delete">Excluir</button>
+        </div>
+      `;
+    }).join("");
+  }
+
+  async function load() {
+    list.innerHTML = `<div class="users-admin-empty">Carregando…</div>`;
+    try {
+      const res = await fetch("/api/admin/list-users", { headers: await authHeaders() });
+      if (!res.ok) {
+        list.innerHTML = `<div class="users-admin-empty">Erro ao carregar (${res.status}).</div>`;
+        return;
+      }
+      const json = await res.json();
+      cache = json.users || [];
+      render(search.value);
+    } catch (e) {
+      list.innerHTML = `<div class="users-admin-empty">Erro: ${escapeHtml(String(e))}</div>`;
+    }
+  }
+
+  async function doDelete(uid, btn) {
+    const target = cache.find(u => u.id === uid);
+    const label = target ? (target.nickname || target.email || uid) : uid;
+    const confirm1 = prompt(`Tem certeza que deseja EXCLUIR PERMANENTEMENTE a conta de "${label}"?\n\nEsta ação é IRREVERSÍVEL.\n\nDigite EXCLUIR para confirmar:`);
+    if (confirm1 !== "EXCLUIR") return;
+    btn.disabled = true;
+    btn.textContent = "Excluindo…";
+    try {
+      const res = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(await authHeaders()) },
+        body: JSON.stringify({ userId: uid }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        alert(`Falha ao excluir: ${msg}`);
+        btn.disabled = false;
+        btn.textContent = "Excluir";
+        return;
+      }
+      cache = cache.filter(u => u.id !== uid);
+      render(search.value);
+    } catch (e) {
+      alert(`Erro: ${e}`);
+      btn.disabled = false;
+      btn.textContent = "Excluir";
+    }
+  }
+
+  function open() {
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    load();
+  }
+  function close() {
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  dockBtn.addEventListener("click", () => { if (typeof isAdmin !== "undefined" && !isAdmin) return alert("Apenas admin."); open(); });
+  closeBtn.addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  refreshBtn.addEventListener("click", load);
+  search.addEventListener("input", () => render(search.value));
+  list.addEventListener("click", (e) => {
+    const btn = e.target.closest('[data-act="delete"]');
+    if (!btn) return;
+    const row = btn.closest(".user-row");
+    const uid = row?.dataset.uid;
+    if (uid) doDelete(uid, btn);
+  });
+})();
