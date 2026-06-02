@@ -3961,7 +3961,7 @@ function animate() {
   // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
   if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
   if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
-  applyHeldMovement();
+  applyHeldMovement(delta);
   updatePlayerAnimation(delta);
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
