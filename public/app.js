@@ -8662,7 +8662,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _safeBind);
   else _safeBind();
 })();
-})();
 
 
 
