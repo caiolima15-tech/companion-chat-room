@@ -7363,6 +7363,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     promptEl.innerHTML = `<span class="ip-label">${_esc(label)}</span>`;
     promptEl.onclick = occupied ? null : (() => enterSit(inter));
     promptEl.style.filter = occupied ? "grayscale(1) opacity(0.7)" : "";
+    // Pré-carrega o clip da interação ativa para evitar T-pose quando o jogador apertar E
+    if (!occupied && inter.animation_url) { try { loadFbxClip(inter.animation_url).catch(()=>{}); } catch {} }
   }
   function showPromptForSit() {
     promptEl.hidden = false;
