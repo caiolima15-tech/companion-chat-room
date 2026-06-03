@@ -4459,6 +4459,16 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   handleSceneClick(event);
 });
 function handleSceneClick(event) {
+  // Primeiro: tenta detectar clique no avatar (GLB) de outro jogador
+  const peerHit = pickPeerAvatar(event);
+  if (peerHit) {
+    if (window.__playerPopup?.open) {
+      // âncora "fake" na posição do clique
+      const fakeAnchor = { getBoundingClientRect: () => ({ left: event.clientX, top: event.clientY, width: 0, height: 0, right: event.clientX, bottom: event.clientY }) };
+      window.__playerPopup.open(peerHit, fakeAnchor);
+    }
+    return;
+  }
   const point = pointerToWorld(event);
   if (!point) return;
   if (isAdmin && movingAssetId) {
@@ -4480,6 +4490,32 @@ function handleSceneClick(event) {
     return;
   }
   moveToWorld(point);
+}
+
+function pickPeerAvatar(event) {
+  if (!playerEntities || playerEntities.size === 0) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const groups = [];
+  for (const [pid, ent] of playerEntities) {
+    if (pid === myId) continue;
+    if (ent?.group && ent.group.visible !== false) groups.push({ pid, group: ent.group });
+  }
+  if (!groups.length) return null;
+  const hits = raycaster.intersectObjects(groups.map((g) => g.group), true);
+  if (!hits.length) return null;
+  // sobe na hierarquia até bater num group de peer conhecido
+  for (const h of hits) {
+    let o = h.object;
+    while (o) {
+      const m = groups.find((g) => g.group === o);
+      if (m) return m.pid;
+      o = o.parent;
+    }
+  }
+  return null;
 }
 
 glbInput?.addEventListener("change", () => {
