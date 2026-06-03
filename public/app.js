@@ -7492,6 +7492,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (el.type === "checkbox") val = el.checked;
     else if (el.type === "range" || el.type === "number") val = Number(el.value);
     else val = el.value;
+    // Dropdown de animação: mapeia para animation_url (ou abre o campo manual)
+    if (field === "animation_pick") {
+      const urlRow = editorEl.querySelector("[data-anim-url-row]");
+      const urlInp = editorEl.querySelector('input[data-field="animation_url"]');
+      if (val === "__manual__") {
+        if (urlRow) urlRow.hidden = false;
+        urlInp?.focus();
+      } else {
+        if (urlRow) urlRow.hidden = true;
+        editingDraft.animation_url = val || null;
+        if (urlInp) urlInp.value = val || "";
+      }
+      return;
+    }
     editingDraft[field] = val;
     // Trocar o tipo re-renderiza (editor do futebol é diferente)
     if (field === "kind") {
@@ -7504,6 +7518,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
       return;
     }
+
     // Mantém barra e número em sincronia
     if (el.type === "range") {
       const num = el.parentElement?.querySelector("input[type=number][data-field]");
