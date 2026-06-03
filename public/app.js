@@ -8510,6 +8510,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         let nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
         let ny = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
         const len = Math.hypot(nx, ny);
+        joy.run = len > 1; // arrastar para fora do círculo = correr
         if (len > 1) { nx /= len; ny /= len; }
         joy.x = nx; joy.y = -ny;
         setKnob(nx, ny);
@@ -8518,7 +8519,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         joy.active = true; joy.id = e.pointerId; base.setPointerCapture(e.pointerId); moveJoy(e);
       });
       base.addEventListener("pointermove", (e) => { if (joy.id === e.pointerId) moveJoy(e); });
-      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; setKnob(0, 0); } };
+      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; joy.run = false; setKnob(0, 0); } };
       base.addEventListener("pointerup", end);
       base.addEventListener("pointercancel", end);
     }
