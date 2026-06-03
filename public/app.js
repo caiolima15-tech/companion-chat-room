@@ -11544,8 +11544,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const pz = myEnt?.group?.position?.z || 0;
       // detach locally first
       const cat = itemCatalog.find((c) => c.slug === held.slug);
-      const expiresAt = (cat && (cat as any))
-        ? new Date(Date.now() + 60000).toISOString() : new Date(Date.now() + 60000).toISOString();
+      const expiresAt = new Date(Date.now() + 60000).toISOString();
       detachItemFromUser(myId);
       try {
         await supabase.from("map_item_instances").insert({
