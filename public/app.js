@@ -8620,16 +8620,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const id = current.slice("custom:".length);
       const opt = sel.options[sel.selectedIndex];
       if (!confirm(`Excluir a animação "${opt?.textContent || id}"?`)) return;
+      const key = current;
       const { error } = await supabase.from("bot_animations").delete().eq("id", id);
       if (error) { alert("Erro: " + error.message); return; }
-      delete tunings[current];
-      window.__saveAnimTunings?.();
+      delete tunings[key];
+      try { await window.__deleteAnimTuningRemote?.(key); } catch {}
+      try { localStorage.setItem("neon-tap-room-anim-tunings", JSON.stringify(tunings)); } catch {}
       current = "idle";
     });
 
     window.addEventListener("bot-animations:updated", () => { populateSelect(); sync(); });
+    window.addEventListener("animation-tunings:updated", () => { if (!panel.hidden) sync(); });
 
-    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) { populateSelect(); sync(); } });
+    btn.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) { populateSelect(); sync(); }
+    });
     panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
       const body = panel.querySelector(".panel-body");
@@ -8638,8 +8644,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     populateSelect();
     sync();
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
-  else bind();
+  // Bind seguro: aguarda DOM e idempotente (não duplica)
+  let _bound = false;
+  function _safeBind() {
+    if (_bound) return;
+    const btn = document.getElementById("animAdminToggle");
+    const panel = document.getElementById("animAdminPanel");
+    if (!btn || !panel || !window.__animTunings) { setTimeout(_safeBind, 200); return; }
+    _bound = true;
+    bind();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _safeBind);
+  else _safeBind();
+})();
 })();
 
 
