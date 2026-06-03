@@ -2048,7 +2048,10 @@ body.world-ready #layersPanel:not([hidden]),
 body.world-ready #botsAdminPanel:not([hidden]),
 body.world-ready #radioAdminPanel:not([hidden]),
 body.world-ready #interactionsAdminPanel:not([hidden]),
-body.world-ready #mapAdminPanel:not([hidden]) {
+body.world-ready #mapAdminPanel:not([hidden]),
+body.world-ready #animAdminPanel:not([hidden]),
+body.world-ready #carsAdminPanel:not([hidden]),
+body.world-ready #speedAdminPanel:not([hidden]) {
   top: 64px !important;
   right: 232px !important;
   left: auto !important;
