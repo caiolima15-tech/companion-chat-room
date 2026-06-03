@@ -9798,7 +9798,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <button data-act="profile">👤 Ver perfil</button>
         <button data-act="dm">💬 Mandar DM</button>
         <button data-act="friend" ${fb.disabled ? "disabled" : ""}>${fb.text}</button>
-        <button data-act="follow-loc">📍 Ir até onde está</button>
       </div>
     `;
     document.body.appendChild(popup);
