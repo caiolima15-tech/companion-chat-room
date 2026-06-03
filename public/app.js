@@ -10629,6 +10629,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
     }
     portalMeshes.clear();
+    armedPortals.clear();
+    suppressedPortals.clear();
   }
 
   // ---------- Proximity / teleport ----------
@@ -10645,15 +10647,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!entity?.group) return;
     const px = entity.group.position.x, pz = entity.group.position.z;
 
-    // Release suppressed portals once the player moves outside them (with a small margin).
-    if (suppressedPortals.size) {
-      for (const pid of Array.from(suppressedPortals)) {
-        const p = portals.find((x) => x.id === pid);
-        if (!p) { suppressedPortals.delete(pid); continue; }
-        const dx = px - (Number(p.pos_x) || 0);
-        const dz = pz - (Number(p.pos_z) || 0);
-        const r = Math.max(0.3, Number(p.radius) || 1.2) * 1.6;
-        if (dx * dx + dz * dz > r * r) suppressedPortals.delete(pid);
+    // Update armed/suppressed state per portal based on distance.
+    for (const p of portals) {
+      const dx = px - (Number(p.pos_x) || 0);
+      const dz = pz - (Number(p.pos_z) || 0);
+      const r = Math.max(0.3, Number(p.radius) || 1.2);
+      const outsideMargin = (dx * dx + dz * dz) > (r * 1.6) * (r * 1.6);
+      if (outsideMargin) {
+        // Player is clearly outside → arm it and lift any suppression.
+        armedPortals.add(p.id);
+        suppressedPortals.delete(p.id);
       }
     }
 
@@ -10662,6 +10665,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     for (const p of portals) {
       if (suppressedPortals.has(p.id)) continue;
+      if (!armedPortals.has(p.id)) continue; // must walk away first
       const sameMap = !p.dest_map_id || p.dest_map_id === currentMapId;
       // Skip cross-map portals without destination, and same-map portals without a destination portal.
       if (!p.dest_map_id && !p.dest_portal_id) continue;
@@ -10680,6 +10684,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           if (target) {
             dropPlayerAt(target.pos_x, target.pos_y, target.pos_z);
             suppressedPortals.add(target.id);
+            armedPortals.delete(target.id);
           }
           teleporting = false;
         } else {
