@@ -1,92 +1,47 @@
+# Corrigir T-pose e pose residual nas interações
 
-## 1. Painel "🎬 Animações" não abre pelo dock lateral
+## Diagnóstico
 
-Hoje o item do dock `data-dock-target="#animAdminToggle"` clica no botão flutuante, que existe e tem listener próprio (`public/app.js:8576`). Mas o painel `#animAdminPanel` **não está** em `ALL_PANEL_SELECTORS` (`public/app.js:1833-1837`) nem em `panelMap` (`1891-1898`), então:
+No `enterSit` (`public/app.js:7366`):
 
-- ao abrir outro painel ele **não fecha** o de animações (vira "uma exceção");
-- e mais importante: no caminho de fallback (`else if (panelSel)` em `1869-1872`), se o `target.click()` falhar/no-op por timing, o painel nunca alterna.
+1. **T-pose antes de carregar**: o código faz `fadeOut(0.2)` da ação atual e seta `entity.currentAction = null` imediatamente. Em seguida `await loadFbxClip(inter.animation_url)` baixa o FBX da rede. Durante esse intervalo (centenas de ms na primeira vez) **nenhuma ação está tocando no mixer** → o esqueleto volta para a bind pose (T-pose). Só depois do await é que a nova clipAction começa.
 
-Combinado com o fato de que o bind do animAdminPanel usa `else bind()` na linha 8586 (síncrono no carregamento), se o elemento `#animSelect` ainda não estiver pronto (race do DOMContentLoaded em alguns devices) o listener do botão nunca é registrado e o clique fica morto.
+2. **Pose residual "deitado no chão"**: quando a animação é `LoopOnce` + `clampWhenFinished` (deitar), o personagem trava no último frame. Se o jogador entra rapidamente em outra interação OU se a primeira ação ainda está em fade-out quando a segunda começa, a `mixerAction` antiga não é parada (`.stop()`) — só `fadeOut`. O mixer continua avaliando o clip antigo com peso > 0 e a pose deitada "vaza" para a nova interação. Mesmo problema acontece quando o usuário sai da interação por movimento: `standUp` reseta `character.position/rotation`, mas se a `mixerAction` da interação ainda estiver com weight residual, o esqueleto volta a deitar no próximo frame.
 
-**Correção:**
+3. **Pré-carregamento ausente**: o FBX só é baixado no momento do `E`. Mesmo com cache, a primeira interação por URL sempre passa pelo intervalo T-pose.
 
-- Adicionar `"#animAdminPanel"` em `ALL_PANEL_SELECTORS` e `panelMap` (com a chave `animAdminPanel`).
-- Trocar o bind síncrono por sempre aguardar `DOMContentLoaded` (ou usar `setTimeout(bind, 0)`).
-- Garantir que `bind()` é idempotente — se reexecutado, não duplica listeners.
-- Adicionar fallback no handler do dock: se `target` existir e `panelSel` também, depois de `target.click()` checar se `panel.hidden` mudou; se não, forçar `panel.hidden = !panel.hidden`.
+## Mudanças (todas em `public/app.js`, função de interações)
 
-## 2. Salvar tunings de animação para sempre e para todos
+### 1. Pré-carregar o clip quando o prompt aparece
+Em `showPromptForSit(inter)` disparar `loadFbxClip(inter.animation_url).catch(()=>{})` em background. Quando o jogador apertar E, o clip já está no `_animClipCache` e o await resolve no mesmo frame, sem T-pose.
 
-Hoje `animTunings` vive só em `localStorage` (`ANIM_TUNINGS_KEY`). Cada usuário tem o seu, e some se limpar o cache.
+### 2. Manter idle tocando até o novo clip estar pronto
+Refatorar a sequência dentro de `enterSit`:
 
-**Migração para Lovable Cloud:**
+- NÃO chamar `fadeOut` da ação atual antes do await.
+- Carregar o FBX, retargetar e só então: criar a nova `clipAction`, fazer crossfade (`oldAction.crossFadeTo(newAction, 0.25, false)` ou `fadeOut(0.2)` + `newAction.fadeIn(0.2)`) **no mesmo frame**.
+- Se nenhuma `animation_url` (interação "manual"), manter idle como hoje, sem janela morta.
 
-- Nova tabela `public.animation_tunings`:
-  - `anim_key` (text, PK) — `"idle"`, `"walk"`, …, `"custom:<uuid>"`
-  - `off_x`, `off_y`, `off_z` (numeric, default 0)
-  - `rot_x`, `rot_y`, `rot_z` (numeric, default 0)
-  - `updated_by` (uuid, nullable), `updated_at` (timestamptz default now())
-- GRANTs: `SELECT` para `anon` e `authenticated` (leitura pública porque todo cliente precisa aplicar os tunings); `INSERT/UPDATE/DELETE` só para `service_role` + policy admin.
-- RLS: `SELECT USING (true)`; `INSERT/UPDATE/DELETE USING (public.has_role(auth.uid(), 'admin'))`.
-- Realtime ligado para refletir mudanças nos outros clientes sem reload.
+### 3. Parar de verdade a ação anterior de interação
+Guardar referência `previousSitAction` e ao iniciar uma nova `enterSit` (ou em `standUp`) chamar:
+```
+prev.fadeOut(0.2);
+setTimeout(() => { try { prev.stop(); mixer.uncacheAction(prev.getClip()); } catch {} }, 260);
+```
+Isso garante peso 0 e remove o clip do mixer — elimina o "vazamento" da pose deitada.
 
-**App (`public/app.js`):**
+### 4. Reset robusto em `standUp`
+Antes de iniciar idle, forçar `mixer.stopAllAction()` se `currentSit.mixerAction` existir, e só então `idle.reset().fadeIn(0.2).play()`. Resetar `character.position/rotation` **depois** do `stopAllAction`, não antes, para que o reset não seja sobrescrito pelo último frame do clip clamped.
 
-- No boot, carregar `animation_tunings` do Supabase e popular `animTunings` em memória (sobrescrevendo defaults). Manter `localStorage` apenas como cache offline / fallback antes da resposta do banco chegar.
-- Substituir `__saveAnimTunings()` por:
-  1. Atualizar `animTunings` em memória.
-  2. `upsert` em `animation_tunings` para a chave atual.
-  3. Atualizar `localStorage` como cache.
-- Realtime channel: ao receber update, mesclar no `animTunings` e re-renderizar o painel se estiver aberto.
-- Quando uma animação custom é deletada, deletar também a row de tuning.
+### 5. Cancelamento da carga em curso
+Adicionar um token (`currentSit.loadToken = Symbol()`) e comparar dentro do `.then` do `loadFbxClip` — se mudou, descartar o resultado. Hoje só compara `window.__sittingInteraction !== currentSit`, o que falha quando o jogador entra em outra interação do mesmo objeto.
 
-## 3. Volume do rádio não muda
+### 6. Pré-carregar todos os clips do mapa ao entrar
+Em `interactionsEnterRoom` (linha 7470), iterar todas as interações com `animation_url` única e disparar `loadFbxClip(url).catch(()=>{})` em paralelo (limitar a ~4 concorrentes). Custo de banda baixo, elimina T-pose para sempre depois do load inicial do mapa.
 
-Duas causas reais no código atual (`public/app.js:6938-6948`, `public/styles.css:1898`):
+## Fora de escopo
+- Não mexer em retargeting, tunings, presença/realtime, joystick, ou pose dos bots.
+- Não tocar em `client.ts`, `types.ts`, `.env`, `styles.css`.
 
-- `touch-action: none` no `#radioVolumeSlider` mata o scrub nativo do `<input type=range>` em mobile (e em alguns trackpads usando Pointer Events).
-- O `stopPropagation` nos pointerdown/touchstart/mousedown evita o pan do mundo, mas em desktop com `pointerdown` parando a propagação o navegador às vezes **não promove** o evento a `mousedown` no thumb do range (depende do user agent), travando o drag.
-
-**Correção:**
-
-- Trocar `touch-action: none` por `touch-action: manipulation` no slider (preserva o gesto horizontal do range).
-- Manter o `stopPropagation`, mas só em `pointerdown` (sem `mousedown`/`touchstart`), e adicionar `e.stopImmediatePropagation()` apenas se o alvo for o próprio slider.
-- Garantir que o slider responde também a `change` (não só `input`) para casos onde só dispara no release.
-- Verificar visualmente no preview (desktop e simulação mobile) que `audio.volume` é atualizado ao arrastar.
-
-## 4. Mobile vertical: painéis de admin não abrem / landscape com layout do desktop
-
-Hoje o dock lateral existe em mobile, mas:
-
-- Ao abrir um painel ele aparece em `position:absolute; top:60px; left:1020px;` — fora da viewport mobile.
-- Há regras em `@media (max-width: 640px)` (`public/styles.css:2056-2068`) que reposicionam alguns painéis pelo `right`, **mas `#animAdminPanel` não está nessa lista** — então ele literalmente abre fora da tela.
-
-**Correção mobile (portrait):**
-
-- Adicionar `#animAdminPanel` à regra de `max-width: 640px` em styles.css, fixando `right: 188px !important; left: auto !important; max-width: calc(100vw - 200px) !important;`.
-- Garantir que todos os painéis admin (`#lightsAdminPanel, #layersPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, #mapAdminPanel, #animAdminPanel, #carsAdminPanel, #speedAdminPanel`) recebem `max-height: 70vh; overflow:auto;` em mobile.
-
-**Correção landscape (rotacionar para o lado = layout desktop):**
-
-- Hoje várias regras mobile usam só `max-width`. No landscape (ex.: 844×390), `max-width: 640px` ainda dispara → aplica layout mobile mesmo deitado.
-- Restringir as regras mobile a `@media (max-width: 640px) and (orientation: portrait)` (e equivalentes nas outras breakpoints mobile), de forma que:
-  - landscape em celular cai nas regras desktop padrão;
-  - portrait continua com layout compactado.
-- Para a área 3D / topbar / chat / dock: revisar as media queries de `max-width: 600px`, `max-width: 640px`, `max-width: 720px` e adicionar `and (orientation: portrait)` onde fizer sentido (sem afetar tablets grandes).
-
-## 5. Arquivos afetados
-
-- **Nova migração**: tabela `public.animation_tunings` + GRANTs + RLS + realtime.
-- `public/app.js`:
-  - dock: incluir `#animAdminPanel` em `ALL_PANEL_SELECTORS`/`panelMap` + fallback de toggle.
-  - animAdminPanel IIFE: bind seguro (DOMContentLoaded), carregar/salvar tunings via Supabase, ouvir realtime.
-  - radio: ajustar listeners do slider.
-- `public/styles.css`:
-  - `#radioVolumeSlider`: `touch-action: manipulation`.
-  - Adicionar `#animAdminPanel` ao bloco `@media (max-width: 640px)` de painéis.
-  - Escopar regras mobile críticas para `(orientation: portrait)` onde apropriado.
-
-## 6. Fora de escopo
-
-- Não vou mexer em `client.ts`, `types.ts`, nem nas animações em si (idle/walk/etc).
-- Não vou trocar provedor de áudio nem adicionar HLS.js — só ajustar o controle de volume existente.
+## Arquivos afetados
+- `public/app.js` apenas (funções `enterSit`, `standUp`, `showPromptForSit`, `interactionsEnterRoom`).
