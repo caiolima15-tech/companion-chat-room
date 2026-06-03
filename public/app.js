@@ -5795,7 +5795,8 @@ async function applyBotAnimation(entity, url) {
     const clip = await loadFbxClip(url);
     if (entity.animationUrl !== url) return;
     const bones = collectBoneNames(entity.character);
-    const retarg = retargetClipToBones(clip, bones) || clip.clone();
+    const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+    if (!retarg) { console.warn("[bot] nenhum osso da animação casou com", entity.characterSlug); return; }
     const a = entity.mixer.clipAction(retarg);
     a.reset().play(); entity.action = a;
   } catch (e) { console.warn("[bot] anim", e); }
