@@ -7709,7 +7709,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         offset_x: Number(editingDraft.offset_x) || 0,
         offset_y: Number(editingDraft.offset_y) || 0,
         offset_z: Number(editingDraft.offset_z) || 0,
+        rotation_x: Number(editingDraft.rotation_x) || 0,
         rotation_y: Number(editingDraft.rotation_y) || 0,
+        rotation_z: Number(editingDraft.rotation_z) || 0,
+
         scale_mul: Number(editingDraft.scale_mul) || 1,
         trigger_radius: Number(editingDraft.trigger_radius) || 1.5,
         exit_radius: (Number(editingDraft.trigger_radius) || 1.5) + 0.5,
