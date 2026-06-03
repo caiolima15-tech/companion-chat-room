@@ -7252,11 +7252,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ox = (draft?.offset_x ?? inter.offset_x) || 0;
     const oy = (draft?.offset_y ?? inter.offset_y) || 0;
     const oz = (draft?.offset_z ?? inter.offset_z) || 0;
+    const rx = ((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI / 180;
     const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
+    const rz = ((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI / 180;
     const local = new THREE.Vector3(ox, oy, oz);
     const world = local.clone().applyMatrix4(obj.matrixWorld);
-    return { worldPos: world, worldRotY: obj.rotation.y + ry };
+    let topY = world.y + 1.0;
+    try {
+      const box = new THREE.Box3().setFromObject(obj);
+      if (isFinite(box.max.y)) topY = box.max.y;
+    } catch {}
+    return { worldPos: world, worldRotX: rx, worldRotY: obj.rotation.y + ry, worldRotZ: rz, objectTopY: topY };
   }
+
 
   function getMyEntity() { return (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null; }
 
@@ -7290,9 +7298,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (promptEl.hidden) return;
     let world;
     if (currentSit?.worldPos) {
-      world = currentSit.worldPos.clone(); world.y += 1.7;
+      world = currentSit.worldPos.clone();
+      world.y = (currentSit.objectTopY ?? (world.y + 1.0)) + 0.35;
     } else if (activeNearby) {
-      world = activeNearby.pose.worldPos.clone(); world.y += 1.6;
+      world = activeNearby.pose.worldPos.clone();
+      world.y = (activeNearby.pose.objectTopY ?? (world.y + 1.0)) + 0.35;
     } else return;
     const rect = renderer.domElement.getBoundingClientRect();
     tmpV.copy(world).project(camera);
@@ -7308,16 +7318,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function showPromptForInteraction(inter, pose) {
     promptEl.hidden = false;
     promptEl.dataset.kind = "enter";
-    promptEl.innerHTML = `<span class="ip-icon">${_esc(inter.icon || "💺")}</span><span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
+    promptEl.innerHTML = `<span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
     promptEl.onclick = () => enterSit(inter);
   }
   function showPromptForSit() {
     promptEl.hidden = false;
     promptEl.dataset.kind = "exit";
-    promptEl.innerHTML = `<span class="ip-icon">🚪</span><span class="ip-label">Levantar (E)</span>`;
+    promptEl.innerHTML = `<span class="ip-label">Levantar (E)</span>`;
     promptEl.onclick = () => standUp();
   }
   function hidePrompt() { promptEl.hidden = true; promptEl.onclick = null; }
+
 
   // ---------- Enter / exit sit ----------
   async function enterSit(inter) {
@@ -7330,7 +7341,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       id: inter.id,
       assetId: inter.asset_id,
       worldPos: pose.worldPos.clone(),
+      worldRotX: pose.worldRotX,
       worldRotY: pose.worldRotY,
+      worldRotZ: pose.worldRotZ,
+      objectTopY: pose.objectTopY,
       animationUrl: inter.animation_url || null,
       mixerAction: null,
       animClipName: null,
@@ -7344,7 +7358,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     entity.target.copy(pose.worldPos);
     entity.group.position.copy(pose.worldPos);
-    entity.group.rotation.y = pose.worldRotY;
+    entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+
 
     // Para ação atual e toca clip de sit (custom ou idle como fallback)
     try {
@@ -7437,7 +7452,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animation_url: "",
       loop: true,
       offset_x: 0, offset_y: 0, offset_z: 0,
-      rotation_y: 0, scale_mul: 1,
+      rotation_x: 0, rotation_y: 0, rotation_z: 0, scale_mul: 1,
+
       trigger_radius: 1.5,
       exit_radius: 2.0,
       occupancy: "multi",
@@ -7553,8 +7569,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ${slider("X", "offset_x", -3, 3, 0.05)}
           ${slider("Altura (Y)", "offset_y", -2, 3, 0.05)}
           ${slider("Z", "offset_z", -3, 3, 0.05)}
+          ${slider("Rotação X (°)", "rotation_x", -180, 180, 1)}
           ${slider("Rotação Y (°)", "rotation_y", -180, 180, 1)}
+          ${slider("Rotação Z (°)", "rotation_z", -180, 180, 1)}
         </fieldset>
+
         <fieldset class="ie-fs"><legend>Aproximação</legend>
           ${slider("Raio (m)", "trigger_radius", 0.5, 5, 0.1)}
         </fieldset>
@@ -7640,8 +7659,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const pose = computeSeatPose(fake);
       if (pose) {
         currentSit.worldPos.copy(pose.worldPos);
+        currentSit.worldRotX = pose.worldRotX;
         currentSit.worldRotY = pose.worldRotY;
+        currentSit.worldRotZ = pose.worldRotZ;
+        currentSit.objectTopY = pose.objectTopY;
+        const ent = getMyEntity();
+        if (ent?.group) {
+          ent.group.position.copy(pose.worldPos);
+          ent.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+        }
       }
+
     }
   });
 
@@ -7681,7 +7709,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         offset_x: Number(editingDraft.offset_x) || 0,
         offset_y: Number(editingDraft.offset_y) || 0,
         offset_z: Number(editingDraft.offset_z) || 0,
+        rotation_x: Number(editingDraft.rotation_x) || 0,
         rotation_y: Number(editingDraft.rotation_y) || 0,
+        rotation_z: Number(editingDraft.rotation_z) || 0,
+
         scale_mul: Number(editingDraft.scale_mul) || 1,
         trigger_radius: Number(editingDraft.trigger_radius) || 1.5,
         exit_radius: (Number(editingDraft.trigger_radius) || 1.5) + 0.5,

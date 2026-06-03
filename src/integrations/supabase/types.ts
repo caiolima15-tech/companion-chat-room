@@ -353,7 +353,9 @@ export type Database = {
           offset_x: number
           offset_y: number
           offset_z: number
+          rotation_x: number
           rotation_y: number
+          rotation_z: number
           scale_mul: number
           trigger_radius: number
           updated_at: string
@@ -375,7 +377,9 @@ export type Database = {
           offset_x?: number
           offset_y?: number
           offset_z?: number
+          rotation_x?: number
           rotation_y?: number
+          rotation_z?: number
           scale_mul?: number
           trigger_radius?: number
           updated_at?: string
@@ -397,7 +401,9 @@ export type Database = {
           offset_x?: number
           offset_y?: number
           offset_z?: number
+          rotation_x?: number
           rotation_y?: number
+          rotation_z?: number
           scale_mul?: number
           trigger_radius?: number
           updated_at?: string
