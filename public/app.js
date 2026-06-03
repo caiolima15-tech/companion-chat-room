@@ -10515,7 +10515,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     g.add(core);
 
     // Ground disc
-    const discGeo = new THREE.CircleGeometry(radius * 1.05, 32);
+    const discGeo = new THREE.CircleGeometry(radius, 32);
     const discMat = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
