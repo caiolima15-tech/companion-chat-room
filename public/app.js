@@ -7246,15 +7246,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // ---------- Geometry helpers ----------
   function computeSeatPose(inter, draft) {
-    const obj = assetObjects.get(inter.asset_id);
-    if (!obj) return null;
-    obj.updateMatrixWorld(true);
     const ox = (draft?.offset_x ?? inter.offset_x) || 0;
     const oy = (draft?.offset_y ?? inter.offset_y) || 0;
     const oz = (draft?.offset_z ?? inter.offset_z) || 0;
     const rx = ((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI / 180;
     const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
     const rz = ((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI / 180;
+    const assetId = draft?.asset_id ?? inter.asset_id;
+    if (!assetId) {
+      // Standalone: offsets são coordenadas de mundo, centradas onde o admin escolheu
+      const world = new THREE.Vector3(ox, oy, oz);
+      return { worldPos: world, worldRotX: rx, worldRotY: ry, worldRotZ: rz, objectTopY: world.y + 1.7 };
+    }
+    const obj = assetObjects.get(assetId);
+    if (!obj) return null;
+    obj.updateMatrixWorld(true);
     const local = new THREE.Vector3(ox, oy, oz);
     const world = local.clone().applyMatrix4(obj.matrixWorld);
     let topY = world.y + 1.0;
@@ -7476,8 +7482,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma interação ainda.</div>';
     } else {
       listEl.innerHTML = interactions.map((it) => {
-        const obj = assetObjects.get(it.asset_id);
-        const assetName = obj?.name || "(asset removido)";
+        const obj = it.asset_id ? assetObjects.get(it.asset_id) : null;
+        const assetName = it.asset_id ? (obj?.name || "(asset removido)") : "📍 posição livre";
         const isEd = editingId === it.id;
         return `<div class="interact-row ${isEd ? "is-editing" : ""}" data-id="${_esc(it.id)}">
           <div class="ir-line"><span class="ir-icon">${_esc(it.icon || "💺")}</span>
@@ -7544,12 +7550,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
 
+    const standalone = !draft.asset_id;
+    const posRange = standalone ? 200 : 3;
+    const posStep = standalone ? 0.1 : 0.05;
     editorEl.innerHTML = `
       <div class="interact-editor">
         <div class="ie-row"><label>Objeto</label>
-          <select data-field="asset_id"><option value="">— escolha —</option>${assetsOptions}</select>
+          <select data-field="asset_id"><option value="">— sem objeto (posição livre) —</option>${assetsOptions}</select>
           <button type="button" class="ie-pick">${pickMode ? "Cancelar seleção" : "Selecionar no mundo"}</button>
         </div>
+        ${standalone ? `<div class="ie-row"><button type="button" class="ie-here primary" style="width:100%">📍 Usar minha posição atual</button></div>` : ``}
         <div class="ie-row"><label>Rótulo</label><input type="text" data-field="label" value="${_esc(draft.label)}" maxlength="40"></div>
         <div class="ie-row"><label>Ícone</label><input type="text" data-field="icon" value="${_esc(draft.icon)}" maxlength="4" style="width:64px"></div>
         <div class="ie-row"><label>Tipo</label>
@@ -7574,10 +7584,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <div class="ie-row"><label>Loop</label>
           <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
         </div>
-        <fieldset class="ie-fs"><legend>Posição relativa ao objeto</legend>
-          ${slider("X", "offset_x", -3, 3, 0.05)}
-          ${slider("Altura (Y)", "offset_y", -2, 3, 0.05)}
-          ${slider("Z", "offset_z", -3, 3, 0.05)}
+        <fieldset class="ie-fs"><legend>${standalone ? "Posição no mundo" : "Posição relativa ao objeto"}</legend>
+          ${slider("X", "offset_x", -posRange, posRange, posStep)}
+          ${slider("Altura (Y)", "offset_y", standalone ? -5 : -2, standalone ? 10 : 3, posStep)}
+          ${slider("Z", "offset_z", -posRange, posRange, posStep)}
           ${slider("Rotação X (°)", "rotation_x", -180, 180, 1)}
           ${slider("Rotação Y (°)", "rotation_y", -180, 180, 1)}
           ${slider("Rotação Z (°)", "rotation_z", -180, 180, 1)}
@@ -7637,6 +7647,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     editingDraft[field] = val;
+    if (field === "asset_id") { renderAdmin(); return; }
     // Trocar o tipo re-renderiza (editor do futebol é diferente)
     if (field === "kind") {
       if (val === "football") {
@@ -7703,11 +7714,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Bola posicionada na sua posição atual.");
       return;
     }
+    if (t.classList.contains("ie-here")) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (!ent?.group) return alert("Seu avatar não está pronto.");
+      editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
+      editingDraft.offset_y = Number(ent.group.position.y.toFixed(2));
+      editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
+      editingDraft.rotation_y = Number((ent.group.rotation.y * 180 / Math.PI).toFixed(1));
+      renderAdmin();
+      addSystemLine?.("Interação posicionada na sua posição atual.");
+      return;
+    }
     if (t.classList.contains("ie-save")) {
       const isFootball = editingDraft.kind === "football";
-      if (!isFootball && !editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
       const payload = {
-        asset_id: editingDraft.asset_id,
+        asset_id: editingDraft.asset_id || null,
         map_id: currentMapId,
         label: editingDraft.label || "Sentar",
         icon: editingDraft.icon || "💺",
