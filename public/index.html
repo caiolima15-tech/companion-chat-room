@@ -77,23 +77,7 @@
                 <button id="fbKick" type="button" class="fb-kick">CHUTE</button>
               </div>
             </div>
-            <div id="kickPosePanel" class="kick-pose admin-only" hidden>
-              <div class="kp-title">⚽ Pose modo futebol (admin)</div>
-              <label class="kp-row">Altura (Y) <span id="kpYVal">0.00</span>
-                <input id="kpY" type="range" min="-1" max="1" step="0.01" value="0">
-              </label>
-              <label class="kp-row">Frente/Trás <span id="kpFwdVal">0.00</span>
-                <input id="kpFwd" type="range" min="-1" max="1" step="0.01" value="0">
-              </label>
-              <label class="kp-row">Rotação ° <span id="kpRotVal">0</span>
-                <input id="kpRot" type="range" min="-90" max="90" step="1" value="0">
-              </label>
-              <div class="kp-actions">
-                <button id="kpTestWeak" type="button">Testar fraco</button>
-                <button id="kpTestStrong" type="button">Testar forte</button>
-                <button id="kpSave" type="button" class="kp-save">Salvar</button>
-              </div>
-            </div>
+            <div id="kickPosePanel" class="kick-pose admin-only" hidden style="display:none !important;"></div>
           </div>
           <div id="assetDock" class="asset-dock admin-only" hidden>
             <div class="asset-title">GLBs no mapa</div>
