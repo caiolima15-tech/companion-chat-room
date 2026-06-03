@@ -1961,6 +1961,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     "carsAdminPanel": "[data-dock-panel='#carsAdminPanel']",
     "animAdminPanel": "[data-dock-panel='#animAdminPanel']",
     "portalsAdminPanel": "[data-dock-panel='#portalsAdminPanel']",
+    "itemsAdminPanel": "[data-dock-panel='#itemsAdminPanel']",
   };
   const obs = new MutationObserver((muts) => {
     for (const m of muts) {
