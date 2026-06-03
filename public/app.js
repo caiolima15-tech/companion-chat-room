@@ -7252,11 +7252,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ox = (draft?.offset_x ?? inter.offset_x) || 0;
     const oy = (draft?.offset_y ?? inter.offset_y) || 0;
     const oz = (draft?.offset_z ?? inter.offset_z) || 0;
+    const rx = ((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI / 180;
     const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
+    const rz = ((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI / 180;
     const local = new THREE.Vector3(ox, oy, oz);
     const world = local.clone().applyMatrix4(obj.matrixWorld);
-    return { worldPos: world, worldRotY: obj.rotation.y + ry };
+    let topY = world.y + 1.0;
+    try {
+      const box = new THREE.Box3().setFromObject(obj);
+      if (isFinite(box.max.y)) topY = box.max.y;
+    } catch {}
+    return { worldPos: world, worldRotX: rx, worldRotY: obj.rotation.y + ry, worldRotZ: rz, objectTopY: topY };
   }
+
 
   function getMyEntity() { return (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null; }
 
