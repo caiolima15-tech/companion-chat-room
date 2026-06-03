@@ -8548,13 +8548,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       });
     }
     document.getElementById("anSave")?.addEventListener("click", () => {
-      window.__saveAnimTunings?.();
+      window.__saveAnimTunings?.(current);
       if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${sel.options[sel.selectedIndex]?.textContent || current}" salvos.`);
     });
     document.getElementById("anReset")?.addEventListener("click", () => {
       tunings[current] = window.__defaultAnimTuning();
       sync();
-      window.__saveAnimTunings?.();
+      window.__saveAnimTunings?.(current);
     });
     document.getElementById("anTest")?.addEventListener("click", async () => {
       const ent = (typeof myEntity === "function") ? myEntity() : null;
