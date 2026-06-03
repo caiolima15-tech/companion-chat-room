@@ -4029,10 +4029,15 @@ function applyHeldMovement(delta) {
   if (window.__ridingCar) return;  // de carona: posição controlada pelo carro
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
-  if (window.__sittingInteraction) return;
   // Joystick na tela (modo normal)
   const j = window.__joyState;
   const usingJoy = !!(j && j.active && Math.hypot(j.x, j.y) > 0.12);
+  // Auto-levantar ao detectar qualquer input de movimento
+  if (window.__sittingInteraction) {
+    const hasKey = keyState.has("arrowup") || keyState.has("arrowdown") || keyState.has("arrowleft") || keyState.has("arrowright") || keyState.has("w") || keyState.has("a") || keyState.has("s") || keyState.has("d");
+    if (hasKey || usingJoy) { try { window.standUpFromInteraction?.(); } catch {} }
+    else return;
+  }
   if (!me || !myId) return;
   const entity = playerEntities.get(myId);
   if (!entity) return;
@@ -4060,7 +4065,7 @@ function applyHeldMovement(delta) {
   if (mag < 0.01 && usingJoy) {
     ix = j.x; iy = j.y; // joystick: joy.y já é positivo quando o knob vai pra cima
     mag = Math.min(1, Math.hypot(ix, iy));
-    running = mag > 0.7;
+    running = !!j.run; // só corre quando arrasta para fora do círculo
   }
 
   if (mag < 0.01) {
@@ -7299,7 +7304,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!entity || !entity.group) { hidePrompt(); return; }
 
     // Se sentado, mostra prompt "Levantar" no botão
-    if (currentSit) { activeNearby = null; showPromptForSit(); return; }
+    if (currentSit) { activeNearby = null; hidePrompt(); return; }
 
     let best = null;
     let bestDist = Infinity;
@@ -7434,7 +7439,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
     } catch (e) { console.warn("[interactions] sit clip", e); }
 
-    showPromptForSit();
+    hidePrompt();
   }
 
   function standUp() {
@@ -8505,6 +8510,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         let nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
         let ny = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
         const len = Math.hypot(nx, ny);
+        joy.run = len > 1; // arrastar para fora do círculo = correr
         if (len > 1) { nx /= len; ny /= len; }
         joy.x = nx; joy.y = -ny;
         setKnob(nx, ny);
@@ -8513,7 +8519,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         joy.active = true; joy.id = e.pointerId; base.setPointerCapture(e.pointerId); moveJoy(e);
       });
       base.addEventListener("pointermove", (e) => { if (joy.id === e.pointerId) moveJoy(e); });
-      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; setKnob(0, 0); } };
+      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; joy.run = false; setKnob(0, 0); } };
       base.addEventListener("pointerup", end);
       base.addEventListener("pointercancel", end);
     }
