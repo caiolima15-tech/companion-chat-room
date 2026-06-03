@@ -7714,11 +7714,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Bola posicionada na sua posição atual.");
       return;
     }
+    if (t.classList.contains("ie-here")) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (!ent?.group) return alert("Seu avatar não está pronto.");
+      editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
+      editingDraft.offset_y = Number(ent.group.position.y.toFixed(2));
+      editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
+      editingDraft.rotation_y = Number((ent.group.rotation.y * 180 / Math.PI).toFixed(1));
+      renderAdmin();
+      addSystemLine?.("Interação posicionada na sua posição atual.");
+      return;
+    }
     if (t.classList.contains("ie-save")) {
       const isFootball = editingDraft.kind === "football";
-      if (!isFootball && !editingDraft.asset_id) return alert("Escolha um objeto primeiro.");
       const payload = {
-        asset_id: editingDraft.asset_id,
+        asset_id: editingDraft.asset_id || null,
         map_id: currentMapId,
         label: editingDraft.label || "Sentar",
         icon: editingDraft.icon || "💺",
