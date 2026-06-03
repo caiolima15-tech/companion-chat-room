@@ -7433,9 +7433,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <option value="football" ${draft.kind === "football" ? "selected" : ""}>⚽ Bola de futebol</option>
           </select>
         </div>
-        <div class="ie-row"><label>Animação (URL FBX)</label>
-          <input type="url" data-field="animation_url" placeholder="opcional — sobrepõe o idle" value="${_esc(draft.animation_url || "")}">
+        <div class="ie-row"><label>Animação</label>
+          <select data-field="animation_pick" style="flex:1">
+            <option value="">— Nenhuma (idle) —</option>
+            ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+            <option value="__manual__" ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "selected" : ""}>URL manual…</option>
+          </select>
         </div>
+        <div class="ie-row" data-anim-url-row ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "" : "hidden"}><label>URL FBX</label>
+          <input type="url" data-field="animation_url" placeholder="https://… .fbx" value="${_esc(draft.animation_url || "")}">
+        </div>
+
         <div class="ie-row"><label>Loop</label>
           <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
         </div>
