@@ -11226,8 +11226,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.dispatchEvent(new CustomEvent("items:catalog-updated"));
   }
   window.addEventListener("bot-animations:updated", () => renderItemsAdmin());
-    window.dispatchEvent(new CustomEvent("items:catalog-updated"));
-  }
 
   supabase.channel("item-catalog")
     .on("postgres_changes", { event: "*", schema: "public", table: "item_catalog" }, () => reloadItemCatalog())
