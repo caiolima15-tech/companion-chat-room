@@ -10590,25 +10590,63 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   // ---------- Proximity / teleport ----------
+  function dropPlayerAt(x, y, z) {
+    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    if (!entity?.group) return false;
+    entity.group.position.set(Number(x) || 0, Number(y) || entity.group.position.y, Number(z) || 0);
+    return true;
+  }
+
   setInterval(() => {
-    if (!inRoom || teleporting) return;
-    if (performance.now() < cooldownUntil) return;
+    if (!inRoom) return;
     const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
     if (!entity?.group) return;
     const px = entity.group.position.x, pz = entity.group.position.z;
+
+    // Release suppressed portals once the player moves outside them (with a small margin).
+    if (suppressedPortals.size) {
+      for (const pid of Array.from(suppressedPortals)) {
+        const p = portals.find((x) => x.id === pid);
+        if (!p) { suppressedPortals.delete(pid); continue; }
+        const dx = px - (Number(p.pos_x) || 0);
+        const dz = pz - (Number(p.pos_z) || 0);
+        const r = Math.max(0.3, Number(p.radius) || 1.2) * 1.6;
+        if (dx * dx + dz * dz > r * r) suppressedPortals.delete(pid);
+      }
+    }
+
+    if (teleporting) return;
+    if (performance.now() < cooldownUntil) return;
+
     for (const p of portals) {
-      if (!p.dest_map_id || p.dest_map_id === currentMapId) continue;
+      if (suppressedPortals.has(p.id)) continue;
+      const sameMap = !p.dest_map_id || p.dest_map_id === currentMapId;
+      // Skip cross-map portals without destination, and same-map portals without a destination portal.
+      if (!p.dest_map_id && !p.dest_portal_id) continue;
+      if (sameMap && !p.dest_portal_id) continue;
       const dx = px - (Number(p.pos_x) || 0);
       const dz = pz - (Number(p.pos_z) || 0);
       const r = Math.max(0.3, Number(p.radius) || 1.2);
       if (dx * dx + dz * dz <= r * r) {
         teleporting = true;
         cooldownUntil = performance.now() + 4000;
-        const dest = p.dest_map_id;
-        Promise.resolve()
-          .then(() => (typeof switchRoom === "function" ? switchRoom(dest) : null))
-          .catch((e) => console.warn("[portals] switchRoom", e))
-          .finally(() => { teleporting = false; });
+        const destMap = p.dest_map_id || currentMapId;
+        const destPortalId = p.dest_portal_id || null;
+        if (sameMap) {
+          // Same-map jump: move directly to the destination portal and suppress it.
+          const target = portals.find((x) => x.id === destPortalId);
+          if (target) {
+            dropPlayerAt(target.pos_x, target.pos_y, target.pos_z);
+            suppressedPortals.add(target.id);
+          }
+          teleporting = false;
+        } else {
+          pendingDropPortalId = destPortalId;
+          Promise.resolve()
+            .then(() => (typeof switchRoom === "function" ? switchRoom(destMap) : null))
+            .catch((e) => console.warn("[portals] switchRoom", e))
+            .finally(() => { teleporting = false; });
+        }
         break;
       }
     }
