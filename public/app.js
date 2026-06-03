@@ -7386,6 +7386,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const pose = computeSeatPose(inter);
     if (!pose) return;
 
+    // Se já havia uma interação anterior em curso, encerra a ação dela completamente
+    // antes de começar a próxima (evita "vazamento" da pose deitada).
+    const prevSit = currentSit;
+    if (prevSit?.mixerAction) {
+      try {
+        const prevAction = prevSit.mixerAction;
+        prevAction.fadeOut(0.2);
+        setTimeout(() => {
+          try {
+            prevAction.stop();
+            const clip = prevAction.getClip?.();
+            if (clip) entity.mixer.uncacheAction(clip);
+          } catch {}
+        }, 260);
+      } catch {}
+    }
+
+    const loadToken = Symbol("sit");
     currentSit = {
       id: inter.id,
       assetId: inter.asset_id,
@@ -7397,6 +7415,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animationUrl: inter.animation_url || null,
       mixerAction: null,
       animClipName: null,
+      loadToken,
     };
     window.__sittingInteraction = currentSit;
     try { presenceChannel?.track(presencePayload()); } catch {}
@@ -7410,16 +7429,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     entity.group.position.copy(pose.worldPos);
     entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
 
+    hidePrompt();
 
-    // Para ação atual e toca clip de sit (custom ou idle como fallback)
+    // Mantém idle (ou ação atual) tocando enquanto o FBX baixa — sem janela morta de T-pose.
     try {
-      if (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) {
-        entity.actions[entity.currentAction].fadeOut(0.2);
-      }
-      entity.currentAction = null;
       if (inter.animation_url) {
         const clip = await loadFbxClip(inter.animation_url);
-        if (window.__sittingInteraction !== currentSit) return; // saiu nesse meio tempo
+        // Cancela se o jogador saiu / trocou de interação enquanto carregava
+        if (window.__sittingInteraction !== currentSit || currentSit.loadToken !== loadToken) return;
         const bones = collectBoneNames(entity.character);
         const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
         if (!retarg) {
@@ -7427,12 +7444,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           const idle = entity.actions?.idle;
           if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
         } else {
+          // Crossfade da ação atual para a nova no mesmo frame (sem gap de T-pose)
+          const prevAction = (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) || null;
           const action = entity.mixer.clipAction(retarg);
           action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
           action.clampWhenFinished = true;
-          action.reset().fadeIn(0.2).play();
+          action.reset().fadeIn(0.25).play();
+          if (prevAction) {
+            try { prevAction.fadeOut(0.25); } catch {}
+          }
           currentSit.mixerAction = action;
-          // Resolve a chave de tuning: prefere custom:<id> quando a URL bate com bot_animations
+          // Resolve a chave de tuning
           let tuningKey = null;
           try {
             const match = (window.__botAnimations || []).find(a => a.url === inter.animation_url);
@@ -7443,7 +7465,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           }
           if (tuningKey) {
             if (!window.__animTunings[tuningKey]) window.__animTunings[tuningKey] = window.__defaultAnimTuning();
-            entity.currentAction = tuningKey; // permite applyLocalAnimTuning aplicar offsets/rotações
+            entity.currentAction = tuningKey;
+          } else {
+            entity.currentAction = null;
           }
         }
       } else {
@@ -7451,17 +7475,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
       }
     } catch (e) { console.warn("[interactions] sit clip", e); }
-
-    hidePrompt();
   }
 
   function standUp() {
     if (!currentSit) return;
     const entity = getMyEntity();
-    if (entity && currentSit.mixerAction) {
-      currentSit.mixerAction.fadeOut(0.2);
-      setTimeout(() => { try { currentSit?.mixerAction?.stop(); } catch {} }, 250);
+    // Invalida cargas em curso para que não apliquem clip depois do levantar
+    currentSit.loadToken = Symbol("standUp");
+    const dyingAction = currentSit.mixerAction;
+    if (entity && dyingAction) {
+      try { dyingAction.fadeOut(0.2); } catch {}
+      setTimeout(() => {
+        try {
+          dyingAction.stop();
+          const clip = dyingAction.getClip?.();
+          if (clip) entity.mixer.uncacheAction(clip);
+        } catch {}
+      }, 260);
     }
+    // Inicia idle imediatamente para evitar peso residual do clip clamped (ex.: deitar)
+    if (entity?.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
     if (entity?.group) {
       entity.group.rotation.x = 0;
       entity.group.rotation.z = 0;
@@ -7470,7 +7503,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       entity.character.position.set(0, poseDebug?.offY || 0, 0);
       entity.character.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
     }
-    if (entity?.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
 
     currentSit = null;
     window.__sittingInteraction = null;
