@@ -6602,6 +6602,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     await supabase.from("direct_messages").insert({ from_user: myId, to_user: currentDmPeer, text: t });
   });
   $("profileDmBtn").onclick = () => openDm(currentProfileId);
+  $("profileGoToBtn")?.addEventListener("click", (ev) => {
+    const peerId = currentProfileId;
+    if (!peerId || peerId === myId) return;
+    const anchor = ev.currentTarget;
+    const name = $("profileName")?.textContent || "Usuário";
+    // fecha o modal de perfil e dispara o fluxo de "ir até" reaproveitando a mini-popup
+    document.getElementById("profileOverlay").hidden = true;
+    if (window.__playerPopup?.goToLocation) {
+      window.__playerPopup.goToLocation(peerId, name, anchor);
+    }
+  });
 
   async function openInbox() {
     if (!myId) return;
