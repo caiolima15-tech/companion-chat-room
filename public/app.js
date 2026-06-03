@@ -10403,3 +10403,393 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     },
   };
 })();
+
+// ============================================================
+// ===== Portais (teleporte estilo GTA, rosa) =================
+// ============================================================
+(function setupPortals() {
+  const panel    = document.getElementById("portalsAdminPanel");
+  const dockBtn  = document.getElementById("portalsAdminToggle");
+  const listEl   = document.getElementById("portalsList");
+  const editorEl = document.getElementById("portalsEditor");
+  const newBtn   = document.getElementById("portalsNewBtn");
+  if (!panel) return;
+
+  // 3D group dedicated to portals (added once)
+  const portalsGroup = new THREE.Group();
+  portalsGroup.name = "__portalsGroup";
+  try { scene.add(portalsGroup); } catch {}
+
+  let portals = [];           // rows
+  const portalMeshes = new Map(); // id -> { group, label }
+  let channel = null;
+  let subscribedMapId = null;
+  let inRoom = false;
+  let teleporting = false;
+  let cooldownUntil = 0;
+
+  function _esc(s) {
+    return String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  function destOptions(selectedId) {
+    const list = (Array.isArray(MAPS) ? MAPS : []).slice();
+    return list.map((m) =>
+      `<option value="${_esc(m.id)}" ${m.id === selectedId ? "selected" : ""}>${_esc(m.name || m.id)}</option>`
+    ).join("");
+  }
+
+  // ---------- Visual portal mesh ----------
+  function buildPortalMesh(p) {
+    const g = new THREE.Group();
+    const color = new THREE.Color(p.color || "#ff3ea5");
+    const radius = Math.max(0.3, Number(p.radius) || 1.2);
+    const height = Math.max(0.6, Number(p.height) || 2.6);
+
+    // Pillar of light (open cylinder, double-sided, additive)
+    const cylGeo = new THREE.CylinderGeometry(radius, radius, height, 32, 1, true);
+    const cylMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const cyl = new THREE.Mesh(cylGeo, cylMat);
+    cyl.position.y = height / 2;
+    g.add(cyl);
+
+    // Inner brighter core
+    const coreGeo = new THREE.CylinderGeometry(radius * 0.55, radius * 0.55, height * 0.98, 24, 1, true);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: color.clone().lerp(new THREE.Color("#ffffff"), 0.35),
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = height / 2;
+    g.add(core);
+
+    // Ground disc
+    const discGeo = new THREE.CircleGeometry(radius * 1.05, 32);
+    const discMat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.75,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const disc = new THREE.Mesh(discGeo, discMat);
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.02;
+    g.add(disc);
+
+    // Soft point light tinted with the portal color
+    const light = new THREE.PointLight(color, 1.4, radius * 6, 2);
+    light.position.y = height * 0.6;
+    g.add(light);
+
+    g.position.set(Number(p.pos_x) || 0, Number(p.pos_y) || 0, Number(p.pos_z) || 0);
+    g.userData.portalId = p.id;
+    g.userData.spawn = Math.random() * Math.PI * 2;
+    return g;
+  }
+
+  function syncMeshes() {
+    const seen = new Set();
+    for (const p of portals) {
+      seen.add(p.id);
+      const existing = portalMeshes.get(p.id);
+      if (existing) {
+        portalsGroup.remove(existing.group);
+        existing.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      }
+      const group = buildPortalMesh(p);
+      portalsGroup.add(group);
+      portalMeshes.set(p.id, { group, row: p });
+    }
+    for (const [id, m] of Array.from(portalMeshes)) {
+      if (!seen.has(id)) {
+        portalsGroup.remove(m.group);
+        m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+        portalMeshes.delete(id);
+      }
+    }
+  }
+
+  // Subtle rotation/pulse
+  (function animate() {
+    requestAnimationFrame(animate);
+    const t = performance.now() / 1000;
+    for (const { group } of portalMeshes.values()) {
+      const phase = group.userData.spawn || 0;
+      group.rotation.y = t * 0.6 + phase;
+      const s = 1 + Math.sin(t * 2 + phase) * 0.03;
+      group.scale.set(s, 1, s);
+    }
+  })();
+
+  // ---------- Data ----------
+  async function load(mapId) {
+    if (!mapId) { portals = []; syncMeshes(); renderAdmin(); return; }
+    const { data, error } = await supabase
+      .from("map_portals")
+      .select("*")
+      .eq("map_id", mapId)
+      .order("created_at", { ascending: true });
+    if (error) { console.warn("[portals] load", error); return; }
+    portals = data || [];
+    syncMeshes();
+    renderAdmin();
+  }
+
+  async function subscribe(mapId) {
+    if (channel && subscribedMapId === mapId) return;
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = mapId;
+    if (!mapId) return;
+    channel = supabase
+      .channel("portals:" + mapId)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "map_portals", filter: "map_id=eq." + mapId },
+        () => load(mapId))
+      .subscribe();
+  }
+  async function unsubscribe() {
+    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    subscribedMapId = null;
+  }
+
+  function clearScene() {
+    for (const { group } of portalMeshes.values()) {
+      portalsGroup.remove(group);
+      group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+    }
+    portalMeshes.clear();
+  }
+
+  // ---------- Proximity / teleport ----------
+  setInterval(() => {
+    if (!inRoom || teleporting) return;
+    if (performance.now() < cooldownUntil) return;
+    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    if (!entity?.group) return;
+    const px = entity.group.position.x, pz = entity.group.position.z;
+    for (const p of portals) {
+      if (!p.dest_map_id || p.dest_map_id === currentMapId) continue;
+      const dx = px - (Number(p.pos_x) || 0);
+      const dz = pz - (Number(p.pos_z) || 0);
+      const r = Math.max(0.3, Number(p.radius) || 1.2);
+      if (dx * dx + dz * dz <= r * r) {
+        teleporting = true;
+        cooldownUntil = performance.now() + 4000;
+        const dest = p.dest_map_id;
+        Promise.resolve()
+          .then(() => (typeof switchRoom === "function" ? switchRoom(dest) : null))
+          .catch((e) => console.warn("[portals] switchRoom", e))
+          .finally(() => { teleporting = false; });
+        break;
+      }
+    }
+  }, 220);
+
+  // ---------- Lifecycle ----------
+  window.portalsEnterRoom = async function (mapId) {
+    inRoom = true;
+    clearScene();
+    await subscribe(mapId);
+    await load(mapId);
+  };
+  window.portalsLeaveRoom = async function () {
+    inRoom = false;
+    await unsubscribe();
+    portals = [];
+    clearScene();
+    renderAdmin();
+  };
+
+  // ---------- Admin panel ----------
+  let editingId = null;
+  let editingDraft = null;
+
+  dockBtn?.addEventListener("click", () => {
+    if (!isAdmin) return alert("Apenas admin.");
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) { editingId = null; editingDraft = null; renderAdmin(); }
+  });
+
+  newBtn?.addEventListener("click", async () => {
+    if (!isAdmin) return alert("Apenas admin.");
+    if (!currentMapId) return alert("Entre em uma sala primeiro.");
+    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    const pos = entity?.group?.position || { x: 0, y: 0, z: 0 };
+    const dest = (MAPS.find((m) => m.id !== currentMapId)?.id) || currentMapId;
+    const { data, error } = await supabase.from("map_portals").insert({
+      map_id: currentMapId,
+      dest_map_id: dest,
+      label: "Portal",
+      pos_x: Number(pos.x.toFixed(3)),
+      pos_y: 0,
+      pos_z: Number(pos.z.toFixed(3)),
+      radius: 1.2,
+      height: 2.6,
+      color: "#ff3ea5",
+    }).select().single();
+    if (error) { alert("Erro ao criar portal: " + error.message); return; }
+    editingId = data.id;
+    editingDraft = null;
+    await load(currentMapId);
+  });
+
+  function renderAdmin() {
+    if (!listEl || !editorEl) return;
+    if (!portals.length) {
+      listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhum portal nesta sala. Clique no + para adicionar.</div>';
+    } else {
+      listEl.innerHTML = portals.map((p) => {
+        const destName = (MAPS.find((m) => m.id === p.dest_map_id)?.name) || p.dest_map_id;
+        const isEd = editingId === p.id;
+        return `<div class="portal-row" data-id="${_esc(p.id)}" style="border:1px solid ${isEd ? "#ff3ea5" : "#2a2a35"};border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,0.02);">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:${_esc(p.color || "#ff3ea5")};box-shadow:0 0 6px ${_esc(p.color || "#ff3ea5")};"></span>
+            <strong style="flex:1;">${_esc(p.label || "Portal")}</strong>
+            <span style="color:#9aa;font-size:10px;">→ ${_esc(destName)}</span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" data-act="edit" style="flex:1;background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:4px;cursor:pointer;">${isEd ? "Fechar" : "Editar"}</button>
+            <button type="button" data-act="tp" style="flex:1;background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:4px;cursor:pointer;">Entrar</button>
+            <button type="button" data-act="del" style="background:transparent;border:1px solid #a33;color:#f88;border-radius:4px;padding:4px 8px;cursor:pointer;">×</button>
+          </div>
+        </div>`;
+      }).join("");
+    }
+
+    if (!editingId) { editorEl.innerHTML = ""; return; }
+    const base = portals.find((p) => p.id === editingId);
+    if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
+    const d = editingDraft || { ...base };
+    editingDraft = d;
+
+    const slider = (label, field, min, max, step) => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;">
+        <span style="width:62px;color:#aab;">${label}</span>
+        <input type="range" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(d[field] || 0)}" style="flex:1;">
+        <input type="number" data-field="${field}" min="${min}" max="${max}" step="${step}" value="${Number(d[field] || 0)}" style="width:64px;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:2px 4px;">
+      </label>`;
+
+    editorEl.innerHTML = `
+      <div style="border-top:1px solid #2a2a35;margin-top:8px;padding-top:10px;display:flex;flex-direction:column;gap:8px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Nome</span>
+          <input type="text" data-field="label" value="${_esc(d.label)}" maxlength="40" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Destino</span>
+          <select data-field="dest_map_id" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">${destOptions(d.dest_map_id)}</select>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Cor</span>
+          <input type="color" data-field="color" value="${_esc(d.color || "#ff3ea5")}" style="width:48px;height:28px;background:#15151c;border:1px solid #333;border-radius:4px;">
+          <span style="color:#778;font-size:10px;">(padrão rosa)</span>
+        </label>
+        <fieldset style="border:1px solid #2a2a35;border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:6px;">
+          <legend style="color:#aab;font-size:10px;padding:0 4px;">Posição (mundo)</legend>
+          ${slider("X", "pos_x", -50, 50, 0.1)}
+          ${slider("Y", "pos_y", -2, 4, 0.05)}
+          ${slider("Z", "pos_z", -50, 50, 0.1)}
+          <button type="button" data-act="here" style="background:#222;border:1px solid #444;color:#eee;border-radius:4px;padding:4px;cursor:pointer;">📍 Mover para minha posição</button>
+        </fieldset>
+        <fieldset style="border:1px solid #2a2a35;border-radius:6px;padding:6px;display:flex;flex-direction:column;gap:6px;">
+          <legend style="color:#aab;font-size:10px;padding:0 4px;">Forma</legend>
+          ${slider("Raio", "radius", 0.4, 4, 0.05)}
+          ${slider("Altura", "height", 0.6, 6, 0.1)}
+        </fieldset>
+        <div style="display:flex;gap:6px;">
+          <button type="button" data-act="save" style="flex:1;background:linear-gradient(135deg,#ff3ea5,#ff8ac9);border:none;color:#fff;border-radius:4px;padding:6px;cursor:pointer;font-weight:700;">Salvar</button>
+          <button type="button" data-act="cancel" style="flex:1;background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:6px;cursor:pointer;">Cancelar</button>
+        </div>
+      </div>`;
+  }
+
+  // ---------- Panel events ----------
+  listEl?.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-act]"); if (!btn) return;
+    const row = ev.target.closest(".portal-row"); if (!row) return;
+    const id = row.dataset.id;
+    const act = btn.dataset.act;
+    if (act === "edit") {
+      editingId = (editingId === id) ? null : id;
+      editingDraft = null;
+      renderAdmin();
+    } else if (act === "del") {
+      if (!confirm("Remover este portal?")) return;
+      const { error } = await supabase.from("map_portals").delete().eq("id", id);
+      if (error) alert("Erro: " + error.message);
+      else { editingId = null; await load(currentMapId); }
+    } else if (act === "tp") {
+      const p = portals.find((x) => x.id === id);
+      if (p?.dest_map_id && typeof switchRoom === "function") switchRoom(p.dest_map_id);
+    }
+  });
+
+  editorEl?.addEventListener("input", (ev) => {
+    if (!editingDraft) return;
+    const t = ev.target;
+    const field = t.dataset?.field; if (!field) return;
+    let val = t.value;
+    if (t.type === "range" || t.type === "number") val = Number(val);
+    editingDraft[field] = val;
+    // sync the paired range/number input
+    editorEl.querySelectorAll(`[data-field="${field}"]`).forEach((el) => {
+      if (el !== t) el.value = val;
+    });
+    // live preview on the mesh
+    const m = portalMeshes.get(editingId);
+    if (m) {
+      const merged = { ...m.row, ...editingDraft };
+      const fresh = buildPortalMesh(merged);
+      portalsGroup.remove(m.group);
+      m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      portalsGroup.add(fresh);
+      portalMeshes.set(editingId, { group: fresh, row: m.row });
+    }
+  });
+
+  editorEl?.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest("button[data-act]"); if (!btn) return;
+    const act = btn.dataset.act;
+    if (act === "cancel") {
+      editingId = null; editingDraft = null; renderAdmin();
+      await load(currentMapId);
+    } else if (act === "here") {
+      const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      const pos = entity?.group?.position; if (!pos || !editingDraft) return;
+      editingDraft.pos_x = Number(pos.x.toFixed(3));
+      editingDraft.pos_z = Number(pos.z.toFixed(3));
+      renderAdmin();
+    } else if (act === "save") {
+      if (!editingId || !editingDraft) return;
+      const patch = {
+        label: String(editingDraft.label || "Portal").slice(0, 40),
+        dest_map_id: editingDraft.dest_map_id,
+        color: editingDraft.color || "#ff3ea5",
+        pos_x: Number(editingDraft.pos_x) || 0,
+        pos_y: Number(editingDraft.pos_y) || 0,
+        pos_z: Number(editingDraft.pos_z) || 0,
+        radius: Math.max(0.3, Number(editingDraft.radius) || 1.2),
+        height: Math.max(0.6, Number(editingDraft.height) || 2.6),
+      };
+      const { error } = await supabase.from("map_portals").update(patch).eq("id", editingId);
+      if (error) { alert("Erro: " + error.message); return; }
+      editingId = null; editingDraft = null;
+      await load(currentMapId);
+    }
+  });
+
+  // Auto-enter if already in a room when the script loads
+  if (typeof currentMapId !== "undefined" && currentMapId && document.body.classList.contains("world-ready")) {
+    window.portalsEnterRoom(currentMapId);
+  }
+})();
