@@ -231,13 +231,12 @@ function applyPoseDebugToMe() {
 }
 // Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
-// ============ Pose debug do CHUTE (ajuste fino enquanto a animação de chute toca) ============
-// Aplicado no objeto interno do personagem (entity.character) somente durante o chute.
+// ============ Pose debug do CHUTE (legacy — mantido só p/ migração) ============
 const KICK_POSE_KEY = "neon-tap-room-kick-pose";
 const KICK_POSE_VERSION_KEY = "neon-tap-room-kick-pose-version";
 const KICK_POSE_VERSION = "2";
 const KICK_POSE_DEFAULTS = { offY: 0, offFwd: 0, rotX: -90 };
-function loadKickPose() {
+function loadLegacyKickPose() {
   try {
     const ver = localStorage.getItem(KICK_POSE_VERSION_KEY);
     if (ver !== KICK_POSE_VERSION) {
@@ -250,14 +249,83 @@ function loadKickPose() {
   } catch {}
   return { ...KICK_POSE_DEFAULTS };
 }
-const kickPose = loadKickPose();
-function saveKickPose() {
-  try { localStorage.setItem(KICK_POSE_KEY, JSON.stringify(kickPose)); } catch {}
+const _legacyKickPose = loadLegacyKickPose();
+
+// ============ Ajustes por animação (posição + ângulo) ============
+// Sistema unificado: cada animação tem 6 valores (offX/Y/Z em unidades, rotX/Y/Z em graus).
+// É aplicado no objeto interno do personagem (entity.character) do jogador local,
+// substituindo os antigos "fbPose" e "kickPose".
+const ANIM_NAMES = ["idle", "walk", "run", "dance", "wave", "kickWeak", "kickStrong"];
+const ANIM_TUNINGS_KEY = "neon-tap-room-anim-tunings";
+const ANIM_TUNINGS_VERSION_KEY = "neon-tap-room-anim-tunings-version";
+const ANIM_TUNINGS_VERSION = "1";
+function defaultAnimTuning() { return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 }; }
+function loadAnimTunings() {
+  const out = {};
+  for (const n of ANIM_NAMES) out[n] = defaultAnimTuning();
+  try {
+    const ver = localStorage.getItem(ANIM_TUNINGS_VERSION_KEY);
+    if (ver === ANIM_TUNINGS_VERSION) {
+      const raw = localStorage.getItem(ANIM_TUNINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        for (const n of ANIM_NAMES) if (parsed[n]) Object.assign(out[n], parsed[n]);
+        return out;
+      }
+    } else {
+      localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
+    }
+  } catch {}
+  // Migração: usa o antigo kickPose como ponto de partida.
+  const kp = _legacyKickPose;
+  for (const n of ["idle", "walk", "run", "dance", "wave"]) {
+    out[n].offY = kp.offY || 0;
+    out[n].offZ = kp.offFwd || 0;
+    out[n].rotX = kp.rotX || 0;
+  }
+  for (const n of ["kickWeak", "kickStrong"]) {
+    out[n].rotX = kp.rotX || -90;
+  }
+  return out;
 }
-window.__kickPose = kickPose;
-window.__saveKickPose = saveKickPose;
-// Alias: agora esse "pose" se aplica ao modo futebol inteiro (idle/walk/run/chute).
-window.__fbPose = kickPose;
+const animTunings = loadAnimTunings();
+function saveAnimTunings() {
+  try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+}
+window.__animTunings = animTunings;
+window.__animNames = ANIM_NAMES;
+window.__saveAnimTunings = saveAnimTunings;
+window.__defaultAnimTuning = defaultAnimTuning;
+
+// Aplica live as tunings da animação atual no character do jogador local.
+function applyLocalAnimTuning(entity, delta) {
+  const ch = entity?.character;
+  if (!ch) return;
+  let name = null;
+  if (entity.__fbKicking) name = entity.__lastKickStrong ? "kickStrong" : "kickWeak";
+  else if (entity.currentAction && animTunings[entity.currentAction]) name = entity.currentAction;
+  const tn = name ? animTunings[name] : null;
+  const targetX = tn ? (tn.offX || 0) : 0;
+  const targetY = tn ? (tn.offY || 0) : 0;
+  const targetZ = tn ? (tn.offZ || 0) : 0;
+  const d = Math.PI / 180;
+  const targetRx = CHARACTER_DEFAULT_ROT_X + (tn ? (tn.rotX || 0) : 0) * d;
+  const targetRy = (tn ? (tn.rotY || 0) : 0) * d;
+  const targetRz = (tn ? (tn.rotZ || 0) : 0) * d;
+  const t = Math.min(1, (delta || 0.016) * 12);
+  ch.position.x += (targetX - ch.position.x) * t;
+  ch.position.y += (targetY - ch.position.y) * t;
+  ch.position.z += (targetZ - ch.position.z) * t;
+  ch.rotation.x += (targetRx - ch.rotation.x) * t;
+  ch.rotation.y += (targetRy - ch.rotation.y) * t;
+  ch.rotation.z += (targetRz - ch.rotation.z) * t;
+}
+window.__applyLocalAnimTuning = applyLocalAnimTuning;
+
+// Stubs de compatibilidade.
+window.__kickPose = _legacyKickPose;
+window.__fbPose = _legacyKickPose;
+window.__saveKickPose = () => {};
 
 // ============ Speed config (admin tunable) ============
 const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
