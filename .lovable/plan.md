@@ -1,34 +1,55 @@
-# "Ir até onde está" entre salas
+# Animações customizadas no painel admin
 
-## O que muda no popup do jogador
+Hoje as animações são fixas no código (`idle`, `walk`, `run`, `dance`, `wave`, `kickWeak`, `kickStrong`) e cada interação aceita um `animation_url` digitado à mão. A ideia é deixar você subir arquivos `.fbx` quando quiser, ajustá-los no painel de Animações, e escolhê-los nas interações via dropdown.
 
-Hoje o botão **📍 Ir até onde está** só move dentro da sala atual. Vou fazer ele detectar em qual sala o outro jogador está e:
+## O que muda na interface
 
-- **Mesma sala** → comportamento atual (anda até perto dele).
-- **Outra sala** → mostra um popup de confirmação *"Fulano está na sala **X**. Ir até lá?"* com botões **Ir** / **Cancelar**.
-- **Sala restrita / oculta / inacessível / peer saiu** → mostra erro inline no popup: *"Não foi possível entrar nessa sala."*
+**Painel "🎬 Animações" (admin lateral)**
+- Botão **+ Adicionar animação** no topo da lista.
+- Ao clicar: abre mini-form com **nome** (ex.: "Aceno militar") + seletor de arquivo `.fbx`.
+- Faz upload, salva no banco e a animação aparece na mesma lista das nativas.
+- Cada animação custom ganha os mesmos ajustes (offset X/Y/Z + rotação X/Y/Z), botões **Testar / Resetar / Salvar / 🗑 Excluir**.
+- Animações nativas continuam aparecendo, mas sem botão de excluir.
 
-## Como funciona por baixo
+**Painel de Interações**
+- Campo `animation_url` (texto livre hoje) vira **dropdown** com:
+  - "— Nenhuma (idle) —"
+  - Lista de animações customizadas cadastradas
+  - Opção "URL manual…" para colar link externo (compatibilidade).
+- Ao selecionar uma custom, o `animation_url` salvo é a URL do arquivo no storage.
 
-1. Ao clicar em "Ir até", leio o `map_id` do peer em `lobbyChannel.presenceState()[peerId]`.
-2. Se igual ao `currentMapId` → `moveToWorld` direto (igual hoje).
-3. Se diferente:
-   - Procuro o mapa em `MAPS` (lista de mapas built-in + customs já carregada).
-   - Se não existe, está com `hidden=true`, ou o peer sumiu da presença → erro.
-   - Senão, abro mini-confirmação dentro do mesmo popup com o nome da sala.
-   - Ao confirmar: chamo `switchRoom(targetMapId)` (já existente — troca presence/chat/voz/cenário).
-   - Depois de carregar, **aguardo até 4s** o peer aparecer em `playerEntities` (o presence da nova sala traz a posição dele) e então faço `moveToWorld` com offset de ~1.2u para você surgir ao lado.
-   - Se o peer não aparecer no prazo (saiu enquanto carregava) → aviso *"Esse usuário saiu da sala."* e te deixa lá no spawn.
+## Backend
 
-## Arquivos a editar
+**Storage bucket** `animations` (público leitura) — arquivos `.fbx` até ~20MB.
 
-- `public/app.js` — bloco `setupPlayerPopup` (final do arquivo): expandir o handler do botão `follow-loc` com a lógica acima, e o markup do popup para suportar a etapa de confirmação + mensagem de erro inline.
-- `public/styles.css` — pequenos estilos para o estado de confirmação/erro do popup (texto secundário + dois botões lado a lado).
+**Tabela** `public.custom_animations`:
+- `name` (texto, único por criador)
+- `file_url` (URL pública do .fbx)
+- `file_path` (caminho no bucket, p/ poder excluir)
+- `created_by` (uuid do admin)
+- `created_at`
 
-## Edge cases cobertos
+**RLS:**
+- SELECT: qualquer usuário autenticado (precisa carregar nas interações de todo mundo).
+- INSERT / UPDATE / DELETE: apenas admins (via `has_role(auth.uid(), 'admin')`).
 
-- Peer offline / saiu do lobby → erro.
-- Mapa do peer não existe na lista local (foi excluído) → erro.
-- Mapa marcado como `hidden` e você não é admin → erro.
-- `switchRoom` falha (erro de rede) → erro.
-- Peer trocou de sala de novo durante a troca → aguarda o timeout e avisa.
+**Realtime** ligado para a tabela, assim quando um admin sobe uma nova animação ela aparece no dropdown dos outros admins sem reload.
+
+## Detalhes técnicos
+
+- `ANIM_URLS` e `animTunings` passam a ser mesclados em runtime: nativas (hardcoded) + customizadas (carregadas do Supabase em `boot`).
+- Tunings das customizadas salvos na mesma chave `localStorage` `neon-tap-room-anim-tunings`, indexados por `custom:<id>`.
+- Upload usa `supabase.storage.from('animations').upload(...)` com path `${userId}/${timestamp}-${safeName}.fbx`.
+- "Testar" toca a animação no avatar local via `loadFbxClip(file_url)` + `retargetClipToBones` (mesma rotina já usada nas interações de sentar).
+- Excluir: remove a row + remove o arquivo do storage. Interações que ainda referenciam aquela URL passam a cair no fallback "idle" (sem quebrar).
+
+## Arquivos afetados
+
+- **nova migração**: tabela `custom_animations` + GRANTs + RLS + realtime.
+- **novo bucket**: `animations` (público).
+- `public/index.html`: HTML do botão "+" e mini-form de upload no painel de Animações; troca do input de `animation_url` por `<select>` no editor de interações.
+- `public/app.js`: 
+  - carregar custom anims do Supabase no boot e em realtime;
+  - render do botão "+" / form de upload / lista com excluir;
+  - popular o `<select>` no editor de interações;
+  - estender `animTunings` para suportar IDs `custom:<id>`.

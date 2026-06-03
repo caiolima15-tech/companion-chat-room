@@ -161,18 +161,24 @@
               </div>
             </div>
             <div class="panel-body" style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
-              <label style="display:flex;flex-direction:column;gap:4px;">
-                <span style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;">Animação</span>
-                <select id="animSelect" style="background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:6px;padding:6px;">
-                  <option value="idle">Idle (parado)</option>
-                  <option value="walk">Walk (andando)</option>
-                  <option value="run">Run (correndo)</option>
-                  <option value="dance">Dance</option>
-                  <option value="wave">Wave (acenar)</option>
-                  <option value="kickWeak">Kick fraco</option>
-                  <option value="kickStrong">Kick forte</option>
-                </select>
-              </label>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <label style="flex:1;display:flex;flex-direction:column;gap:4px;">
+                  <span style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;">Animação</span>
+                  <select id="animSelect" style="background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:6px;padding:6px;"></select>
+                </label>
+                <button id="animAddBtn" type="button" title="Adicionar nova animação (.fbx)" style="align-self:flex-end;background:linear-gradient(135deg,#8b5cf6,#a78bfa);color:#fff;border:none;border-radius:6px;width:34px;height:32px;font-size:18px;font-weight:700;cursor:pointer;">+</button>
+                <button id="animDelBtn" type="button" hidden title="Excluir esta animação" style="align-self:flex-end;background:#5a1f1f;color:#fff;border:none;border-radius:6px;width:34px;height:32px;font-size:14px;cursor:pointer;">🗑</button>
+              </div>
+              <div id="animUploadBox" hidden style="display:flex;flex-direction:column;gap:6px;border:1px dashed #2a3040;border-radius:6px;padding:8px;">
+                <input id="animUpName" type="text" placeholder="Nome da animação" maxlength="40" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:6px;font:12px system-ui;">
+                <input id="animUpFile" type="file" accept=".fbx" style="color:#ccc;font-size:11px;">
+                <div style="display:flex;gap:6px;">
+                  <button id="animUpSend" type="button" style="flex:1;background:linear-gradient(135deg,#8b5cf6,#a78bfa);color:#fff;border:none;border-radius:4px;padding:6px;cursor:pointer;font-weight:600;">Enviar</button>
+                  <button id="animUpCancel" type="button" style="background:transparent;color:#eee;border:1px solid #555;border-radius:4px;padding:6px 10px;cursor:pointer;">Cancelar</button>
+                </div>
+                <div id="animUpStatus" style="font-size:11px;color:#a78bfa;min-height:14px;"></div>
+              </div>
+
               <div style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;margin-top:4px;">Posição</div>
               <label class="sp-row">X (lado) <span id="anOffXVal">0.00</span><input id="anOffX" type="range" min="-2" max="2" step="0.01"></label>
               <label class="sp-row">Y (altura) <span id="anOffYVal">0.00</span><input id="anOffY" type="range" min="-2" max="2" step="0.01"></label>
