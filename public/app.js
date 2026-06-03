@@ -296,12 +296,68 @@ function loadAnimTunings() {
 }
 
 const animTunings = loadAnimTunings();
-function saveAnimTunings() {
+function saveAnimTunings(remoteKey) {
   try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+  if (remoteKey && window.supabase && animTunings[remoteKey]) {
+    const t = animTunings[remoteKey];
+    Promise.resolve().then(async () => {
+      try {
+        const { data: au } = await window.supabase.auth.getUser();
+        const uid = au?.user?.id || null;
+        const { error } = await window.supabase.from("animation_tunings").upsert({
+          anim_key: remoteKey,
+          off_x: t.offX || 0, off_y: t.offY || 0, off_z: t.offZ || 0,
+          rot_x: t.rotX || 0, rot_y: t.rotY || 0, rot_z: t.rotZ || 0,
+          updated_by: uid, updated_at: new Date().toISOString(),
+        }, { onConflict: "anim_key" });
+        if (error) console.warn("[animation_tunings upsert]", error);
+      } catch (e) { console.warn("[animation_tunings upsert]", e); }
+    });
+  }
 }
+async function deleteAnimTuningRemote(key) {
+  try { await window.supabase?.from("animation_tunings").delete().eq("anim_key", key); } catch {}
+}
+async function loadRemoteAnimTunings() {
+  if (!window.supabase) return;
+  try {
+    const { data, error } = await window.supabase.from("animation_tunings").select("*");
+    if (error) { console.warn("[animation_tunings load]", error); return; }
+    for (const row of (data || [])) {
+      const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
+      t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
+      t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+    }
+    try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+    window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+  } catch (e) { console.warn("[animation_tunings load]", e); }
+}
+function subscribeAnimTunings() {
+  if (!window.supabase) return;
+  try {
+    window.supabase.channel("animation_tunings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "animation_tunings" }, (payload) => {
+        const row = payload.new || payload.old;
+        if (!row?.anim_key) return;
+        if (payload.eventType === "DELETE") {
+          if (animTunings[row.anim_key]) animTunings[row.anim_key] = defaultAnimTuning();
+        } else {
+          const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
+          t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
+          t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+        }
+        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+        window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+      })
+      .subscribe();
+  } catch (e) { console.warn("[animation_tunings sub]", e); }
+}
+// Kick off loading + subscription (defers until supabase is ready)
+Promise.resolve().then(() => { loadRemoteAnimTunings(); subscribeAnimTunings(); });
 window.__animTunings = animTunings;
 window.__animNames = ANIM_NAMES;
 window.__saveAnimTunings = saveAnimTunings;
+window.__deleteAnimTuningRemote = deleteAnimTuningRemote;
 window.__defaultAnimTuning = defaultAnimTuning;
 
 // Aplica live as tunings da animação atual no character do jogador local.
