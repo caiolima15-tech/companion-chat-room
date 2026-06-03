@@ -4056,9 +4056,10 @@ function updatePlayerAnimation(delta) {
       continue;
     }
     // Jogador local em modo normal: applyHeldMovement já posiciona/anima.
-    // Aqui só atualizamos o mixer e seguimos.
+    // Aqui só atualizamos o mixer, aplicamos a tuning por animação, e seguimos.
     if (entity.player?.id === myId && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode) {
       if (entity.mixer) entity.mixer.update(delta);
+      applyLocalAnimTuning(entity, delta);
       if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
       continue;
     }
