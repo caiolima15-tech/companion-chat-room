@@ -6049,18 +6049,21 @@ function renderBotsAdminList() {
 
 // Animation library UI
 async function uploadBotAnimation(file, name) {
-  if (!isAdmin) return alert("Apenas admin.");
+  if (!isAdmin) { alert("Apenas admin."); return null; }
   const status = document.getElementById("botAnimStatus");
   if (status) status.textContent = "Subindo " + file.name + "...";
   const path = `bot-anims/${Date.now()}-${sanitize(file.name)}`;
   const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
-  if (error) { if (status) status.textContent = "Erro: " + error.message; return; }
+  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
-  const { error: e2 } = await supabase.from("bot_animations").insert({ name: name || file.name.replace(/\.fbx$/i, ""), url: data.publicUrl, created_by: myId });
-  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return; }
+  const animName = name || file.name.replace(/\.fbx$/i, "");
+  const { data: row, error: e2 } = await supabase.from("bot_animations").insert({ name: animName, url: data.publicUrl, created_by: myId }).select().single();
+  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
   if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
   await reloadBotAnimations();
+  return row || { name: animName, url: data.publicUrl };
 }
+window.uploadBotAnimation = uploadBotAnimation;
 
 function renderBotAnimList() {
   const el = document.getElementById("botAnimList");
@@ -7600,6 +7603,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
             <option value="__manual__" ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "selected" : ""}>URL manual…</option>
           </select>
+          <button type="button" class="ie-upload-anim" title="Enviar novo FBX">＋ FBX</button>
+          <input type="file" class="ie-upload-anim-input" accept=".fbx" hidden>
         </div>
         <div class="ie-row" data-anim-url-row ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "" : "hidden"}><label>URL FBX</label>
           <input type="url" data-field="animation_url" placeholder="https://… .fbx" value="${_esc(draft.animation_url || "")}">
@@ -7736,6 +7741,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
       window.__footballSetPreview?.(editingDraft);
       addSystemLine?.("Bola posicionada na sua posição atual.");
+      return;
+    }
+    if (t.classList.contains("ie-upload-anim")) {
+      const inp = editorEl.querySelector(".ie-upload-anim-input");
+      if (inp) {
+        inp.onchange = async (ev) => {
+          const file = ev.target.files?.[0]; if (!file) return;
+          const name = prompt("Nome desta animação:", file.name.replace(/\.fbx$/i, "")) || file.name.replace(/\.fbx$/i, "");
+          t.disabled = true; t.textContent = "Enviando...";
+          const row = await window.uploadBotAnimation?.(file, name);
+          t.disabled = false; t.textContent = "＋ FBX";
+          if (row?.url && editingDraft) {
+            editingDraft.animation_url = row.url;
+            renderAdmin();
+          }
+        };
+        inp.click();
+      }
       return;
     }
     if (t.classList.contains("ie-here")) {
