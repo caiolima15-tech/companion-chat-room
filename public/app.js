@@ -6049,18 +6049,21 @@ function renderBotsAdminList() {
 
 // Animation library UI
 async function uploadBotAnimation(file, name) {
-  if (!isAdmin) return alert("Apenas admin.");
+  if (!isAdmin) { alert("Apenas admin."); return null; }
   const status = document.getElementById("botAnimStatus");
   if (status) status.textContent = "Subindo " + file.name + "...";
   const path = `bot-anims/${Date.now()}-${sanitize(file.name)}`;
   const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
-  if (error) { if (status) status.textContent = "Erro: " + error.message; return; }
+  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
-  const { error: e2 } = await supabase.from("bot_animations").insert({ name: name || file.name.replace(/\.fbx$/i, ""), url: data.publicUrl, created_by: myId });
-  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return; }
+  const animName = name || file.name.replace(/\.fbx$/i, "");
+  const { data: row, error: e2 } = await supabase.from("bot_animations").insert({ name: animName, url: data.publicUrl, created_by: myId }).select().single();
+  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
   if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
   await reloadBotAnimations();
+  return row || { name: animName, url: data.publicUrl };
 }
+window.uploadBotAnimation = uploadBotAnimation;
 
 function renderBotAnimList() {
   const el = document.getElementById("botAnimList");
