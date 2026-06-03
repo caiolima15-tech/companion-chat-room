@@ -5851,6 +5851,7 @@ async function upsertBot(row) {
   entity.row = row;
   applyBotTransform(entity, row);
   await applyBotAnimation(entity, row.animation_url || null);
+  try { window.__mapBots.set(row.id, row); } catch {}
 }
 
 function removeBot(id) {
@@ -5859,6 +5860,7 @@ function removeBot(id) {
   botsGroup.remove(e.group);
   e.mixer?.stopAllAction?.();
   botEntities.delete(id);
+  try { window.__mapBots.delete(id); } catch {}
 }
 
 function clearAllBots() {
