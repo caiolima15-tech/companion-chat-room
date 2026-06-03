@@ -692,7 +692,7 @@ input:focus {
   display: none;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 960px) and (orientation: portrait) {
   body {
     overflow: auto;
   }
