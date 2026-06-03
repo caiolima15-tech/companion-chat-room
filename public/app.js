@@ -872,6 +872,7 @@ async function enterRoom() {
   connectRealtime().catch(() => {});
   Promise.resolve().then(() => window.radioEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
+  Promise.resolve().then(() => window.portalsEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.carsEnterRoom?.(currentMapId)).catch(() => {});
 
 }
