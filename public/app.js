@@ -9955,4 +9955,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const uid = plate.dataset.user;
     if (uid) { e.stopPropagation(); open(uid, plate); }
   });
+
+  // Exposto para outros módulos (ex: clique no avatar 3D, botão "Ir até" no perfil)
+  window.__playerPopup = {
+    open,
+    async goToLocation(peerId, peerName, anchorEl) {
+      if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
+      close();
+      currentPeerId = peerId;
+      popup = document.createElement("div");
+      popup.className = "player-popup";
+      document.body.appendChild(popup);
+      positionPopup(anchorEl || document.body);
+      await handleFollowLocation(peerId, peerName || "Usuário");
+    },
+  };
 })();
