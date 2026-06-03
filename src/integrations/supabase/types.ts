@@ -661,6 +661,54 @@ export type Database = {
         }
         Relationships: []
       }
+      map_portals: {
+        Row: {
+          color: string
+          created_at: string
+          created_by: string | null
+          dest_map_id: string
+          height: number
+          id: string
+          label: string
+          map_id: string
+          pos_x: number
+          pos_y: number
+          pos_z: number
+          radius: number
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          dest_map_id: string
+          height?: number
+          id?: string
+          label?: string
+          map_id: string
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          radius?: number
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          created_by?: string | null
+          dest_map_id?: string
+          height?: number
+          id?: string
+          label?: string
+          map_id?: string
+          pos_x?: number
+          pos_y?: number
+          pos_z?: number
+          radius?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       map_radios: {
         Row: {
           genre: string
