@@ -9995,15 +9995,34 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // Exposto para outros módulos (ex: clique no avatar 3D, botão "Ir até" no perfil)
   window.__playerPopup = {
     open,
-    async goToLocation(peerId, peerName, anchorEl) {
+    async goToLocation(peerId) {
       if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
       close();
-      currentPeerId = peerId;
-      popup = document.createElement("div");
-      popup.className = "player-popup";
-      document.body.appendChild(popup);
-      positionPopup(anchorEl || document.body);
-      await handleFollowLocation(peerId, peerName || "Usuário");
+      if (playerEntities.get(peerId)) { teleportNear(peerId); return; }
+      let peerMapId = null;
+      try {
+        const state = lobbyChannel?.presenceState?.() || {};
+        peerMapId = state[peerId]?.[0]?.map_id || null;
+      } catch {}
+      const notify = (m) => { try { (window.toast || console.log)(m); } catch {} };
+      if (!peerMapId) { notify("Esse usuário não está online."); return; }
+      if (peerMapId === currentMapId) {
+        const ok = await waitForPeerEntity(peerId, 2500);
+        if (ok) teleportNear(peerId);
+        return;
+      }
+      const mapInfo = (Array.isArray(MAPS) ? MAPS : []).find((m) => m.id === peerMapId);
+      if (!mapInfo) { notify("Não foi possível entrar nessa sala."); return; }
+      try {
+        if (typeof switchRoom !== "function") throw new Error("switchRoom indisponível");
+        await switchRoom(peerMapId);
+      } catch {
+        notify("Não foi possível entrar nessa sala.");
+        return;
+      }
+      const appeared = await waitForPeerEntity(peerId, 4000);
+      if (appeared) teleportNear(peerId);
+      else notify("Esse usuário saiu da sala.");
     },
   };
 })();
