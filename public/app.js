@@ -7355,6 +7355,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function enterSit(inter) {
     const entity = getMyEntity();
     if (!entity || !entity.mixer) return;
+    if (window.isInteractionOccupied?.(inter.id)) {
+      addSystemLine?.("Esse lugar já está ocupado.");
+      return;
+    }
     const pose = computeSeatPose(inter);
     if (!pose) return;
 
