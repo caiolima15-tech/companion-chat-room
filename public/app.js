@@ -10440,6 +10440,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // Used so that landing on a destination portal doesn't immediately re-teleport.
   // Each entry: portalId -> true. Cleared per-tick once the player is outside.
   const suppressedPortals = new Set();
+  // A portal only becomes "armed" (i.e. allowed to teleport) once the player has
+  // been observed OUTSIDE its activation radius at least once. This prevents
+  // spawning / landing on top of a portal from instantly triggering it.
+  const armedPortals = new Set();
   // After switching room because of a portal-to-portal link, we remember which
   // portal id to drop the player on (and immediately suppress) once portals load.
   let pendingDropPortalId = null;
