@@ -1891,18 +1891,21 @@ button[data-variant="primary"] {
   line-height: 1;
 }
 #radioHud #radioVolumeSlider {
-  width: 0;
-  opacity: 0;
-  transition: width 0.18s ease, opacity 0.18s ease;
+  width: 110px;
+  opacity: 1;
   accent-color: #a78bfa;
-  height: 3px;
+  height: 22px;
+  touch-action: none;
+  cursor: pointer;
 }
-#radioHud:hover #radioVolumeSlider,
-#radioHud:focus-within #radioVolumeSlider { width: 80px; opacity: 1; }
+#radioHud #radioVolumeSlider::-webkit-slider-thumb {
+  width: 18px; height: 18px;
+}
 @media (max-width: 720px) {
   #radioHud { top: 8px; padding: 6px 10px; font-size: 11px; }
-  #radioHud:hover #radioVolumeSlider, #radioHud:focus-within #radioVolumeSlider { width: 60px; }
+  #radioHud #radioVolumeSlider { width: 140px; height: 26px; }
 }
+
 
 /* ==================== World loading overlay ==================== */
 #worldLoadingOverlay {

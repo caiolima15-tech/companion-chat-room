@@ -6821,22 +6821,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.12;
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260602";
+  const RADIO_DEFAULT_VOLUME = 0.02;
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260603";
+  // Curva exponencial: slider 0-100 -> volume não-linear (mais resolução nos graves)
+  const sliderToVol = (s) => {
+    const x = Math.min(1, Math.max(0, (Number(s) || 0) / 100));
+    return x * x; // quadrática
+  };
+  const volToSlider = (v) => Math.round(Math.sqrt(Math.min(1, Math.max(0, v))) * 100);
 
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
   let initialVolume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
   if (localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
-    // Migração: rádio passa a iniciar bem baixo; usuário aumenta se quiser.
+    // Migração: rádio inicia no mínimo; usuário aumenta se quiser.
     initialVolume = RADIO_DEFAULT_VOLUME;
     localStorage.setItem("radio.volume", String(initialVolume));
     localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   }
   audio.volume = initialVolume;
   audio.muted = savedMuted;
-  if (volSlider) volSlider.value = String(Math.round(audio.volume * 100));
+  if (volSlider) volSlider.value = String(volToSlider(audio.volume));
   syncMuteUi();
 
   function syncMuteUi() {
@@ -6850,11 +6856,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     syncMuteUi();
   });
   volSlider?.addEventListener("input", () => {
-    const v = Math.min(1, Math.max(0, (Number(volSlider.value) || 0) / 100));
+    const v = sliderToVol(volSlider.value);
     audio.volume = v;
     if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
+  });
+  // Impede que toques no slider iniciem o pan/movimento do mundo
+  ["pointerdown", "touchstart", "mousedown"].forEach((ev) => {
+    volSlider?.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
   });
 
   function showHud(st) {
