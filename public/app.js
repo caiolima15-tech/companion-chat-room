@@ -7482,8 +7482,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma interação ainda.</div>';
     } else {
       listEl.innerHTML = interactions.map((it) => {
-        const obj = assetObjects.get(it.asset_id);
-        const assetName = obj?.name || "(asset removido)";
+        const obj = it.asset_id ? assetObjects.get(it.asset_id) : null;
+        const assetName = it.asset_id ? (obj?.name || "(asset removido)") : "📍 posição livre";
         const isEd = editingId === it.id;
         return `<div class="interact-row ${isEd ? "is-editing" : ""}" data-id="${_esc(it.id)}">
           <div class="ir-line"><span class="ir-icon">${_esc(it.icon || "💺")}</span>
