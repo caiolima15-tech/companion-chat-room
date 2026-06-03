@@ -2053,7 +2053,7 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   right: 232px !important;
   left: auto !important;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px) and (orientation: portrait) {
   .admin-dock { width: 168px; top: 60px; right: 8px; padding: 6px; }
   .admin-dock button.admin-dock-item { font-size: 12px; padding: 7px 8px; }
   body.world-ready #lightsAdminPanel:not([hidden]),
@@ -2061,9 +2061,16 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   body.world-ready #botsAdminPanel:not([hidden]),
   body.world-ready #radioAdminPanel:not([hidden]),
   body.world-ready #interactionsAdminPanel:not([hidden]),
-  body.world-ready #mapAdminPanel:not([hidden]) {
+  body.world-ready #mapAdminPanel:not([hidden]),
+  body.world-ready #animAdminPanel:not([hidden]),
+  body.world-ready #carsAdminPanel:not([hidden]),
+  body.world-ready #speedAdminPanel:not([hidden]) {
+    top: 64px !important;
     right: 188px !important;
+    left: auto !important;
     max-width: calc(100vw - 200px) !important;
+    max-height: 70vh !important;
+    overflow: auto !important;
   }
 }
 .world-loading-text {
