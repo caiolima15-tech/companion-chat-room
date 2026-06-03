@@ -10456,6 +10456,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ).join("");
   }
 
+  // Cache of portals per map id, used to populate the "destination portal" select.
+  const portalsByMap = new Map();
+  async function fetchPortalsForMap(mapId) {
+    if (!mapId) return [];
+    if (portalsByMap.has(mapId)) return portalsByMap.get(mapId);
+    const { data, error } = await supabase
+      .from("map_portals").select("id,label,map_id").eq("map_id", mapId);
+    if (error) { console.warn("[portals] fetchPortalsForMap", error); return []; }
+    portalsByMap.set(mapId, data || []);
+    return data || [];
+  }
+  function destPortalOptions(mapId, selectedId, excludeId) {
+    const list = (portalsByMap.get(mapId) || []).filter((p) => p.id !== excludeId);
+    const empty = `<option value="">— (apenas o mapa) —</option>`;
+    return empty + list.map((p) =>
+      `<option value="${_esc(p.id)}" ${p.id === selectedId ? "selected" : ""}>${_esc(p.label || "Portal")}</option>`
+    ).join("");
+  }
+
   // ---------- Visual portal mesh ----------
   function buildPortalMesh(p) {
     const g = new THREE.Group();
