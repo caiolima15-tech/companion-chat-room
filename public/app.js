@@ -10436,6 +10436,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let inRoom = false;
   let teleporting = false;
   let cooldownUntil = 0;
+  // Portals to ignore until the player walks out of their radius.
+  // Used so that landing on a destination portal doesn't immediately re-teleport.
+  // Each entry: portalId -> true. Cleared per-tick once the player is outside.
+  const suppressedPortals = new Set();
+  // After switching room because of a portal-to-portal link, we remember which
+  // portal id to drop the player on (and immediately suppress) once portals load.
+  let pendingDropPortalId = null;
 
   function _esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) =>
