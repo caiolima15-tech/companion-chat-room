@@ -7367,6 +7367,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           action.clampWhenFinished = true;
           action.reset().fadeIn(0.2).play();
           currentSit.mixerAction = action;
+          // Resolve a chave de tuning: prefere custom:<id> quando a URL bate com bot_animations
+          let tuningKey = null;
+          try {
+            const match = (window.__botAnimations || []).find(a => a.url === inter.animation_url);
+            if (match) tuningKey = "custom:" + match.id;
+          } catch {}
+          if (!tuningKey && inter.animation_key && window.__animTunings?.[inter.animation_key]) {
+            tuningKey = inter.animation_key;
+          }
+          if (tuningKey) {
+            if (!window.__animTunings[tuningKey]) window.__animTunings[tuningKey] = window.__defaultAnimTuning();
+            entity.currentAction = tuningKey; // permite applyLocalAnimTuning aplicar offsets/rotações
+          }
         }
       } else {
         const idle = entity.actions?.idle;
