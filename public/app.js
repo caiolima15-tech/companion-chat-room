@@ -5194,6 +5194,10 @@ async function openMapEdit(mapId) {
           </label>
           ${m.thumbUrl ? `<button id="meThumbRemove" type="button" style="margin-top:6px;background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px;width:100%;">Remover imagem</button>` : ""}
         </div>
+        <label style="display:flex;align-items:center;gap:8px;background:#171b22;border:1px solid #2a2f3a;border-radius:8px;padding:8px 10px;cursor:pointer;">
+          <input id="meHidden" type="checkbox" ${m.hidden ? "checked" : ""} style="width:16px;height:16px;cursor:pointer;">
+          <span><strong style="color:#e4a8ff;">🔒 Ocultar do painel de salas</strong><br><span style="font-size:11px;color:#9aa;">O mapa só fica acessível por portais.</span></span>
+        </label>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
           ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
