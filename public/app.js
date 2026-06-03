@@ -7339,8 +7339,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function showPromptForInteraction(inter, pose) {
     promptEl.hidden = false;
     promptEl.dataset.kind = "enter";
-    promptEl.innerHTML = `<span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
-    promptEl.onclick = () => enterSit(inter);
+    const occupied = window.isInteractionOccupied?.(inter.id);
+    const label = occupied ? "Ocupado" : (inter.label || "Interagir");
+    promptEl.innerHTML = `<span class="ip-label">${_esc(label)}</span>`;
+    promptEl.onclick = occupied ? null : (() => enterSit(inter));
+    promptEl.style.filter = occupied ? "grayscale(1) opacity(0.7)" : "";
   }
   function showPromptForSit() {
     promptEl.hidden = false;
