@@ -10597,6 +10597,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const tryDrop = () => {
           if (dropPlayerAt(target.pos_x, target.pos_y, target.pos_z)) {
             suppressedPortals.add(target.id);
+            armedPortals.delete(target.id);
             return;
           }
           if (++tries < 40) setTimeout(tryDrop, 75);
