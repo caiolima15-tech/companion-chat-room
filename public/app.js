@@ -10617,11 +10617,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let editingId = null;
   let editingDraft = null;
 
-  dockBtn?.addEventListener("click", () => {
-    if (!isAdmin) return alert("Apenas admin.");
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) { editingId = null; editingDraft = null; renderAdmin(); }
-  });
+  // O toggle do painel é feito pela delegação do dock lateral (admin-dock).
+  // Aqui apenas observamos o atributo `hidden` para (re)renderizar quando abrir
+  // e bloquear não-admin. Evita duplo toggle (delegação + listener próprio).
+  try {
+    const _obs = new MutationObserver(() => {
+      if (panel.hidden) return;
+      if (!isAdmin) { panel.hidden = true; alert("Apenas admin."); return; }
+      editingId = null; editingDraft = null;
+      renderAdmin();
+    });
+    _obs.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
+  } catch {}
 
   newBtn?.addEventListener("click", async () => {
     if (!isAdmin) return alert("Apenas admin.");
