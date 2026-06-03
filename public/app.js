@@ -7550,12 +7550,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
 
+    const standalone = !draft.asset_id;
+    const posRange = standalone ? 200 : 3;
+    const posStep = standalone ? 0.1 : 0.05;
     editorEl.innerHTML = `
       <div class="interact-editor">
         <div class="ie-row"><label>Objeto</label>
-          <select data-field="asset_id"><option value="">— escolha —</option>${assetsOptions}</select>
+          <select data-field="asset_id"><option value="">— sem objeto (posição livre) —</option>${assetsOptions}</select>
           <button type="button" class="ie-pick">${pickMode ? "Cancelar seleção" : "Selecionar no mundo"}</button>
         </div>
+        ${standalone ? `<div class="ie-row"><button type="button" class="ie-here primary" style="width:100%">📍 Usar minha posição atual</button></div>` : ``}
         <div class="ie-row"><label>Rótulo</label><input type="text" data-field="label" value="${_esc(draft.label)}" maxlength="40"></div>
         <div class="ie-row"><label>Ícone</label><input type="text" data-field="icon" value="${_esc(draft.icon)}" maxlength="4" style="width:64px"></div>
         <div class="ie-row"><label>Tipo</label>
@@ -7580,10 +7584,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <div class="ie-row"><label>Loop</label>
           <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
         </div>
-        <fieldset class="ie-fs"><legend>Posição relativa ao objeto</legend>
-          ${slider("X", "offset_x", -3, 3, 0.05)}
-          ${slider("Altura (Y)", "offset_y", -2, 3, 0.05)}
-          ${slider("Z", "offset_z", -3, 3, 0.05)}
+        <fieldset class="ie-fs"><legend>${standalone ? "Posição no mundo" : "Posição relativa ao objeto"}</legend>
+          ${slider("X", "offset_x", -posRange, posRange, posStep)}
+          ${slider("Altura (Y)", "offset_y", standalone ? -5 : -2, standalone ? 10 : 3, posStep)}
+          ${slider("Z", "offset_z", -posRange, posRange, posStep)}
           ${slider("Rotação X (°)", "rotation_x", -180, 180, 1)}
           ${slider("Rotação Y (°)", "rotation_y", -180, 180, 1)}
           ${slider("Rotação Z (°)", "rotation_z", -180, 180, 1)}
