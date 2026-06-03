@@ -10812,6 +10812,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button type="button" data-act="cancel" style="flex:1;background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:6px;cursor:pointer;">Cancelar</button>
         </div>
       </div>`;
+
+    // Lazy-load portals for the destination map so the "Portal" select can be populated.
+    const destMapId = d.dest_map_id;
+    if (destMapId && !portalsByMap.has(destMapId)) {
+      fetchPortalsForMap(destMapId).then(() => {
+        if (editingId !== d.id) return;
+        const sel = editorEl.querySelector('select[data-field="dest_portal_id"]');
+        if (sel) sel.innerHTML = destPortalOptions(destMapId, editingDraft?.dest_portal_id, d.id);
+      });
+    }
   }
 
   // ---------- Panel events ----------
