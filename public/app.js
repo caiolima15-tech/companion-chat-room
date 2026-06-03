@@ -7248,6 +7248,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (error) { console.warn("[interactions] load", error); return; }
     interactions = data || [];
     window.__mapInteractions = interactions;
+    // Sync bot lookup for admin UI
+    try { window.__mapBots = new Map(Array.from(botEntities.entries()).filter(([k]) => typeof k === "string" && !k.startsWith("__loading_")).map(([k, e]) => [k, e.row])); } catch {}
     window.dispatchEvent(new CustomEvent("interactions:updated"));
     // Pré-carrega clips FBX de todas as interações do mapa para eliminar T-pose no primeiro uso
     try {
