@@ -8013,19 +8013,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
-    // Pose contínua do MODO FUTEBOL (aplica desde idle, walk, run e durante o chute).
-    // Os sliders do painel admin afetam offY (altura), offFwd (frente/trás) e rotX (inclinação).
-    const ch = ent.character;
-    if (ch) {
-      const fp = window.__fbPose || { offY: 0, offFwd: 0, rotX: 0 };
-      const targetY = fp.offY || 0;
-      const targetZ = fp.offFwd || 0;
-      const targetRx = CHARACTER_DEFAULT_ROT_X + (fp.rotX || 0) * (Math.PI / 180);
-      const t = Math.min(1, delta * 12);
-      ch.position.y += (targetY - ch.position.y) * t;
-      ch.position.z += (targetZ - ch.position.z) * t;
-      ch.rotation.x += (targetRx - ch.rotation.x) * t;
-    }
+    // Pose por animação (idle/walk/run/kick): driven pelo painel admin "🎬 Animações".
+    applyLocalAnimTuning(ent, delta);
     ent.target.copy(ent.group.position);
 
     if (me && myId) {
