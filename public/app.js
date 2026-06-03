@@ -2664,6 +2664,7 @@ async function switchRoom(newMapId) {
     setupRoomChannels(newMapId).then(() => trackLobby()).catch(() => {});
     Promise.resolve().then(() => window.radioEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => window.portalsEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.carsEnterRoom?.(newMapId)).catch(() => {});
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
