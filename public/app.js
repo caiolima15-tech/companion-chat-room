@@ -7450,6 +7450,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     currentSit = null;
     window.__sittingInteraction = null;
+    try { presenceChannel?.track(presencePayload()); } catch {}
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
