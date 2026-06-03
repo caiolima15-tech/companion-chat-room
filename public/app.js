@@ -7355,12 +7355,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const clip = await loadFbxClip(inter.animation_url);
         if (window.__sittingInteraction !== currentSit) return; // saiu nesse meio tempo
         const bones = collectBoneNames(entity.character);
-        const retarg = retargetClipToBones(clip, bones) || clip.clone();
-        const action = entity.mixer.clipAction(retarg);
-        action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
-        action.clampWhenFinished = true;
-        action.reset().fadeIn(0.2).play();
-        currentSit.mixerAction = action;
+        const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+        if (!retarg) {
+          console.warn("[interactions] nenhum osso do clip casou com o personagem; usando idle");
+          const idle = entity.actions?.idle;
+          if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+        } else {
+          const action = entity.mixer.clipAction(retarg);
+          action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+          action.clampWhenFinished = true;
+          action.reset().fadeIn(0.2).play();
+          currentSit.mixerAction = action;
+        }
       } else {
         const idle = entity.actions?.idle;
         if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
