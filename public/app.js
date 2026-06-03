@@ -231,13 +231,12 @@ function applyPoseDebugToMe() {
 }
 // Pose Debug UI removido — applyPoseDebugTo continua disponível com valores zero salvos.
 
-// ============ Pose debug do CHUTE (ajuste fino enquanto a animação de chute toca) ============
-// Aplicado no objeto interno do personagem (entity.character) somente durante o chute.
+// ============ Pose debug do CHUTE (legacy — mantido só p/ migração) ============
 const KICK_POSE_KEY = "neon-tap-room-kick-pose";
 const KICK_POSE_VERSION_KEY = "neon-tap-room-kick-pose-version";
 const KICK_POSE_VERSION = "2";
 const KICK_POSE_DEFAULTS = { offY: 0, offFwd: 0, rotX: -90 };
-function loadKickPose() {
+function loadLegacyKickPose() {
   try {
     const ver = localStorage.getItem(KICK_POSE_VERSION_KEY);
     if (ver !== KICK_POSE_VERSION) {
@@ -250,14 +249,83 @@ function loadKickPose() {
   } catch {}
   return { ...KICK_POSE_DEFAULTS };
 }
-const kickPose = loadKickPose();
-function saveKickPose() {
-  try { localStorage.setItem(KICK_POSE_KEY, JSON.stringify(kickPose)); } catch {}
+const _legacyKickPose = loadLegacyKickPose();
+
+// ============ Ajustes por animação (posição + ângulo) ============
+// Sistema unificado: cada animação tem 6 valores (offX/Y/Z em unidades, rotX/Y/Z em graus).
+// É aplicado no objeto interno do personagem (entity.character) do jogador local,
+// substituindo os antigos "fbPose" e "kickPose".
+const ANIM_NAMES = ["idle", "walk", "run", "dance", "wave", "kickWeak", "kickStrong"];
+const ANIM_TUNINGS_KEY = "neon-tap-room-anim-tunings";
+const ANIM_TUNINGS_VERSION_KEY = "neon-tap-room-anim-tunings-version";
+const ANIM_TUNINGS_VERSION = "1";
+function defaultAnimTuning() { return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 }; }
+function loadAnimTunings() {
+  const out = {};
+  for (const n of ANIM_NAMES) out[n] = defaultAnimTuning();
+  try {
+    const ver = localStorage.getItem(ANIM_TUNINGS_VERSION_KEY);
+    if (ver === ANIM_TUNINGS_VERSION) {
+      const raw = localStorage.getItem(ANIM_TUNINGS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        for (const n of ANIM_NAMES) if (parsed[n]) Object.assign(out[n], parsed[n]);
+        return out;
+      }
+    } else {
+      localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
+    }
+  } catch {}
+  // Migração: usa o antigo kickPose como ponto de partida.
+  const kp = _legacyKickPose;
+  for (const n of ["idle", "walk", "run", "dance", "wave"]) {
+    out[n].offY = kp.offY || 0;
+    out[n].offZ = kp.offFwd || 0;
+    out[n].rotX = kp.rotX || 0;
+  }
+  for (const n of ["kickWeak", "kickStrong"]) {
+    out[n].rotX = kp.rotX || -90;
+  }
+  return out;
 }
-window.__kickPose = kickPose;
-window.__saveKickPose = saveKickPose;
-// Alias: agora esse "pose" se aplica ao modo futebol inteiro (idle/walk/run/chute).
-window.__fbPose = kickPose;
+const animTunings = loadAnimTunings();
+function saveAnimTunings() {
+  try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+}
+window.__animTunings = animTunings;
+window.__animNames = ANIM_NAMES;
+window.__saveAnimTunings = saveAnimTunings;
+window.__defaultAnimTuning = defaultAnimTuning;
+
+// Aplica live as tunings da animação atual no character do jogador local.
+function applyLocalAnimTuning(entity, delta) {
+  const ch = entity?.character;
+  if (!ch) return;
+  let name = null;
+  if (entity.__fbKicking) name = entity.__lastKickStrong ? "kickStrong" : "kickWeak";
+  else if (entity.currentAction && animTunings[entity.currentAction]) name = entity.currentAction;
+  const tn = name ? animTunings[name] : null;
+  const targetX = tn ? (tn.offX || 0) : 0;
+  const targetY = tn ? (tn.offY || 0) : 0;
+  const targetZ = tn ? (tn.offZ || 0) : 0;
+  const d = Math.PI / 180;
+  const targetRx = CHARACTER_DEFAULT_ROT_X + (tn ? (tn.rotX || 0) : 0) * d;
+  const targetRy = (tn ? (tn.rotY || 0) : 0) * d;
+  const targetRz = (tn ? (tn.rotZ || 0) : 0) * d;
+  const t = Math.min(1, (delta || 0.016) * 12);
+  ch.position.x += (targetX - ch.position.x) * t;
+  ch.position.y += (targetY - ch.position.y) * t;
+  ch.position.z += (targetZ - ch.position.z) * t;
+  ch.rotation.x += (targetRx - ch.rotation.x) * t;
+  ch.rotation.y += (targetRy - ch.rotation.y) * t;
+  ch.rotation.z += (targetRz - ch.rotation.z) * t;
+}
+window.__applyLocalAnimTuning = applyLocalAnimTuning;
+
+// Stubs de compatibilidade.
+window.__kickPose = _legacyKickPose;
+window.__fbPose = _legacyKickPose;
+window.__saveKickPose = () => {};
 
 // ============ Speed config (admin tunable) ============
 const SPEED_CFG_KEY = "neon-tap-room-speed-cfg";
@@ -3988,9 +4056,10 @@ function updatePlayerAnimation(delta) {
       continue;
     }
     // Jogador local em modo normal: applyHeldMovement já posiciona/anima.
-    // Aqui só atualizamos o mixer e seguimos.
+    // Aqui só atualizamos o mixer, aplicamos a tuning por animação, e seguimos.
     if (entity.player?.id === myId && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode) {
       if (entity.mixer) entity.mixer.update(delta);
+      applyLocalAnimTuning(entity, delta);
       if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
       continue;
     }
@@ -5968,6 +6037,7 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
 
   // Bots panel (already has data attrs)
   makePanel(document.getElementById("botsAdminPanel"));
+  makePanel(document.getElementById("animAdminPanel"));
 
   // Wire existing panels by passing custom selectors
   const mp = document.getElementById("mapAdminPanel");
@@ -7836,6 +7906,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const WINDOW = Math.min(0.55, clipDur - SKIP);
     act.fadeIn(0.25).play();
     ent.__fbKicking = true;
+    ent.__lastKickStrong = !!strong;
     applyKickPose(ent, true);
     clearTimeout(ent.__fbKickT);
     // antes do fim: começa a sair do chute suavemente (fade longo)
@@ -7945,19 +8016,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const gy = groundHeightAt(ent.group.position, ent.group.position.y);
     ent.group.position.y += (gy - ent.group.position.y) * Math.min(1, delta * 12);
-    // Pose contínua do MODO FUTEBOL (aplica desde idle, walk, run e durante o chute).
-    // Os sliders do painel admin afetam offY (altura), offFwd (frente/trás) e rotX (inclinação).
-    const ch = ent.character;
-    if (ch) {
-      const fp = window.__fbPose || { offY: 0, offFwd: 0, rotX: 0 };
-      const targetY = fp.offY || 0;
-      const targetZ = fp.offFwd || 0;
-      const targetRx = CHARACTER_DEFAULT_ROT_X + (fp.rotX || 0) * (Math.PI / 180);
-      const t = Math.min(1, delta * 12);
-      ch.position.y += (targetY - ch.position.y) * t;
-      ch.position.z += (targetZ - ch.position.z) * t;
-      ch.rotation.x += (targetRx - ch.rotation.x) * t;
-    }
+    // Pose por animação (idle/walk/run/kick): driven pelo painel admin "🎬 Animações".
+    applyLocalAnimTuning(ent, delta);
     ent.target.copy(ent.group.position);
 
     if (me && myId) {
@@ -8297,6 +8357,82 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       window.__applyAnimSpeeds?.();
       window.__saveSpeedCfg?.();
     });
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+
+
+// ============ Animações: painel admin (posição + ângulo por animação) ============
+(function animAdminPanel() {
+  function bind() {
+    const btn = document.getElementById("animAdminToggle");
+    const panel = document.getElementById("animAdminPanel");
+    const sel = document.getElementById("animSelect");
+    const tunings = window.__animTunings;
+    if (!btn || !panel || !sel || !tunings) return;
+    const fields = [
+      { k: "offX", el: "anOffX", val: "anOffXVal", fixed: 2 },
+      { k: "offY", el: "anOffY", val: "anOffYVal", fixed: 2 },
+      { k: "offZ", el: "anOffZ", val: "anOffZVal", fixed: 2 },
+      { k: "rotX", el: "anRotX", val: "anRotXVal", fixed: 0 },
+      { k: "rotY", el: "anRotY", val: "anRotYVal", fixed: 0 },
+      { k: "rotZ", el: "anRotZ", val: "anRotZVal", fixed: 0 },
+    ];
+    let current = sel.value || "idle";
+    function sync() {
+      const t = tunings[current] || window.__defaultAnimTuning();
+      for (const f of fields) {
+        const el = document.getElementById(f.el);
+        const lbl = document.getElementById(f.val);
+        if (!el) continue;
+        const v = t[f.k] || 0;
+        el.value = v;
+        if (lbl) lbl.textContent = Number(v).toFixed(f.fixed);
+      }
+    }
+    sel.addEventListener("change", () => { current = sel.value; sync(); });
+    for (const f of fields) {
+      const el = document.getElementById(f.el);
+      const lbl = document.getElementById(f.val);
+      if (!el) continue;
+      el.addEventListener("input", () => {
+        const v = Number(el.value);
+        tunings[current][f.k] = v;
+        if (lbl) lbl.textContent = v.toFixed(f.fixed);
+      });
+    }
+    document.getElementById("anSave")?.addEventListener("click", () => {
+      window.__saveAnimTunings?.();
+      if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${current}" salvos.`);
+    });
+    document.getElementById("anReset")?.addEventListener("click", () => {
+      tunings[current] = window.__defaultAnimTuning();
+      sync();
+      window.__saveAnimTunings?.();
+    });
+    document.getElementById("anTest")?.addEventListener("click", () => {
+      // Reproduz a animação selecionada no jogador local (1 vez se for kick, ou solta no current).
+      const ent = (typeof myEntity === "function") ? myEntity() : null;
+      if (!ent || !ent.actions) return;
+      if (current === "kickWeak" || current === "kickStrong") {
+        window.__fbTestKick?.(current === "kickStrong");
+      } else if (ent.actions[current]) {
+        // toca como emote rápido voltando p/ idle
+        try {
+          if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
+          ent.actions[current].reset().fadeIn(0.2).play();
+          ent.currentAction = current;
+        } catch {}
+      }
+    });
+    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
+      const body = panel.querySelector(".panel-body");
+      if (body) body.style.display = body.style.display === "none" ? "" : "none";
+    });
+    sync();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();

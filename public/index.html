@@ -77,23 +77,7 @@
                 <button id="fbKick" type="button" class="fb-kick">CHUTE</button>
               </div>
             </div>
-            <div id="kickPosePanel" class="kick-pose admin-only" hidden>
-              <div class="kp-title">⚽ Pose modo futebol (admin)</div>
-              <label class="kp-row">Altura (Y) <span id="kpYVal">0.00</span>
-                <input id="kpY" type="range" min="-1" max="1" step="0.01" value="0">
-              </label>
-              <label class="kp-row">Frente/Trás <span id="kpFwdVal">0.00</span>
-                <input id="kpFwd" type="range" min="-1" max="1" step="0.01" value="0">
-              </label>
-              <label class="kp-row">Rotação ° <span id="kpRotVal">0</span>
-                <input id="kpRot" type="range" min="-90" max="90" step="1" value="0">
-              </label>
-              <div class="kp-actions">
-                <button id="kpTestWeak" type="button">Testar fraco</button>
-                <button id="kpTestStrong" type="button">Testar forte</button>
-                <button id="kpSave" type="button" class="kp-save">Salvar</button>
-              </div>
-            </div>
+            <div id="kickPosePanel" class="kick-pose admin-only" hidden style="display:none !important;"></div>
           </div>
           <div id="assetDock" class="asset-dock admin-only" hidden>
             <div class="asset-title">GLBs no mapa</div>
@@ -165,6 +149,46 @@
               <div id="interactionsEditor"></div>
             </div>
           </div>
+
+          <button id="animAdminToggle" class="admin-only" type="button" title="Animações (posição e ângulo por animação)" style="position:absolute;top:12px;left:1020px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui;">🎬 Animações</button>
+
+          <div id="animAdminPanel" class="admin-only floating-panel" hidden data-panel-id="anim" style="position:absolute;top:60px;left:1020px;background:rgba(10,10,20,.92);color:#eee;padding:0;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:300px;backdrop-filter:blur(8px);border:1px solid #333;display:flex;flex-direction:column;">
+            <div class="panel-head" style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;cursor:move;background:rgba(255,255,255,0.04);border-bottom:1px solid #222;border-radius:10px 10px 0 0;">
+              <strong>🎬 Animações</strong>
+              <div style="display:flex;gap:4px;">
+                <button data-panel-min type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">−</button>
+                <button data-panel-close type="button" style="background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;">×</button>
+              </div>
+            </div>
+            <div class="panel-body" style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;">
+              <label style="display:flex;flex-direction:column;gap:4px;">
+                <span style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;">Animação</span>
+                <select id="animSelect" style="background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:6px;padding:6px;">
+                  <option value="idle">Idle (parado)</option>
+                  <option value="walk">Walk (andando)</option>
+                  <option value="run">Run (correndo)</option>
+                  <option value="dance">Dance</option>
+                  <option value="wave">Wave (acenar)</option>
+                  <option value="kickWeak">Kick fraco</option>
+                  <option value="kickStrong">Kick forte</option>
+                </select>
+              </label>
+              <div style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;margin-top:4px;">Posição</div>
+              <label class="sp-row">X (lado) <span id="anOffXVal">0.00</span><input id="anOffX" type="range" min="-2" max="2" step="0.01"></label>
+              <label class="sp-row">Y (altura) <span id="anOffYVal">0.00</span><input id="anOffY" type="range" min="-2" max="2" step="0.01"></label>
+              <label class="sp-row">Z (frente/trás) <span id="anOffZVal">0.00</span><input id="anOffZ" type="range" min="-2" max="2" step="0.01"></label>
+              <div style="opacity:.7;text-transform:uppercase;font-size:10px;letter-spacing:.08em;margin-top:4px;">Ângulo (°)</div>
+              <label class="sp-row">Rot X (inclinar) <span id="anRotXVal">0</span><input id="anRotX" type="range" min="-180" max="180" step="1"></label>
+              <label class="sp-row">Rot Y (girar) <span id="anRotYVal">0</span><input id="anRotY" type="range" min="-180" max="180" step="1"></label>
+              <label class="sp-row">Rot Z (rolar) <span id="anRotZVal">0</span><input id="anRotZ" type="range" min="-180" max="180" step="1"></label>
+              <div style="display:flex;gap:6px;margin-top:6px;">
+                <button id="anTest" type="button" style="flex:1;background:transparent;color:#eee;border:1px solid #555;border-radius:6px;padding:6px;cursor:pointer;">Testar</button>
+                <button id="anReset" type="button" style="flex:1;background:transparent;color:#eee;border:1px solid #555;border-radius:6px;padding:6px;cursor:pointer;">Resetar</button>
+                <button id="anSave" type="button" style="flex:1;background:linear-gradient(135deg,#8b5cf6,#a78bfa);color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-weight:600;">Salvar</button>
+              </div>
+            </div>
+          </div>
+
 
 
           <div id="radioAdminPanel" class="admin-only floating-panel" hidden data-panel-id="radio" style="position:absolute;top:60px;left:705px;background:rgba(10,10,20,.92);color:#eee;padding:0;border-radius:10px;font:12px/1.3 system-ui;z-index:55;width:320px;max-height:78vh;backdrop-filter:blur(8px);border:1px solid #333;display:flex;flex-direction:column;">
@@ -365,6 +389,7 @@
             <button type="button" class="admin-dock-item" data-dock-target="#boundsToggleBtn" data-dock-toggle><span class="admin-dock-icon">📐</span>Limites</button>
             <button type="button" class="admin-dock-item" id="carsAdminToggle" data-dock-panel="#carsAdminPanel"><span class="admin-dock-icon">🚗</span>Carros</button>
             <button type="button" class="admin-dock-item" id="usersAdminToggle"><span class="admin-dock-icon">👥</span>Usuários</button>
+            <button type="button" class="admin-dock-item" data-dock-target="#animAdminToggle" data-dock-panel="#animAdminPanel"><span class="admin-dock-icon">🎬</span>Animações</button>
           </aside>
 
           <input id="replaceMapGlbInput" type="file" accept=".glb,model/gltf-binary" hidden>
