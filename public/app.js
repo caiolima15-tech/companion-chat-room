@@ -7647,6 +7647,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     editingDraft[field] = val;
+    if (field === "asset_id") { renderAdmin(); return; }
     // Trocar o tipo re-renderiza (editor do futebol é diferente)
     if (field === "kind") {
       if (val === "football") {
