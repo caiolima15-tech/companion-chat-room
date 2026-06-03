@@ -1,0 +1,1 @@
+ALTER TABLE public.map_portals ADD COLUMN IF NOT EXISTS dest_portal_id uuid NULL;

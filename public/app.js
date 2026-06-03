@@ -10436,6 +10436,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let inRoom = false;
   let teleporting = false;
   let cooldownUntil = 0;
+  // Portals to ignore until the player walks out of their radius.
+  // Used so that landing on a destination portal doesn't immediately re-teleport.
+  // Each entry: portalId -> true. Cleared per-tick once the player is outside.
+  const suppressedPortals = new Set();
+  // After switching room because of a portal-to-portal link, we remember which
+  // portal id to drop the player on (and immediately suppress) once portals load.
+  let pendingDropPortalId = null;
 
   function _esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) =>
@@ -10446,6 +10453,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const list = (Array.isArray(MAPS) ? MAPS : []).slice();
     return list.map((m) =>
       `<option value="${_esc(m.id)}" ${m.id === selectedId ? "selected" : ""}>${_esc(m.name || m.id)}</option>`
+    ).join("");
+  }
+
+  // Cache of portals per map id, used to populate the "destination portal" select.
+  const portalsByMap = new Map();
+  async function fetchPortalsForMap(mapId) {
+    if (!mapId) return [];
+    if (portalsByMap.has(mapId)) return portalsByMap.get(mapId);
+    const { data, error } = await supabase
+      .from("map_portals").select("id,label,map_id").eq("map_id", mapId);
+    if (error) { console.warn("[portals] fetchPortalsForMap", error); return []; }
+    portalsByMap.set(mapId, data || []);
+    return data || [];
+  }
+  function destPortalOptions(mapId, selectedId, excludeId) {
+    const list = (portalsByMap.get(mapId) || []).filter((p) => p.id !== excludeId);
+    const empty = `<option value="">— (apenas o mapa) —</option>`;
+    return empty + list.map((p) =>
+      `<option value="${_esc(p.id)}" ${p.id === selectedId ? "selected" : ""}>${_esc(p.label || "Portal")}</option>`
     ).join("");
   }
 
@@ -10553,8 +10579,27 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .order("created_at", { ascending: true });
     if (error) { console.warn("[portals] load", error); return; }
     portals = data || [];
+    portalsByMap.set(mapId, portals.map((p) => ({ id: p.id, label: p.label, map_id: p.map_id })));
     syncMeshes();
     renderAdmin();
+    // If we arrived here via a portal-to-portal teleport, drop the player on the
+    // destination portal and suppress it until they walk out.
+    if (pendingDropPortalId) {
+      const target = portals.find((x) => x.id === pendingDropPortalId);
+      pendingDropPortalId = null;
+      if (target) {
+        // Wait briefly for the player entity to be present in the new room.
+        let tries = 0;
+        const tryDrop = () => {
+          if (dropPlayerAt(target.pos_x, target.pos_y, target.pos_z)) {
+            suppressedPortals.add(target.id);
+            return;
+          }
+          if (++tries < 40) setTimeout(tryDrop, 75);
+        };
+        tryDrop();
+      }
+    }
   }
 
   async function subscribe(mapId) {
@@ -10583,25 +10628,63 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   // ---------- Proximity / teleport ----------
+  function dropPlayerAt(x, y, z) {
+    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    if (!entity?.group) return false;
+    entity.group.position.set(Number(x) || 0, Number(y) || entity.group.position.y, Number(z) || 0);
+    return true;
+  }
+
   setInterval(() => {
-    if (!inRoom || teleporting) return;
-    if (performance.now() < cooldownUntil) return;
+    if (!inRoom) return;
     const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
     if (!entity?.group) return;
     const px = entity.group.position.x, pz = entity.group.position.z;
+
+    // Release suppressed portals once the player moves outside them (with a small margin).
+    if (suppressedPortals.size) {
+      for (const pid of Array.from(suppressedPortals)) {
+        const p = portals.find((x) => x.id === pid);
+        if (!p) { suppressedPortals.delete(pid); continue; }
+        const dx = px - (Number(p.pos_x) || 0);
+        const dz = pz - (Number(p.pos_z) || 0);
+        const r = Math.max(0.3, Number(p.radius) || 1.2) * 1.6;
+        if (dx * dx + dz * dz > r * r) suppressedPortals.delete(pid);
+      }
+    }
+
+    if (teleporting) return;
+    if (performance.now() < cooldownUntil) return;
+
     for (const p of portals) {
-      if (!p.dest_map_id || p.dest_map_id === currentMapId) continue;
+      if (suppressedPortals.has(p.id)) continue;
+      const sameMap = !p.dest_map_id || p.dest_map_id === currentMapId;
+      // Skip cross-map portals without destination, and same-map portals without a destination portal.
+      if (!p.dest_map_id && !p.dest_portal_id) continue;
+      if (sameMap && !p.dest_portal_id) continue;
       const dx = px - (Number(p.pos_x) || 0);
       const dz = pz - (Number(p.pos_z) || 0);
       const r = Math.max(0.3, Number(p.radius) || 1.2);
       if (dx * dx + dz * dz <= r * r) {
         teleporting = true;
         cooldownUntil = performance.now() + 4000;
-        const dest = p.dest_map_id;
-        Promise.resolve()
-          .then(() => (typeof switchRoom === "function" ? switchRoom(dest) : null))
-          .catch((e) => console.warn("[portals] switchRoom", e))
-          .finally(() => { teleporting = false; });
+        const destMap = p.dest_map_id || currentMapId;
+        const destPortalId = p.dest_portal_id || null;
+        if (sameMap) {
+          // Same-map jump: move directly to the destination portal and suppress it.
+          const target = portals.find((x) => x.id === destPortalId);
+          if (target) {
+            dropPlayerAt(target.pos_x, target.pos_y, target.pos_z);
+            suppressedPortals.add(target.id);
+          }
+          teleporting = false;
+        } else {
+          pendingDropPortalId = destPortalId;
+          Promise.resolve()
+            .then(() => (typeof switchRoom === "function" ? switchRoom(destMap) : null))
+            .catch((e) => console.warn("[portals] switchRoom", e))
+            .finally(() => { teleporting = false; });
+        }
         break;
       }
     }
@@ -10706,6 +10789,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Destino</span>
           <select data-field="dest_map_id" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">${destOptions(d.dest_map_id)}</select>
         </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Portal</span>
+          <select data-field="dest_portal_id" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">${destPortalOptions(d.dest_map_id, d.dest_portal_id, d.id)}</select>
+        </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Cor</span>
           <input type="color" data-field="color" value="${_esc(d.color || "#ff3ea5")}" style="width:48px;height:28px;background:#15151c;border:1px solid #333;border-radius:4px;">
           <span style="color:#778;font-size:10px;">(padrão rosa)</span>
@@ -10727,6 +10813,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button type="button" data-act="cancel" style="flex:1;background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:6px;cursor:pointer;">Cancelar</button>
         </div>
       </div>`;
+
+    // Lazy-load portals for the destination map so the "Portal" select can be populated.
+    const destMapId = d.dest_map_id;
+    if (destMapId && !portalsByMap.has(destMapId)) {
+      fetchPortalsForMap(destMapId).then(() => {
+        if (editingId !== d.id) return;
+        const sel = editorEl.querySelector('select[data-field="dest_portal_id"]');
+        if (sel) sel.innerHTML = destPortalOptions(destMapId, editingDraft?.dest_portal_id, d.id);
+      });
+    }
   }
 
   // ---------- Panel events ----------
@@ -10750,7 +10846,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   });
 
-  editorEl?.addEventListener("input", (ev) => {
+  editorEl?.addEventListener("input", async (ev) => {
     if (!editingDraft) return;
     const t = ev.target;
     const field = t.dataset?.field; if (!field) return;
@@ -10761,6 +10857,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     editorEl.querySelectorAll(`[data-field="${field}"]`).forEach((el) => {
       if (el !== t) el.value = val;
     });
+    // When the destination map changes, reset the chosen dest portal and
+    // refresh the portal select with the portals from that map.
+    if (field === "dest_map_id") {
+      editingDraft.dest_portal_id = null;
+      const sel = editorEl.querySelector('select[data-field="dest_portal_id"]');
+      if (sel) sel.innerHTML = destPortalOptions(val, null, editingDraft.id);
+      await fetchPortalsForMap(val);
+      if (editingDraft && editingDraft.dest_map_id === val) {
+        const sel2 = editorEl.querySelector('select[data-field="dest_portal_id"]');
+        if (sel2) sel2.innerHTML = destPortalOptions(val, editingDraft.dest_portal_id, editingDraft.id);
+      }
+    }
     // live preview on the mesh
     const m = portalMeshes.get(editingId);
     if (m) {
@@ -10790,6 +10898,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const patch = {
         label: String(editingDraft.label || "Portal").slice(0, 40),
         dest_map_id: editingDraft.dest_map_id,
+        dest_portal_id: editingDraft.dest_portal_id ? editingDraft.dest_portal_id : null,
         color: editingDraft.color || "#ff3ea5",
         pos_x: Number(editingDraft.pos_x) || 0,
         pos_y: Number(editingDraft.pos_y) || 0,
@@ -10799,6 +10908,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       };
       const { error } = await supabase.from("map_portals").update(patch).eq("id", editingId);
       if (error) { alert("Erro: " + error.message); return; }
+      // Invalidate cached portal lists for the affected maps so the selector refreshes.
+      portalsByMap.delete(currentMapId);
+      if (patch.dest_map_id) portalsByMap.delete(patch.dest_map_id);
       editingId = null; editingDraft = null;
       await load(currentMapId);
     }
