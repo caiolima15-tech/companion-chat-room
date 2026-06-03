@@ -8600,7 +8600,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         try {
           const clip = await loadFbxClip(url);
           const bones = collectBoneNames(ent.character);
-          const retarg = retargetClipToBones(clip, bones) || clip.clone();
+          const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+          if (!retarg) { console.warn("[anim test custom] nenhum osso casou"); return; }
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
           const action = ent.mixer.clipAction(retarg);
           action.setLoop(THREE.LoopOnce, 1);
