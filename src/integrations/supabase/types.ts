@@ -667,6 +667,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           dest_map_id: string
+          dest_portal_id: string | null
           height: number
           id: string
           label: string
@@ -682,6 +683,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dest_map_id: string
+          dest_portal_id?: string | null
           height?: number
           id?: string
           label?: string
@@ -697,6 +699,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           dest_map_id?: string
+          dest_portal_id?: string | null
           height?: number
           id?: string
           label?: string
