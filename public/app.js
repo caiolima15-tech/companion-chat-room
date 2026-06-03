@@ -1643,7 +1643,8 @@ function closeMapSelect() {
 }
 function renderMapTiles() {
   if (!mapGrid) return;
-  mapGrid.innerHTML = MAPS.map((m) => {
+  const visibleMaps = MAPS.filter((m) => isAdmin || !m.hidden);
+  mapGrid.innerHTML = visibleMaps.map((m) => {
     const isSelected = selectedMapId === m.id;
     const moodLabel = m.mood === "day" ? "☀️ Dia" : m.mood === "sunset" ? "🌅 Tarde" : "🌙 Noite";
     const count = lobbyCounts[m.id] || 0;
@@ -1652,13 +1653,15 @@ function renderMapTiles() {
     const thumbInner = m.thumbUrl
       ? `<img src="${m.thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;">`
       : `<span style="font-size:32px;">${m.thumb}</span>`;
+    const hiddenBadge = m.hidden ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(120,40,160,0.85);color:#fff;border-radius:8px;padding:2px 7px;font-size:10px;font-weight:600;z-index:2;">🔒 OCULTO</div>` : "";
     return `
-      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;">
+      <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;${m.hidden ? "opacity:0.78;" : ""}">
         <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;z-index:2;">
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
           ${peopleLabel}
         </div>
         ${isAdmin ? `<button type="button" class="map-edit-btn" data-edit-map="${m.id}" title="Editar mapa" style="position:absolute;top:6px;left:6px;background:rgba(0,0,0,0.6);color:#ffd166;border:1px solid rgba(255,209,102,0.4);border-radius:8px;width:28px;height:28px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;padding:0;z-index:2;">✏️</button>` : ""}
+        ${hiddenBadge}
         <div class="char-tile-thumb" style="display:flex;align-items:center;justify-content:center;overflow:hidden;">${thumbInner}</div>
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
@@ -5029,31 +5032,32 @@ async function loadCustomMaps() {
   for (const t of thumbs || []) thumbMap.set(t.map_id, t.thumb_url);
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
   const overrides = new Map();
-  const hiddenBuiltins = new Set();
+  const hiddenSet = new Set();
   const customs = [];
   for (const m of data || []) {
+    if (m.hidden) hiddenSet.add(m.slug);
     if (builtinSlugs.has(m.slug)) {
-      if (m.hidden) { hiddenBuiltins.add(m.slug); continue; }
       overrides.set(m.slug, {
         id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
         bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️",
       });
     } else {
-      if (m.hidden) continue;
       customs.push({
         id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
         bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
       });
     }
   }
-  const merged = BUILTIN_MAPS
-    .filter((b) => !hiddenBuiltins.has(b.id))
-    .map((b) => {
-      const ov = overrides.get(b.id);
-      if (!ov) return { ...b };
-      return { ...b, ...ov, url: ov.url || b.url, overridden: true };
-    });
-  MAPS = [...merged, ...customs].map((m) => ({ ...m, thumbUrl: thumbMap.get(m.id) || null }));
+  const merged = BUILTIN_MAPS.map((b) => {
+    const ov = overrides.get(b.id);
+    if (!ov) return { ...b };
+    return { ...b, ...ov, url: ov.url || b.url, overridden: true };
+  });
+  MAPS = [...merged, ...customs].map((m) => ({
+    ...m,
+    thumbUrl: thumbMap.get(m.id) || null,
+    hidden: hiddenSet.has(m.id),
+  }));
   // Se o mapa atual foi excluído/oculto, escolhe outro disponível
   if (!MAPS.some((m) => m.id === currentMapId)) {
     const next = MAPS[0]?.id || null;
@@ -5190,6 +5194,10 @@ async function openMapEdit(mapId) {
           </label>
           ${m.thumbUrl ? `<button id="meThumbRemove" type="button" style="margin-top:6px;background:#3a1a1a;color:#ff8a8a;border:1px solid #5a2a2a;border-radius:6px;padding:6px 10px;cursor:pointer;font-size:11px;width:100%;">Remover imagem</button>` : ""}
         </div>
+        <label style="display:flex;align-items:center;gap:8px;background:#171b22;border:1px solid #2a2f3a;border-radius:8px;padding:8px 10px;cursor:pointer;">
+          <input id="meHidden" type="checkbox" ${m.hidden ? "checked" : ""} style="width:16px;height:16px;cursor:pointer;">
+          <span><strong style="color:#e4a8ff;">🔒 Ocultar do painel de salas</strong><br><span style="font-size:11px;color:#9aa;">O mapa só fica acessível por portais.</span></span>
+        </label>
         <div id="meStatus" style="font-size:12px;color:#9aa;min-height:16px;"></div>
         <div style="display:flex;gap:8px;margin-top:6px;">
           ${isBuiltin ? `<button id="meRestore" type="button" style="background:#1a2a3a;color:#9ec5ff;border:1px solid #2a4a6a;border-radius:8px;padding:9px 12px;cursor:pointer;">↺ Restaurar</button>` : ""}
@@ -5222,7 +5230,8 @@ async function openMapEdit(mapId) {
     saveBtn.disabled = true;
     status.textContent = "Salvando…";
     try {
-      const patch = { name, thumb, mood, bg };
+      const hiddenVal = !!modal.querySelector("#meHidden")?.checked;
+      const patch = { name, thumb, mood, bg, hidden: hiddenVal };
       if (file) {
         status.textContent = "Enviando novo GLB…";
         const path = `maps/${m.id}-${Date.now()}.glb`;
