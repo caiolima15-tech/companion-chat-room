@@ -7367,6 +7367,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           action.clampWhenFinished = true;
           action.reset().fadeIn(0.2).play();
           currentSit.mixerAction = action;
+          // Resolve a chave de tuning: prefere custom:<id> quando a URL bate com bot_animations
+          let tuningKey = null;
+          try {
+            const match = (window.__botAnimations || []).find(a => a.url === inter.animation_url);
+            if (match) tuningKey = "custom:" + match.id;
+          } catch {}
+          if (!tuningKey && inter.animation_key && window.__animTunings?.[inter.animation_key]) {
+            tuningKey = inter.animation_key;
+          }
+          if (tuningKey) {
+            if (!window.__animTunings[tuningKey]) window.__animTunings[tuningKey] = window.__defaultAnimTuning();
+            entity.currentAction = tuningKey; // permite applyLocalAnimTuning aplicar offsets/rotações
+          }
         }
       } else {
         const idle = entity.actions?.idle;
@@ -8591,13 +8604,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     });
     document.getElementById("anTest")?.addEventListener("click", async () => {
       const ent = (typeof myEntity === "function") ? myEntity() : null;
-      if (!ent || !ent.actions) return;
+      if (!ent || !ent.actions || !ent.mixer) { console.warn("[anim test] sem entidade"); return; }
       if (current === "kickWeak" || current === "kickStrong") {
         window.__fbTestKick?.(current === "kickStrong");
-      } else if (current.startsWith("custom:")) {
+        return;
+      }
+      const restoreIdle = (ms) => {
+        setTimeout(() => {
+          const idle = ent.actions?.idle;
+          if (idle) { idle.reset().fadeIn(0.3).play(); ent.currentAction = "idle"; }
+        }, ms);
+      };
+      if (current.startsWith("custom:")) {
         const opt = sel.options[sel.selectedIndex];
         const url = opt?.dataset?.url;
-        if (!url) return;
+        if (!url) { console.warn("[anim test custom] sem url"); return; }
         try {
           const clip = await loadFbxClip(url);
           const bones = collectBoneNames(ent.character);
@@ -8608,18 +8629,27 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           action.setLoop(THREE.LoopOnce, 1);
           action.clampWhenFinished = false;
           action.reset().fadeIn(0.2).play();
-          setTimeout(() => {
-            try { action.fadeOut(0.3); } catch {}
-            const idle = ent.actions?.idle;
-            if (idle) { idle.reset().fadeIn(0.3).play(); ent.currentAction = "idle"; }
-          }, Math.max(800, (retarg.duration || 1) * 1000));
+          ent.currentAction = current; // permite que a tuning ao vivo aplique offsets/rotações
+          const dur = Math.max(800, (retarg.duration || 1) * 1000);
+          setTimeout(() => { try { action.fadeOut(0.3); } catch {} }, dur);
+          restoreIdle(dur + 50);
         } catch (e) { console.warn("[anim test custom]", e); }
       } else if (ent.actions[current]) {
         try {
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
-          ent.actions[current].reset().fadeIn(0.2).play();
+          const action = ent.actions[current];
+          action.reset().fadeIn(0.2).play();
           ent.currentAction = current;
-        } catch {}
+          // Para emotes (wave/dance) volta pra idle após a duração do clip pra não congelar
+          const clip = action.getClip ? action.getClip() : null;
+          const dur = clip?.duration ? clip.duration * 1000 : 1200;
+          if (current !== "idle" && current !== "walk" && current !== "run") {
+            setTimeout(() => { try { action.fadeOut(0.3); } catch {} }, dur);
+            restoreIdle(dur + 50);
+          }
+        } catch (e) { console.warn("[anim test builtin]", e); }
+      } else {
+        console.warn("[anim test] ação não carregada:", current);
       }
     });
 
