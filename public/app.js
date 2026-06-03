@@ -7298,9 +7298,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (promptEl.hidden) return;
     let world;
     if (currentSit?.worldPos) {
-      world = currentSit.worldPos.clone(); world.y += 1.7;
+      world = currentSit.worldPos.clone();
+      world.y = (currentSit.objectTopY ?? (world.y + 1.0)) + 0.35;
     } else if (activeNearby) {
-      world = activeNearby.pose.worldPos.clone(); world.y += 1.6;
+      world = activeNearby.pose.worldPos.clone();
+      world.y = (activeNearby.pose.objectTopY ?? (world.y + 1.0)) + 0.35;
     } else return;
     const rect = renderer.domElement.getBoundingClientRect();
     tmpV.copy(world).project(camera);
@@ -7316,16 +7318,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function showPromptForInteraction(inter, pose) {
     promptEl.hidden = false;
     promptEl.dataset.kind = "enter";
-    promptEl.innerHTML = `<span class="ip-icon">${_esc(inter.icon || "💺")}</span><span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
+    promptEl.innerHTML = `<span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
     promptEl.onclick = () => enterSit(inter);
   }
   function showPromptForSit() {
     promptEl.hidden = false;
     promptEl.dataset.kind = "exit";
-    promptEl.innerHTML = `<span class="ip-icon">🚪</span><span class="ip-label">Levantar (E)</span>`;
+    promptEl.innerHTML = `<span class="ip-label">Levantar (E)</span>`;
     promptEl.onclick = () => standUp();
   }
   function hidePrompt() { promptEl.hidden = true; promptEl.onclick = null; }
+
 
   // ---------- Enter / exit sit ----------
   async function enterSit(inter) {
