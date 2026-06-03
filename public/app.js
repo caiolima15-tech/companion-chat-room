@@ -5771,6 +5771,7 @@ const botsGroup = new THREE.Group();
 scene.add(botsGroup);
 // id -> { row, group, character, mixer, action, animationUrl, characterSlug, loading }
 const botEntities = new Map();
+window.__mapBots = new Map(); // id -> row (lightweight, for admin UI)
 let botAnimations = []; // [{id, name, url}]
 
 const _animClipCache = new Map(); // url -> Promise<AnimationClip>
