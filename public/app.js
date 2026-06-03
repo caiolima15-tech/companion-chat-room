@@ -7603,6 +7603,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
             <option value="__manual__" ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "selected" : ""}>URL manual…</option>
           </select>
+          <button type="button" class="ie-upload-anim" title="Enviar novo FBX">＋ FBX</button>
+          <input type="file" class="ie-upload-anim-input" accept=".fbx" hidden>
         </div>
         <div class="ie-row" data-anim-url-row ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "" : "hidden"}><label>URL FBX</label>
           <input type="url" data-field="animation_url" placeholder="https://… .fbx" value="${_esc(draft.animation_url || "")}">
