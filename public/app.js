@@ -10562,6 +10562,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     portals = data || [];
     syncMeshes();
     renderAdmin();
+    // If we arrived here via a portal-to-portal teleport, drop the player on the
+    // destination portal and suppress it until they walk out.
+    if (pendingDropPortalId) {
+      const target = portals.find((x) => x.id === pendingDropPortalId);
+      pendingDropPortalId = null;
+      if (target) {
+        // Wait briefly for the player entity to be present in the new room.
+        let tries = 0;
+        const tryDrop = () => {
+          if (dropPlayerAt(target.pos_x, target.pos_y, target.pos_z)) {
+            suppressedPortals.add(target.id);
+            return;
+          }
+          if (++tries < 40) setTimeout(tryDrop, 75);
+        };
+        tryDrop();
+      }
+    }
   }
 
   async function subscribe(mapId) {
