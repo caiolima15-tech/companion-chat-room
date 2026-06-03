@@ -7341,7 +7341,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       id: inter.id,
       assetId: inter.asset_id,
       worldPos: pose.worldPos.clone(),
+      worldRotX: pose.worldRotX,
       worldRotY: pose.worldRotY,
+      worldRotZ: pose.worldRotZ,
+      objectTopY: pose.objectTopY,
       animationUrl: inter.animation_url || null,
       mixerAction: null,
       animClipName: null,
@@ -7355,7 +7358,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     entity.target.copy(pose.worldPos);
     entity.group.position.copy(pose.worldPos);
-    entity.group.rotation.y = pose.worldRotY;
+    entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+
 
     // Para ação atual e toca clip de sit (custom ou idle como fallback)
     try {
