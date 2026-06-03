@@ -7434,7 +7434,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
     } catch (e) { console.warn("[interactions] sit clip", e); }
 
-    hidePrompt();
+    showPromptForSit();
   }
 
   function standUp() {
