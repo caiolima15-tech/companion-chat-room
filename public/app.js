@@ -8512,7 +8512,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     // Upload de animação nova
     addBtn?.addEventListener("click", () => {
-      if (!window.isAdmin) { alert("Apenas admin."); return; }
+      if (!isAdmin) { alert("Apenas admin."); return; }
       upBox.hidden = !upBox.hidden;
       if (!upBox.hidden) { upName.value = ""; upFile.value = ""; upStatus.textContent = ""; }
     });
