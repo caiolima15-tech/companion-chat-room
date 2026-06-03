@@ -2698,8 +2698,23 @@ function presencePayload() {
     facing: me.facing,
     speech: me.speech || "",
     isAdmin,
+    sitting_id: window.__sittingInteraction?.id || null,
   };
 }
+
+// Verifica via presence se algum OUTRO usuário já está ocupando essa interação
+window.isInteractionOccupied = function (interactionId) {
+  if (!interactionId || !presenceChannel) return false;
+  try {
+    const state = presenceChannel.presenceState();
+    for (const key of Object.keys(state)) {
+      for (const p of state[key]) {
+        if (p && p.id !== myId && p.sitting_id === interactionId) return true;
+      }
+    }
+  } catch {}
+  return false;
+};
 
 async function trackMe(updateRoster = true) {
   if (!presenceChannel) return;
@@ -7324,8 +7339,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function showPromptForInteraction(inter, pose) {
     promptEl.hidden = false;
     promptEl.dataset.kind = "enter";
-    promptEl.innerHTML = `<span class="ip-label">${_esc(inter.label || "Interagir")}</span>`;
-    promptEl.onclick = () => enterSit(inter);
+    const occupied = window.isInteractionOccupied?.(inter.id);
+    const label = occupied ? "Ocupado" : (inter.label || "Interagir");
+    promptEl.innerHTML = `<span class="ip-label">${_esc(label)}</span>`;
+    promptEl.onclick = occupied ? null : (() => enterSit(inter));
+    promptEl.style.filter = occupied ? "grayscale(1) opacity(0.7)" : "";
   }
   function showPromptForSit() {
     promptEl.hidden = false;
@@ -7340,6 +7358,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function enterSit(inter) {
     const entity = getMyEntity();
     if (!entity || !entity.mixer) return;
+    if (window.isInteractionOccupied?.(inter.id)) {
+      addSystemLine?.("Esse lugar já está ocupado.");
+      return;
+    }
     const pose = computeSeatPose(inter);
     if (!pose) return;
 
@@ -7356,6 +7378,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animClipName: null,
     };
     window.__sittingInteraction = currentSit;
+    try { presenceChannel?.track(presencePayload()); } catch {}
 
     // Atualiza me.x/y para o assento (evita salto ao levantar)
     if (typeof me !== "undefined" && me) {
@@ -7430,6 +7453,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     currentSit = null;
     window.__sittingInteraction = null;
+    try { presenceChannel?.track(presencePayload()); } catch {}
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
