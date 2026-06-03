@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      animation_tunings: {
+        Row: {
+          anim_key: string
+          off_x: number
+          off_y: number
+          off_z: number
+          rot_x: number
+          rot_y: number
+          rot_z: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anim_key: string
+          off_x?: number
+          off_y?: number
+          off_z?: number
+          rot_x?: number
+          rot_y?: number
+          rot_z?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anim_key?: string
+          off_x?: number
+          off_y?: number
+          off_z?: number
+          rot_x?: number
+          rot_y?: number
+          rot_z?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       bot_animations: {
         Row: {
           created_at: string
