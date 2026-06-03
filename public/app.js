@@ -1920,12 +1920,14 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     }
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
+    const panel = panelSel ? document.querySelector(panelSel) : null;
+    const wasHidden = panel ? panel.hidden : null;
     if (target) {
       target.click();
-    } else if (panelSel) {
-      // Sem target: alterna o painel diretamente
-      const panel = document.querySelector(panelSel);
-      if (panel) panel.hidden = !panel.hidden;
+      // Fallback: se o clique no botão original não toggleou o painel, força
+      if (panel && panel.hidden === wasHidden) panel.hidden = !panel.hidden;
+    } else if (panel) {
+      panel.hidden = !panel.hidden;
     }
     if (item.hasAttribute("data-dock-toggle") && target) {
       setTimeout(() => {
