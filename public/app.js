@@ -7659,8 +7659,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const pose = computeSeatPose(fake);
       if (pose) {
         currentSit.worldPos.copy(pose.worldPos);
+        currentSit.worldRotX = pose.worldRotX;
         currentSit.worldRotY = pose.worldRotY;
+        currentSit.worldRotZ = pose.worldRotZ;
+        currentSit.objectTopY = pose.objectTopY;
+        const ent = getMyEntity();
+        if (ent?.group) {
+          ent.group.position.copy(pose.worldPos);
+          ent.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+        }
       }
+
     }
   });
 
