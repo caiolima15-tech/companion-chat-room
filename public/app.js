@@ -7304,7 +7304,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!entity || !entity.group) { hidePrompt(); return; }
 
     // Se sentado, mostra prompt "Levantar" no botão
-    if (currentSit) { activeNearby = null; showPromptForSit(); return; }
+    if (currentSit) { activeNearby = null; hidePrompt(); return; }
 
     let best = null;
     let bestDist = Infinity;
