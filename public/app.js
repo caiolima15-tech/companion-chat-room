@@ -5029,31 +5029,32 @@ async function loadCustomMaps() {
   for (const t of thumbs || []) thumbMap.set(t.map_id, t.thumb_url);
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
   const overrides = new Map();
-  const hiddenBuiltins = new Set();
+  const hiddenSet = new Set();
   const customs = [];
   for (const m of data || []) {
+    if (m.hidden) hiddenSet.add(m.slug);
     if (builtinSlugs.has(m.slug)) {
-      if (m.hidden) { hiddenBuiltins.add(m.slug); continue; }
       overrides.set(m.slug, {
         id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
         bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️",
       });
     } else {
-      if (m.hidden) continue;
       customs.push({
         id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
         bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
       });
     }
   }
-  const merged = BUILTIN_MAPS
-    .filter((b) => !hiddenBuiltins.has(b.id))
-    .map((b) => {
-      const ov = overrides.get(b.id);
-      if (!ov) return { ...b };
-      return { ...b, ...ov, url: ov.url || b.url, overridden: true };
-    });
-  MAPS = [...merged, ...customs].map((m) => ({ ...m, thumbUrl: thumbMap.get(m.id) || null }));
+  const merged = BUILTIN_MAPS.map((b) => {
+    const ov = overrides.get(b.id);
+    if (!ov) return { ...b };
+    return { ...b, ...ov, url: ov.url || b.url, overridden: true };
+  });
+  MAPS = [...merged, ...customs].map((m) => ({
+    ...m,
+    thumbUrl: thumbMap.get(m.id) || null,
+    hidden: hiddenSet.has(m.id),
+  }));
   // Se o mapa atual foi excluído/oculto, escolhe outro disponível
   if (!MAPS.some((m) => m.id === currentMapId)) {
     const next = MAPS[0]?.id || null;
