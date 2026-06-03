@@ -1895,7 +1895,7 @@ button[data-variant="primary"] {
   opacity: 1;
   accent-color: #a78bfa;
   height: 22px;
-  touch-action: none;
+  touch-action: manipulation;
   cursor: pointer;
 }
 #radioHud #radioVolumeSlider::-webkit-slider-thumb {
