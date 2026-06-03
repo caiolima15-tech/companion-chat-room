@@ -7569,8 +7569,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ${slider("X", "offset_x", -3, 3, 0.05)}
           ${slider("Altura (Y)", "offset_y", -2, 3, 0.05)}
           ${slider("Z", "offset_z", -3, 3, 0.05)}
+          ${slider("Rotação X (°)", "rotation_x", -180, 180, 1)}
           ${slider("Rotação Y (°)", "rotation_y", -180, 180, 1)}
+          ${slider("Rotação Z (°)", "rotation_z", -180, 180, 1)}
         </fieldset>
+
         <fieldset class="ie-fs"><legend>Aproximação</legend>
           ${slider("Raio (m)", "trigger_radius", 0.5, 5, 0.1)}
         </fieldset>
