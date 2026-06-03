@@ -7743,6 +7743,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       addSystemLine?.("Bola posicionada na sua posição atual.");
       return;
     }
+    if (t.classList.contains("ie-upload-anim")) {
+      const inp = editorEl.querySelector(".ie-upload-anim-input");
+      if (inp) {
+        inp.onchange = async (ev) => {
+          const file = ev.target.files?.[0]; if (!file) return;
+          const name = prompt("Nome desta animação:", file.name.replace(/\.fbx$/i, "")) || file.name.replace(/\.fbx$/i, "");
+          t.disabled = true; t.textContent = "Enviando...";
+          const row = await window.uploadBotAnimation?.(file, name);
+          t.disabled = false; t.textContent = "＋ FBX";
+          if (row?.url && editingDraft) {
+            editingDraft.animation_url = row.url;
+            renderAdmin();
+          }
+        };
+        inp.click();
+      }
+      return;
+    }
     if (t.classList.contains("ie-here")) {
       const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
       if (!ent?.group) return alert("Seu avatar não está pronto.");
