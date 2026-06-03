@@ -7904,6 +7904,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const WINDOW = Math.min(0.55, clipDur - SKIP);
     act.fadeIn(0.25).play();
     ent.__fbKicking = true;
+    ent.__lastKickStrong = !!strong;
     applyKickPose(ent, true);
     clearTimeout(ent.__fbKickT);
     // antes do fim: começa a sair do chute suavemente (fade longo)
