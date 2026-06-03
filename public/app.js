@@ -6994,17 +6994,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
     syncMuteUi();
   });
-  volSlider?.addEventListener("input", () => {
+  function applyVolumeFromSlider() {
+    if (!volSlider) return;
     const v = sliderToVol(volSlider.value);
     audio.volume = v;
     if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
-  });
-  // Impede que toques no slider iniciem o pan/movimento do mundo
-  ["pointerdown", "touchstart", "mousedown"].forEach((ev) => {
-    volSlider?.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
-  });
+  }
+  volSlider?.addEventListener("input", applyVolumeFromSlider);
+  volSlider?.addEventListener("change", applyVolumeFromSlider);
+  // Impede que toques no slider iniciem o pan/movimento do mundo,
+  // sem matar o gesto nativo do range (apenas pointerdown).
+  volSlider?.addEventListener("pointerdown", (e) => e.stopPropagation());
 
   function showHud(st) {
     activeStation = st;
