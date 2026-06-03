@@ -1889,7 +1889,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
   const ALL_PANEL_SELECTORS = [
     "#lightsAdminPanel", "#layersPanel", "#botsAdminPanel",
     "#radioAdminPanel", "#interactionsAdminPanel", "#mapAdminPanel",
-    "#carsAdminPanel",
+    "#carsAdminPanel", "#animAdminPanel", "#speedAdminPanel",
   ];
   dock.addEventListener("click", (ev) => {
     const item = ev.target.closest(".admin-dock-item");
