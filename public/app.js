@@ -2615,6 +2615,7 @@ async function switchRoom(newMapId) {
   window.showWorldLoading?.("Carregando o mundo");
   try { await window.radioLeaveRoom?.(); } catch {}
   try { await window.interactionsLeaveRoom?.(); } catch {}
+  try { await window.portalsLeaveRoom?.(); } catch {}
   try { await window.carsLeaveRoom?.(); } catch {}
 
   try {
