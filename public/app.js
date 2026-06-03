@@ -8363,6 +8363,82 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 })();
 
 
+// ============ Animações: painel admin (posição + ângulo por animação) ============
+(function animAdminPanel() {
+  function bind() {
+    const btn = document.getElementById("animAdminToggle");
+    const panel = document.getElementById("animAdminPanel");
+    const sel = document.getElementById("animSelect");
+    const tunings = window.__animTunings;
+    if (!btn || !panel || !sel || !tunings) return;
+    const fields = [
+      { k: "offX", el: "anOffX", val: "anOffXVal", fixed: 2 },
+      { k: "offY", el: "anOffY", val: "anOffYVal", fixed: 2 },
+      { k: "offZ", el: "anOffZ", val: "anOffZVal", fixed: 2 },
+      { k: "rotX", el: "anRotX", val: "anRotXVal", fixed: 0 },
+      { k: "rotY", el: "anRotY", val: "anRotYVal", fixed: 0 },
+      { k: "rotZ", el: "anRotZ", val: "anRotZVal", fixed: 0 },
+    ];
+    let current = sel.value || "idle";
+    function sync() {
+      const t = tunings[current] || window.__defaultAnimTuning();
+      for (const f of fields) {
+        const el = document.getElementById(f.el);
+        const lbl = document.getElementById(f.val);
+        if (!el) continue;
+        const v = t[f.k] || 0;
+        el.value = v;
+        if (lbl) lbl.textContent = Number(v).toFixed(f.fixed);
+      }
+    }
+    sel.addEventListener("change", () => { current = sel.value; sync(); });
+    for (const f of fields) {
+      const el = document.getElementById(f.el);
+      const lbl = document.getElementById(f.val);
+      if (!el) continue;
+      el.addEventListener("input", () => {
+        const v = Number(el.value);
+        tunings[current][f.k] = v;
+        if (lbl) lbl.textContent = v.toFixed(f.fixed);
+      });
+    }
+    document.getElementById("anSave")?.addEventListener("click", () => {
+      window.__saveAnimTunings?.();
+      if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${current}" salvos.`);
+    });
+    document.getElementById("anReset")?.addEventListener("click", () => {
+      tunings[current] = window.__defaultAnimTuning();
+      sync();
+      window.__saveAnimTunings?.();
+    });
+    document.getElementById("anTest")?.addEventListener("click", () => {
+      // Reproduz a animação selecionada no jogador local (1 vez se for kick, ou solta no current).
+      const ent = (typeof myEntity === "function") ? myEntity() : null;
+      if (!ent || !ent.actions) return;
+      if (current === "kickWeak" || current === "kickStrong") {
+        window.__fbTestKick?.(current === "kickStrong");
+      } else if (ent.actions[current]) {
+        // toca como emote rápido voltando p/ idle
+        try {
+          if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
+          ent.actions[current].reset().fadeIn(0.2).play();
+          ent.currentAction = current;
+        } catch {}
+      }
+    });
+    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
+      const body = panel.querySelector(".panel-body");
+      if (body) body.style.display = body.style.display === "none" ? "" : "none";
+    });
+    sync();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+
+
 // ============ CARS MODULE ============
 // Sistema arcade de carros: carros vivem em map_cars (Lovable Cloud).
 // Admin: catálogo + tuning de rodas/velocidade. Usuário: F (ou botão) p/ entrar
