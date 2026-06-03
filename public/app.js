@@ -8375,12 +8375,30 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
 // ============ Animações: painel admin (posição + ângulo por animação) ============
 (function animAdminPanel() {
+  const BUILTINS = [
+    { v: "idle", label: "Idle (parado)" },
+    { v: "walk", label: "Walk (andando)" },
+    { v: "run", label: "Run (correndo)" },
+    { v: "dance", label: "Dance" },
+    { v: "wave", label: "Wave (acenar)" },
+    { v: "kickWeak", label: "Kick fraco" },
+    { v: "kickStrong", label: "Kick forte" },
+  ];
   function bind() {
     const btn = document.getElementById("animAdminToggle");
     const panel = document.getElementById("animAdminPanel");
     const sel = document.getElementById("animSelect");
     const tunings = window.__animTunings;
     if (!btn || !panel || !sel || !tunings) return;
+    const addBtn = document.getElementById("animAddBtn");
+    const delBtn = document.getElementById("animDelBtn");
+    const upBox = document.getElementById("animUploadBox");
+    const upName = document.getElementById("animUpName");
+    const upFile = document.getElementById("animUpFile");
+    const upSend = document.getElementById("animUpSend");
+    const upCancel = document.getElementById("animUpCancel");
+    const upStatus = document.getElementById("animUpStatus");
+
     const fields = [
       { k: "offX", el: "anOffX", val: "anOffXVal", fixed: 2 },
       { k: "offY", el: "anOffY", val: "anOffYVal", fixed: 2 },
@@ -8389,9 +8407,45 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       { k: "rotY", el: "anRotY", val: "anRotYVal", fixed: 0 },
       { k: "rotZ", el: "anRotZ", val: "anRotZVal", fixed: 0 },
     ];
-    let current = sel.value || "idle";
+    let current = "idle";
+
+    function populateSelect() {
+      const customs = window.__botAnimations || [];
+      const prev = current;
+      sel.innerHTML = "";
+      const g1 = document.createElement("optgroup"); g1.label = "Nativas";
+      for (const b of BUILTINS) {
+        const o = document.createElement("option");
+        o.value = b.v; o.textContent = b.label; g1.appendChild(o);
+      }
+      sel.appendChild(g1);
+      if (customs.length) {
+        const g2 = document.createElement("optgroup"); g2.label = "Customizadas";
+        for (const a of customs) {
+          const o = document.createElement("option");
+          o.value = "custom:" + a.id;
+          o.textContent = a.name;
+          o.dataset.url = a.url;
+          g2.appendChild(o);
+        }
+        sel.appendChild(g2);
+      }
+      sel.value = [...sel.options].some(o => o.value === prev) ? prev : "idle";
+      current = sel.value;
+      updateDelBtn();
+    }
+
+    function updateDelBtn() {
+      if (delBtn) delBtn.hidden = !current.startsWith("custom:");
+    }
+
+    function ensureTuning(key) {
+      if (!tunings[key]) tunings[key] = window.__defaultAnimTuning();
+      return tunings[key];
+    }
+
     function sync() {
-      const t = tunings[current] || window.__defaultAnimTuning();
+      const t = ensureTuning(current);
       for (const f of fields) {
         const el = document.getElementById(f.el);
         const lbl = document.getElementById(f.val);
@@ -8400,7 +8454,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         el.value = v;
         if (lbl) lbl.textContent = Number(v).toFixed(f.fixed);
       }
+      updateDelBtn();
     }
+
     sel.addEventListener("change", () => { current = sel.value; sync(); });
     for (const f of fields) {
       const el = document.getElementById(f.el);
@@ -8408,27 +8464,44 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (!el) continue;
       el.addEventListener("input", () => {
         const v = Number(el.value);
-        tunings[current][f.k] = v;
+        ensureTuning(current)[f.k] = v;
         if (lbl) lbl.textContent = v.toFixed(f.fixed);
       });
     }
     document.getElementById("anSave")?.addEventListener("click", () => {
       window.__saveAnimTunings?.();
-      if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${current}" salvos.`);
+      if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${sel.options[sel.selectedIndex]?.textContent || current}" salvos.`);
     });
     document.getElementById("anReset")?.addEventListener("click", () => {
       tunings[current] = window.__defaultAnimTuning();
       sync();
       window.__saveAnimTunings?.();
     });
-    document.getElementById("anTest")?.addEventListener("click", () => {
-      // Reproduz a animação selecionada no jogador local (1 vez se for kick, ou solta no current).
+    document.getElementById("anTest")?.addEventListener("click", async () => {
       const ent = (typeof myEntity === "function") ? myEntity() : null;
       if (!ent || !ent.actions) return;
       if (current === "kickWeak" || current === "kickStrong") {
         window.__fbTestKick?.(current === "kickStrong");
+      } else if (current.startsWith("custom:")) {
+        const opt = sel.options[sel.selectedIndex];
+        const url = opt?.dataset?.url;
+        if (!url) return;
+        try {
+          const clip = await loadFbxClip(url);
+          const bones = collectBoneNames(ent.character);
+          const retarg = retargetClipToBones(clip, bones) || clip.clone();
+          if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
+          const action = ent.mixer.clipAction(retarg);
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = false;
+          action.reset().fadeIn(0.2).play();
+          setTimeout(() => {
+            try { action.fadeOut(0.3); } catch {}
+            const idle = ent.actions?.idle;
+            if (idle) { idle.reset().fadeIn(0.3).play(); ent.currentAction = "idle"; }
+          }, Math.max(800, (retarg.duration || 1) * 1000));
+        } catch (e) { console.warn("[anim test custom]", e); }
       } else if (ent.actions[current]) {
-        // toca como emote rápido voltando p/ idle
         try {
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
           ent.actions[current].reset().fadeIn(0.2).play();
@@ -8436,17 +8509,60 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         } catch {}
       }
     });
-    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
+
+    // Upload de animação nova
+    addBtn?.addEventListener("click", () => {
+      if (!window.isAdmin) { alert("Apenas admin."); return; }
+      upBox.hidden = !upBox.hidden;
+      if (!upBox.hidden) { upName.value = ""; upFile.value = ""; upStatus.textContent = ""; }
+    });
+    upCancel?.addEventListener("click", () => { upBox.hidden = true; });
+    upSend?.addEventListener("click", async () => {
+      const file = upFile.files?.[0];
+      const name = (upName.value || "").trim();
+      if (!file) { upStatus.textContent = "Escolha um arquivo .fbx"; return; }
+      if (!name) { upStatus.textContent = "Dê um nome para a animação"; return; }
+      try {
+        upStatus.textContent = "Enviando " + file.name + "...";
+        const path = `bot-anims/${Date.now()}-${(file.name || "anim.fbx").replace(/[^a-z0-9._-]+/gi, "_")}`;
+        const { error: upErr } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
+        if (upErr) { upStatus.textContent = "Erro: " + upErr.message; return; }
+        const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+        const { error: insErr } = await supabase.from("bot_animations").insert({ name, url: pub.publicUrl, created_by: window.myId });
+        if (insErr) { upStatus.textContent = "Erro: " + insErr.message; return; }
+        upStatus.textContent = "Animação enviada!";
+        upBox.hidden = true;
+        // o realtime já recarrega botAnimations; populateSelect será chamado pelo evento
+      } catch (e) { upStatus.textContent = "Erro: " + (e?.message || e); }
+    });
+
+    delBtn?.addEventListener("click", async () => {
+      if (!current.startsWith("custom:")) return;
+      const id = current.slice("custom:".length);
+      const opt = sel.options[sel.selectedIndex];
+      if (!confirm(`Excluir a animação "${opt?.textContent || id}"?`)) return;
+      const { error } = await supabase.from("bot_animations").delete().eq("id", id);
+      if (error) { alert("Erro: " + error.message); return; }
+      delete tunings[current];
+      window.__saveAnimTunings?.();
+      current = "idle";
+    });
+
+    window.addEventListener("bot-animations:updated", () => { populateSelect(); sync(); });
+
+    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) { populateSelect(); sync(); } });
     panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
       const body = panel.querySelector(".panel-body");
       if (body) body.style.display = body.style.display === "none" ? "" : "none";
     });
+    populateSelect();
     sync();
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();
 })();
+
 
 
 // ============ CARS MODULE ============
