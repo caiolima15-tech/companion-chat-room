@@ -11182,3 +11182,547 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.portalsEnterRoom(currentMapId);
   }
 })();
+
+// ============================================================
+// ===== ITEM CATALOG + ITEM INSTANCES + BOT SERVICE ==========
+// ============================================================
+(() => {
+  if (typeof THREE === "undefined" || typeof scene === "undefined") return;
+
+  // ---------- State ----------
+  let itemCatalog = [];                  // [{ slug, name, glb_url, hold_*, drink_animation_url, ... }]
+  const itemInstances = new Map();       // id -> { row, group, slug }
+  const heldItems = new Map();           // userId -> { instanceRow, mesh, slug, drinkAction }
+  const itemGroup = new THREE.Group();
+  itemGroup.name = "ItemInstances";
+  scene.add(itemGroup);
+
+  // GLB cache per slug
+  const _itemGlbCache = new Map(); // slug -> Promise<Object3D>
+
+  function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  async function loadItemGlb(catItem) {
+    if (!_itemGlbCache.has(catItem.slug)) {
+      _itemGlbCache.set(catItem.slug, new Promise((resolve, reject) => {
+        loader.load(catItem.glb_url, (gltf) => resolve(gltf.scene), undefined, reject);
+      }));
+    }
+    const src = await _itemGlbCache.get(catItem.slug);
+    const mesh = src.clone(true);
+    mesh.traverse((o) => {
+      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+    });
+    return mesh;
+  }
+
+  // ---------- Catalog ----------
+  async function reloadItemCatalog() {
+    const { data, error } = await supabase.from("item_catalog").select("*").order("name");
+    if (error) { console.warn("[items] catalog", error); return; }
+    itemCatalog = data || [];
+    window.__itemCatalog = itemCatalog;
+    renderItemsAdmin();
+    window.dispatchEvent(new CustomEvent("items:catalog-updated"));
+  }
+
+  supabase.channel("item-catalog")
+    .on("postgres_changes", { event: "*", schema: "public", table: "item_catalog" }, () => reloadItemCatalog())
+    .subscribe();
+
+  // ---------- Instances ----------
+  async function reloadMapItems(mapId) {
+    // clear current
+    for (const [id, e] of [...itemInstances]) {
+      itemGroup.remove(e.group);
+      itemInstances.delete(id);
+    }
+    if (!mapId) return;
+    const { data, error } = await supabase.from("map_item_instances").select("*").eq("map_id", mapId);
+    if (error) { console.warn("[items] instances", error); return; }
+    for (const row of data || []) await spawnInstance(row);
+  }
+
+  async function spawnInstance(row) {
+    if (itemInstances.has(row.id)) return;
+    const cat = itemCatalog.find((c) => c.slug === row.item_slug);
+    if (!cat) {
+      // Try fetching catalog once if not loaded yet
+      await reloadItemCatalog();
+      const cat2 = itemCatalog.find((c) => c.slug === row.item_slug);
+      if (!cat2) { console.warn("[items] sem catálogo p/ slug", row.item_slug); return; }
+      return spawnInstance(row);
+    }
+    let mesh;
+    try { mesh = await loadItemGlb(cat); }
+    catch (e) { console.warn("[items] GLB load", e); return; }
+    const group = new THREE.Group();
+    group.name = "ItemInstance:" + row.id;
+    group.userData.itemInstanceId = row.id;
+    group.userData.itemSlug = row.item_slug;
+    mesh.scale.setScalar(cat.scale || 1);
+    group.add(mesh);
+    group.position.set(row.x, row.y, row.z);
+    group.rotation.y = row.rotation_y || 0;
+    itemGroup.add(group);
+    itemInstances.set(row.id, { row, group, slug: row.item_slug });
+  }
+
+  function removeInstance(id) {
+    const e = itemInstances.get(id);
+    if (!e) return;
+    itemGroup.remove(e.group);
+    itemInstances.delete(id);
+  }
+
+  let _itemsChannel = null;
+  function subscribeItemsForMap(mapId) {
+    if (_itemsChannel) { try { supabase.removeChannel(_itemsChannel); } catch {} _itemsChannel = null; }
+    if (!mapId) return;
+    _itemsChannel = supabase.channel("map-items:" + mapId)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "map_item_instances", filter: "map_id=eq." + mapId },
+        async (payload) => {
+          if (payload.eventType === "INSERT") await spawnInstance(payload.new);
+          else if (payload.eventType === "DELETE") removeInstance(payload.old.id);
+          else if (payload.eventType === "UPDATE") {
+            const e = itemInstances.get(payload.new.id);
+            if (e) {
+              e.row = payload.new;
+              e.group.position.set(payload.new.x, payload.new.y, payload.new.z);
+              e.group.rotation.y = payload.new.rotation_y || 0;
+            }
+          }
+        })
+      .subscribe();
+  }
+
+  // Auto-despawn loop (best-effort: any client triggers DELETE)
+  setInterval(async () => {
+    const now = Date.now();
+    for (const [id, e] of itemInstances) {
+      const exp = e.row.expires_at ? new Date(e.row.expires_at).getTime() : 0;
+      if (exp && exp <= now) {
+        try { await supabase.from("map_item_instances").delete().eq("id", id); } catch {}
+      }
+    }
+  }, 5000);
+
+  // ---------- Hold (attach to bone) ----------
+  function findBoneByName(root, name) {
+    if (!root || !name) return null;
+    let found = null;
+    const target = String(name).toLowerCase();
+    root.traverse((o) => {
+      if (found) return;
+      if (!o.isBone && o.type !== "Bone") return;
+      const n = (o.name || "").replace(/^mixamorig\d*:?/i, "").toLowerCase();
+      if (n === target) found = o;
+    });
+    if (found) return found;
+    // fallback: substring match
+    root.traverse((o) => {
+      if (found) return;
+      if (!o.isBone && o.type !== "Bone") return;
+      const n = (o.name || "").replace(/^mixamorig\d*:?/i, "").toLowerCase();
+      if (n.includes(target)) found = o;
+    });
+    return found;
+  }
+
+  async function attachItemToUser(userId, instanceRow, cat) {
+    const entity = playerEntities.get(userId);
+    if (!entity?.character) return null;
+    const bone = findBoneByName(entity.character, cat.hold_bone || "RightHand");
+    if (!bone) { console.warn("[items] bone não encontrado:", cat.hold_bone); return null; }
+    let mesh;
+    try { mesh = await loadItemGlb(cat); } catch (e) { console.warn("[items] hold GLB", e); return null; }
+    mesh.scale.setScalar((cat.scale || 1) * (cat.hold_scale || 1));
+    mesh.position.set(cat.hold_offset_x || 0, cat.hold_offset_y || 0, cat.hold_offset_z || 0);
+    mesh.rotation.set(
+      (cat.hold_rot_x || 0) * Math.PI / 180,
+      (cat.hold_rot_y || 0) * Math.PI / 180,
+      (cat.hold_rot_z || 0) * Math.PI / 180
+    );
+    mesh.userData.heldItem = true;
+    bone.add(mesh);
+    // Start drink overlay if available
+    let drinkAction = null;
+    if (cat.drink_animation_url && entity.mixer) {
+      try {
+        const clip = await loadFbxClip(cat.drink_animation_url);
+        const bones = collectBoneNames(entity.character);
+        const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+        if (retarg) {
+          // Mask: keep only upper-body tracks (arms, hands, head, neck, spine upper)
+          const keep = /right(arm|forearm|hand)|head|neck/i;
+          retarg.tracks = retarg.tracks.filter((t) => keep.test(t.name.replace(/^mixamorig\d*:?/i, "")));
+          if (retarg.tracks.length) {
+            drinkAction = entity.mixer.clipAction(retarg);
+            drinkAction.setLoop(THREE.LoopRepeat, Infinity);
+            drinkAction.weight = 1;
+            drinkAction.play();
+          }
+        }
+      } catch (e) { console.warn("[items] drink anim", e); }
+    }
+    heldItems.set(userId, { instanceRow, mesh, slug: cat.slug, drinkAction, bone });
+    return mesh;
+  }
+
+  function detachItemFromUser(userId) {
+    const held = heldItems.get(userId);
+    if (!held) return null;
+    try { held.bone?.remove(held.mesh); } catch {}
+    try {
+      if (held.drinkAction) {
+        held.drinkAction.fadeOut(0.2);
+        setTimeout(() => { try { held.drinkAction.stop(); } catch {} }, 220);
+      }
+    } catch {}
+    heldItems.delete(userId);
+    return held;
+  }
+
+  // ---------- Bot service ----------
+  function getBotEntityById(botId) {
+    return botEntities.get(botId);
+  }
+
+  async function playBotActionOnce(botEntity, animUrl, durationMs) {
+    if (!botEntity || !animUrl) return;
+    try {
+      const clip = await loadFbxClip(animUrl);
+      const bones = collectBoneNames(botEntity.character);
+      const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+      if (!retarg) return;
+      const prev = botEntity.action;
+      const a = botEntity.mixer.clipAction(retarg);
+      a.setLoop(THREE.LoopRepeat, Infinity);
+      a.reset().fadeIn(0.2).play();
+      if (prev) { try { prev.fadeOut(0.2); } catch {} }
+      botEntity.action = a;
+      // After durationMs, restore idle animation
+      setTimeout(() => {
+        try { a.fadeOut(0.25); } catch {}
+        setTimeout(() => {
+          try { a.stop(); } catch {}
+          // Re-apply original animation_url (or idle if null)
+          botEntity.animationUrl = null;
+          applyBotAnimation(botEntity, botEntity.row?.animation_url || null);
+        }, 260);
+      }, Math.max(200, durationMs - 250));
+    } catch (e) { console.warn("[bot-service] play", e); }
+  }
+
+  window.__runBotService = async function (inter) {
+    const myEnt = playerEntities.get(myId);
+    if (!myEnt) return;
+    if (window.isInteractionOccupied?.(inter.id)) {
+      addSystemLine?.("Aguarde, o garçom está ocupado.");
+      return;
+    }
+    // Mark occupancy locally
+    try {
+      window.__sittingInteraction = { id: inter.id, _service: true };
+      presenceChannel?.track(presencePayload());
+    } catch {}
+
+    const duration = Math.max(200, inter.service_duration_ms || 3500);
+
+    // 1) Trigger bot animation (face the player)
+    if (inter.bot_id) {
+      const bot = getBotEntityById(inter.bot_id);
+      if (bot) {
+        try {
+          const dx = myEnt.group.position.x - bot.group.position.x;
+          const dz = myEnt.group.position.z - bot.group.position.z;
+          bot.group.rotation.y = Math.atan2(dx, dz);
+        } catch {}
+        if (inter.bot_animation_url) playBotActionOnce(bot, inter.bot_animation_url, duration);
+      }
+    }
+
+    addSystemLine?.("Servindo…");
+
+    // 2) After duration, spawn item instance at configured world position
+    setTimeout(async () => {
+      try {
+        // release occupancy
+        if (window.__sittingInteraction?._service) {
+          window.__sittingInteraction = null;
+          try { presenceChannel?.track(presencePayload()); } catch {}
+        }
+        if (!inter.item_slug) { addSystemLine?.("Nenhum item configurado."); return; }
+        // Compute world position via existing seat pose helper
+        const baseWorld = (function () {
+          // Reuse computeSeatPose from interactions module isn't exposed; replicate minimal logic
+          const ox = inter.offset_x || 0, oy = inter.offset_y || 0, oz = inter.offset_z || 0;
+          if (!inter.asset_id) return new THREE.Vector3(ox, oy, oz);
+          const obj = assetObjects.get(inter.asset_id);
+          if (!obj) return new THREE.Vector3(ox, oy, oz);
+          obj.updateMatrixWorld(true);
+          return new THREE.Vector3(ox, oy, oz).applyMatrix4(obj.matrixWorld);
+        })();
+        const spawn = {
+          x: baseWorld.x + (inter.item_spawn_offset_x || 0),
+          y: baseWorld.y + (inter.item_spawn_offset_y || 0),
+          z: baseWorld.z + (inter.item_spawn_offset_z || 0),
+        };
+        const expiresAt = inter.auto_despawn_ms > 0
+          ? new Date(Date.now() + inter.auto_despawn_ms).toISOString()
+          : null;
+        const { error } = await supabase.from("map_item_instances").insert({
+          map_id: currentMapId,
+          item_slug: inter.item_slug,
+          x: spawn.x, y: spawn.y, z: spawn.z, rotation_y: 0,
+          spawned_by: myId || null,
+          source_interaction_id: inter.id,
+          expires_at: expiresAt,
+        });
+        if (error) console.warn("[items] insert", error);
+        else addSystemLine?.("Pronto! Pegue sua bebida.");
+      } catch (e) { console.warn("[bot-service] spawn", e); }
+    }, duration);
+  };
+
+  // ---------- Pickup / drop proximity loop ----------
+  let nearbyItemId = null;
+  const pickupPrompt = document.createElement("div");
+  pickupPrompt.id = "itemPickupPrompt";
+  pickupPrompt.style.cssText = "position:fixed;pointer-events:auto;cursor:pointer;background:linear-gradient(135deg,#ffd27a,#ff7a59);color:#1a0e00;padding:6px 14px;border-radius:999px;font:600 13px system-ui;box-shadow:0 4px 20px rgba(0,0,0,.5);z-index:50;transition:opacity .15s;user-select:none;";
+  pickupPrompt.hidden = true;
+  document.body.appendChild(pickupPrompt);
+  pickupPrompt.addEventListener("click", () => tryPickupOrDrop());
+
+  const _tmpV3 = new THREE.Vector3();
+  setInterval(() => {
+    const myEnt = playerEntities.get(myId);
+    if (!myEnt?.group) { pickupPrompt.hidden = true; nearbyItemId = null; return; }
+    // If holding, show "Soltar"
+    if (heldItems.has(myId)) {
+      pickupPrompt.hidden = false;
+      pickupPrompt.textContent = "Soltar (E)";
+      // anchor near player
+      const world = myEnt.group.position.clone(); world.y += 2.2;
+      const rect = renderer.domElement.getBoundingClientRect();
+      _tmpV3.copy(world).project(camera);
+      pickupPrompt.style.left = ((_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left) + "px";
+      pickupPrompt.style.top  = ((-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top) + "px";
+      pickupPrompt.style.transform = "translate(-50%,-100%)";
+      nearbyItemId = "__drop__";
+      return;
+    }
+    // Find nearest item within 1.5m
+    let best = null, bestD = Infinity;
+    const px = myEnt.group.position.x, pz = myEnt.group.position.z;
+    for (const [id, e] of itemInstances) {
+      const d = Math.hypot(e.group.position.x - px, e.group.position.z - pz);
+      if (d < 1.5 && d < bestD) { best = { id, e, d }; bestD = d; }
+    }
+    if (!best) { pickupPrompt.hidden = true; nearbyItemId = null; return; }
+    nearbyItemId = best.id;
+    pickupPrompt.hidden = false;
+    pickupPrompt.textContent = "Pegar (E)";
+    const world = best.e.group.position.clone(); world.y += 0.6;
+    const rect = renderer.domElement.getBoundingClientRect();
+    _tmpV3.copy(world).project(camera);
+    pickupPrompt.style.left = ((_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left) + "px";
+    pickupPrompt.style.top  = ((-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top) + "px";
+    pickupPrompt.style.transform = "translate(-50%,-100%)";
+  }, 180);
+
+  async function tryPickupOrDrop() {
+    if (!nearbyItemId) return;
+    // Drop
+    if (nearbyItemId === "__drop__") {
+      const held = heldItems.get(myId);
+      if (!held) return;
+      const myEnt = playerEntities.get(myId);
+      const px = myEnt?.group?.position?.x || 0;
+      const py = 0;
+      const pz = myEnt?.group?.position?.z || 0;
+      // detach locally first
+      const cat = itemCatalog.find((c) => c.slug === held.slug);
+      const expiresAt = (cat && (cat as any))
+        ? new Date(Date.now() + 60000).toISOString() : new Date(Date.now() + 60000).toISOString();
+      detachItemFromUser(myId);
+      try {
+        await supabase.from("map_item_instances").insert({
+          map_id: currentMapId,
+          item_slug: held.slug,
+          x: px, y: py, z: pz, rotation_y: 0,
+          spawned_by: myId || null,
+          expires_at: expiresAt,
+        });
+      } catch (e) { console.warn("[items] drop", e); }
+      return;
+    }
+    // Pickup (race-safe DELETE + RETURNING)
+    const targetId = nearbyItemId;
+    const e = itemInstances.get(targetId);
+    if (!e) return;
+    const cat = itemCatalog.find((c) => c.slug === e.slug);
+    if (!cat) return;
+    const { data: deleted, error } = await supabase
+      .from("map_item_instances").delete().eq("id", targetId).select();
+    if (error) { console.warn("[items] pickup", error); return; }
+    if (!deleted || !deleted.length) { addSystemLine?.("Alguém pegou primeiro."); return; }
+    // Local remove (realtime DELETE will also remove)
+    removeInstance(targetId);
+    await attachItemToUser(myId, deleted[0], cat);
+  }
+
+  // Hotkey E for pickup/drop (in addition to button click)
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key !== "e" && ev.key !== "E") return;
+    if (ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName)) return;
+    if (!nearbyItemId) return;
+    ev.preventDefault();
+    tryPickupOrDrop();
+  });
+
+  // ---------- Items admin panel ----------
+  const itemsListEl = () => document.getElementById("itemsList");
+  function renderItemsAdmin() {
+    const el = itemsListEl(); if (!el) return;
+    if (!itemCatalog.length) {
+      el.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhum item cadastrado ainda.</div>';
+      return;
+    }
+    const slider = (label, key, val, min, max, step) => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0;">
+        <span style="flex:0 0 110px;color:#9aa;">${label}</span>
+        <input type="range" data-itemfield="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="flex:1">
+        <input type="number" data-itemfield="${key}" min="${min}" max="${max}" step="${step}" value="${Number(val).toFixed(2)}" style="width:60px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px;">
+      </label>`;
+    el.innerHTML = itemCatalog.map((it) => `
+      <details data-item-id="${_esc(it.id)}" style="border:1px solid #2a3040;border-radius:6px;">
+        <summary style="cursor:pointer;padding:6px 8px;display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);">
+          <span><strong>${_esc(it.name)}</strong> <span style="color:#888;font-size:10px;">(${_esc(it.slug)})</span></span>
+          <button type="button" data-act="del-item" style="background:#7a2434;color:#fff;border:none;border-radius:3px;padding:2px 6px;cursor:pointer;">×</button>
+        </summary>
+        <div style="padding:8px;">
+          <div style="font-weight:600;font-size:11px;color:#9aa;margin-bottom:4px;">Spawn (no mundo)</div>
+          ${slider("Escala", "scale", it.scale, 0.1, 5, 0.05)}
+          ${slider("Offset Y spawn", "spawn_offset_y", it.spawn_offset_y, -1, 3, 0.05)}
+          <div style="font-weight:600;font-size:11px;color:#9aa;margin:8px 0 4px;">Ao carregar (mão)</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0;">
+            <span style="flex:0 0 110px;color:#9aa;">Bone da mão</span>
+            <input type="text" data-itemfield="hold_bone" value="${_esc(it.hold_bone || 'RightHand')}" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px 4px;">
+          </label>
+          ${slider("Hold escala", "hold_scale", it.hold_scale, 0.1, 5, 0.05)}
+          ${slider("Hold offset X", "hold_offset_x", it.hold_offset_x, -0.5, 0.5, 0.005)}
+          ${slider("Hold offset Y", "hold_offset_y", it.hold_offset_y, -0.5, 0.5, 0.005)}
+          ${slider("Hold offset Z", "hold_offset_z", it.hold_offset_z, -0.5, 0.5, 0.005)}
+          ${slider("Hold rot X (°)", "hold_rot_x", it.hold_rot_x, -180, 180, 1)}
+          ${slider("Hold rot Y (°)", "hold_rot_y", it.hold_rot_y, -180, 180, 1)}
+          ${slider("Hold rot Z (°)", "hold_rot_z", it.hold_rot_z, -180, 180, 1)}
+          <div style="font-weight:600;font-size:11px;color:#9aa;margin:8px 0 4px;">Animação ao beber (FBX, overlay no braço+cabeça)</div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0;">
+            <span style="flex:0 0 110px;color:#9aa;">Animação</span>
+            <select data-itemfield="drink_animation_url" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px;">
+              <option value="">— Nenhuma —</option>
+              ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (it.drink_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+            </select>
+          </label>
+          <button type="button" data-act="save-item" class="primary" style="margin-top:6px;width:100%;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:6px;cursor:pointer;font-weight:600;">Salvar</button>
+        </div>
+      </details>
+    `).join("");
+  }
+
+  const itemsPanel = () => document.getElementById("itemsAdminPanel");
+  document.addEventListener("click", async (ev) => {
+    const t = ev.target;
+    if (!t) return;
+    // delete
+    if (t.dataset && t.dataset.act === "del-item") {
+      ev.preventDefault();
+      const det = t.closest("[data-item-id]");
+      if (!det || !confirm("Excluir este item do catálogo?")) return;
+      const id = det.dataset.itemId;
+      const { error } = await supabase.from("item_catalog").delete().eq("id", id);
+      if (error) alert("Erro: " + error.message);
+      return;
+    }
+    // save
+    if (t.dataset && t.dataset.act === "save-item") {
+      ev.preventDefault();
+      const det = t.closest("[data-item-id]"); if (!det) return;
+      const id = det.dataset.itemId;
+      const patch = {};
+      det.querySelectorAll("[data-itemfield]").forEach((inp) => {
+        const k = inp.dataset.itemfield;
+        if (inp.type === "number" || inp.type === "range") patch[k] = Number(inp.value);
+        else patch[k] = inp.value || null;
+      });
+      const { error } = await supabase.from("item_catalog").update(patch).eq("id", id);
+      if (error) alert("Erro: " + error.message);
+      else addSystemLine?.("Item salvo.");
+    }
+  });
+
+  // keep range/number in sync inside items panel
+  document.addEventListener("input", (ev) => {
+    const el = ev.target;
+    if (!el?.dataset || !el.dataset.itemfield) return;
+    const wrap = el.closest("label"); if (!wrap) return;
+    if (el.type === "range") {
+      const num = wrap.querySelector('input[type=number][data-itemfield]');
+      if (num && document.activeElement !== num) num.value = Number(el.value).toFixed(2);
+    } else if (el.type === "number") {
+      const range = wrap.querySelector('input[type=range][data-itemfield]');
+      if (range) range.value = el.value;
+    }
+  });
+
+  // Upload new item GLB
+  document.addEventListener("change", async (ev) => {
+    const t = ev.target;
+    if (!t || t.id !== "newItemGlbFile") return;
+    const file = t.files?.[0]; if (!file) return;
+    const nameEl = document.getElementById("newItemName");
+    const slugEl = document.getElementById("newItemSlug");
+    const status = document.getElementById("newItemStatus");
+    const name = nameEl?.value?.trim() || file.name.replace(/\.glb$/i, "");
+    let slug = (slugEl?.value?.trim() || name).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!slug) { alert("Informe um slug válido."); return; }
+    status.textContent = "Enviando…";
+    try {
+      const path = "items/" + slug + "-" + Date.now() + ".glb";
+      const { error: upErr } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+      if (upErr) throw upErr;
+      const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
+      const { error: insErr } = await supabase.from("item_catalog").insert({
+        slug, name, glb_url: pub.publicUrl, created_by: myId || null,
+      });
+      if (insErr) throw insErr;
+      status.textContent = "✔ Cadastrado.";
+      if (nameEl) nameEl.value = "";
+      if (slugEl) slugEl.value = "";
+      t.value = "";
+    } catch (e) {
+      status.textContent = "Erro: " + (e?.message || e);
+    }
+  });
+
+  // ---------- Lifecycle hooks ----------
+  let lastMap = null;
+  setInterval(() => {
+    if (currentMapId !== lastMap) {
+      lastMap = currentMapId;
+      // detach any held when changing map
+      if (heldItems.has(myId)) detachItemFromUser(myId);
+      reloadMapItems(currentMapId);
+      subscribeItemsForMap(currentMapId);
+    }
+  }, 1000);
+
+  // initial
+  (async () => {
+    await reloadItemCatalog();
+    setTimeout(() => { reloadMapItems(currentMapId); subscribeItemsForMap(currentMapId); }, 800);
+  })();
+
+})();
