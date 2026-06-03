@@ -4029,10 +4029,15 @@ function applyHeldMovement(delta) {
   if (window.__ridingCar) return;  // de carona: posição controlada pelo carro
   if (window.__footballMode) return; // módulo de futebol controla o movimento
   if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
-  if (window.__sittingInteraction) return;
   // Joystick na tela (modo normal)
   const j = window.__joyState;
   const usingJoy = !!(j && j.active && Math.hypot(j.x, j.y) > 0.12);
+  // Auto-levantar ao detectar qualquer input de movimento
+  if (window.__sittingInteraction) {
+    const hasKey = keyState.has("arrowup") || keyState.has("arrowdown") || keyState.has("arrowleft") || keyState.has("arrowright") || keyState.has("w") || keyState.has("a") || keyState.has("s") || keyState.has("d");
+    if (hasKey || usingJoy) { try { window.standUpFromInteraction?.(); } catch {} }
+    else return;
+  }
   if (!me || !myId) return;
   const entity = playerEntities.get(myId);
   if (!entity) return;
