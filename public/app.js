@@ -4060,7 +4060,7 @@ function applyHeldMovement(delta) {
   if (mag < 0.01 && usingJoy) {
     ix = j.x; iy = j.y; // joystick: joy.y já é positivo quando o knob vai pra cima
     mag = Math.min(1, Math.hypot(ix, iy));
-    running = !!j.run; // só corre quando arrasta para fora do círculo
+    running = mag > 0.7;
   }
 
   if (mag < 0.01) {
