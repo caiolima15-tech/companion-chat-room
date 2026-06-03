@@ -5230,7 +5230,8 @@ async function openMapEdit(mapId) {
     saveBtn.disabled = true;
     status.textContent = "Salvando…";
     try {
-      const patch = { name, thumb, mood, bg };
+      const hiddenVal = !!modal.querySelector("#meHidden")?.checked;
+      const patch = { name, thumb, mood, bg, hidden: hiddenVal };
       if (file) {
         status.textContent = "Enviando novo GLB…";
         const path = `maps/${m.id}-${Date.now()}.glb`;
