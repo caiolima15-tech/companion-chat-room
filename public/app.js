@@ -2032,7 +2032,15 @@ function collectBoneNames(root) {
 function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   const stripRootPosition = !!opts.stripRootPosition;
   const stripHipRotation = !!opts.stripHipRotation;
-  const isHipName = (n) => /^(mixamorig:?)?hips?$/i.test(n);
+  const isHipName = (n) => /^(mixamorig\d*:?)?hips?$/i.test(n);
+  // Index target bones by their "stripped" form (no mixamorig prefix, lowercased)
+  // so we can match clips that differ only by prefix / numeric suffix / casing.
+  const stripPrefix = (n) => n.replace(/^mixamorig\d*:?/i, "");
+  const targetByStripped = new Map();
+  for (const name of targetBoneNames) {
+    const key = stripPrefix(name).toLowerCase();
+    if (key && !targetByStripped.has(key)) targetByStripped.set(key, name);
+  }
   const out = clip.clone();
   const tracks = [];
   for (const t of out.tracks) {
@@ -2042,15 +2050,14 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
     const prop = t.name.slice(dot);
     if (stripRootPosition && prop === ".position") continue;
     if (stripHipRotation && isHipName(boneName) && prop === ".quaternion") continue;
-    let candidate = boneName;
-    if (!targetBoneNames.has(candidate) && candidate.startsWith("mixamorig")) {
-      candidate = candidate.replace(/^mixamorig:?/, "");
+    let candidate = null;
+    if (targetBoneNames.has(boneName)) {
+      candidate = boneName;
+    } else {
+      const key = stripPrefix(boneName).toLowerCase();
+      if (targetByStripped.has(key)) candidate = targetByStripped.get(key);
     }
-    if (!targetBoneNames.has(candidate)) {
-      const withPrefix = "mixamorig" + boneName;
-      if (targetBoneNames.has(withPrefix)) candidate = withPrefix;
-    }
-    if (!targetBoneNames.has(candidate)) continue;
+    if (!candidate) continue;
     const nt = t.clone();
     nt.name = candidate + prop;
     tracks.push(nt);
@@ -5788,7 +5795,8 @@ async function applyBotAnimation(entity, url) {
     const clip = await loadFbxClip(url);
     if (entity.animationUrl !== url) return;
     const bones = collectBoneNames(entity.character);
-    const retarg = retargetClipToBones(clip, bones) || clip.clone();
+    const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+    if (!retarg) { console.warn("[bot] nenhum osso da animação casou com", entity.characterSlug); return; }
     const a = entity.mixer.clipAction(retarg);
     a.reset().play(); entity.action = a;
   } catch (e) { console.warn("[bot] anim", e); }
@@ -7348,12 +7356,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const clip = await loadFbxClip(inter.animation_url);
         if (window.__sittingInteraction !== currentSit) return; // saiu nesse meio tempo
         const bones = collectBoneNames(entity.character);
-        const retarg = retargetClipToBones(clip, bones) || clip.clone();
-        const action = entity.mixer.clipAction(retarg);
-        action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
-        action.clampWhenFinished = true;
-        action.reset().fadeIn(0.2).play();
-        currentSit.mixerAction = action;
+        const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+        if (!retarg) {
+          console.warn("[interactions] nenhum osso do clip casou com o personagem; usando idle");
+          const idle = entity.actions?.idle;
+          if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+        } else {
+          const action = entity.mixer.clipAction(retarg);
+          action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+          action.clampWhenFinished = true;
+          action.reset().fadeIn(0.2).play();
+          currentSit.mixerAction = action;
+        }
       } else {
         const idle = entity.actions?.idle;
         if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
@@ -8587,7 +8601,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         try {
           const clip = await loadFbxClip(url);
           const bones = collectBoneNames(ent.character);
-          const retarg = retargetClipToBones(clip, bones) || clip.clone();
+          const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+          if (!retarg) { console.warn("[anim test custom] nenhum osso casou"); return; }
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
           const action = ent.mixer.clipAction(retarg);
           action.setLoop(THREE.LoopOnce, 1);
