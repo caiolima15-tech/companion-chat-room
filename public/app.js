@@ -7246,15 +7246,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // ---------- Geometry helpers ----------
   function computeSeatPose(inter, draft) {
-    const obj = assetObjects.get(inter.asset_id);
-    if (!obj) return null;
-    obj.updateMatrixWorld(true);
     const ox = (draft?.offset_x ?? inter.offset_x) || 0;
     const oy = (draft?.offset_y ?? inter.offset_y) || 0;
     const oz = (draft?.offset_z ?? inter.offset_z) || 0;
     const rx = ((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI / 180;
     const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
     const rz = ((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI / 180;
+    const assetId = draft?.asset_id ?? inter.asset_id;
+    if (!assetId) {
+      // Standalone: offsets são coordenadas de mundo, centradas onde o admin escolheu
+      const world = new THREE.Vector3(ox, oy, oz);
+      return { worldPos: world, worldRotX: rx, worldRotY: ry, worldRotZ: rz, objectTopY: world.y + 1.7 };
+    }
+    const obj = assetObjects.get(assetId);
+    if (!obj) return null;
+    obj.updateMatrixWorld(true);
     const local = new THREE.Vector3(ox, oy, oz);
     const world = local.clone().applyMatrix4(obj.matrixWorld);
     let topY = world.y + 1.0;
