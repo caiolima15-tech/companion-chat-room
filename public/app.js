@@ -7412,7 +7412,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       currentSit.mixerAction.fadeOut(0.2);
       setTimeout(() => { try { currentSit?.mixerAction?.stop(); } catch {} }, 250);
     }
+    if (entity?.group) {
+      entity.group.rotation.x = 0;
+      entity.group.rotation.z = 0;
+    }
+    if (entity?.character) {
+      entity.character.position.set(0, poseDebug?.offY || 0, 0);
+      entity.character.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
+    }
     if (entity?.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+
     currentSit = null;
     window.__sittingInteraction = null;
     hidePrompt();
