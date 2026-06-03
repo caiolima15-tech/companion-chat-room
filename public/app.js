@@ -7873,6 +7873,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         trigger_radius: Number(editingDraft.trigger_radius) || 1.5,
         exit_radius: (Number(editingDraft.trigger_radius) || 1.5) + 0.5,
         occupancy: editingDraft.occupancy || "multi",
+        bot_id: editingDraft.bot_id || null,
+        bot_animation_url: editingDraft.bot_animation_url || null,
+        item_slug: editingDraft.item_slug || null,
+        item_spawn_offset_x: Number(editingDraft.item_spawn_offset_x) || 0,
+        item_spawn_offset_y: Number(editingDraft.item_spawn_offset_y) || 0,
+        item_spawn_offset_z: Number(editingDraft.item_spawn_offset_z) || 0,
+        service_duration_ms: Math.max(200, Number(editingDraft.service_duration_ms) || 3500),
+        auto_despawn_ms: Math.max(0, Number(editingDraft.auto_despawn_ms) || 0),
       };
       let res;
       if (editingId === "new") {
