@@ -10788,6 +10788,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Destino</span>
           <select data-field="dest_map_id" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">${destOptions(d.dest_map_id)}</select>
         </label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Portal</span>
+          <select data-field="dest_portal_id" style="flex:1;background:#15151c;color:#eee;border:1px solid #333;border-radius:4px;padding:4px;">${destPortalOptions(d.dest_map_id, d.dest_portal_id, d.id)}</select>
+        </label>
         <label style="display:flex;align-items:center;gap:6px;font-size:11px;"><span style="width:62px;color:#aab;">Cor</span>
           <input type="color" data-field="color" value="${_esc(d.color || "#ff3ea5")}" style="width:48px;height:28px;background:#15151c;border:1px solid #333;border-radius:4px;">
           <span style="color:#778;font-size:10px;">(padrão rosa)</span>
