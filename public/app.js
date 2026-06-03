@@ -2698,8 +2698,23 @@ function presencePayload() {
     facing: me.facing,
     speech: me.speech || "",
     isAdmin,
+    sitting_id: window.__sittingInteraction?.id || null,
   };
 }
+
+// Verifica via presence se algum OUTRO usuário já está ocupando essa interação
+window.isInteractionOccupied = function (interactionId) {
+  if (!interactionId || !presenceChannel) return false;
+  try {
+    const state = presenceChannel.presenceState();
+    for (const key of Object.keys(state)) {
+      for (const p of state[key]) {
+        if (p && p.id !== myId && p.sitting_id === interactionId) return true;
+      }
+    }
+  } catch {}
+  return false;
+};
 
 async function trackMe(updateRoster = true) {
   if (!presenceChannel) return;
