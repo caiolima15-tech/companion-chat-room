@@ -7646,6 +7646,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <option value="pose" ${draft.kind === "pose" ? "selected" : ""}>Pose</option>
             <option value="animation" ${draft.kind === "animation" ? "selected" : ""}>Animação</option>
             <option value="football" ${draft.kind === "football" ? "selected" : ""}>⚽ Bola de futebol</option>
+            <option value="bot_service" ${draft.kind === "bot_service" ? "selected" : ""}>🍹 Garçom (bot serve item)</option>
           </select>
         </div>
         <div class="ie-row"><label>Animação</label>
@@ -7664,6 +7665,33 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <div class="ie-row"><label>Loop</label>
           <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
         </div>
+        ${draft.kind === "bot_service" ? `
+        <fieldset class="ie-fs"><legend>🤖 Garçom / Item entregue</legend>
+          <div class="ie-row"><label>Bot atendente</label>
+            <select data-field="bot_id" style="flex:1">
+              <option value="">— Nenhum (só spawna item) —</option>
+              ${Array.from((window.__mapBots || new Map()).entries()).map(([id, b]) => `<option value="${_esc(id)}" ${draft.bot_id === id ? "selected" : ""}>${_esc(b.name || id.slice(0,6))}</option>`).join("")}
+            </select>
+          </div>
+          <div class="ie-row"><label>Animação do bot ao servir</label>
+            <select data-field="bot_animation_url" style="flex:1">
+              <option value="">— Nenhuma —</option>
+              ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.bot_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="ie-row"><label>Item entregue</label>
+            <select data-field="item_slug" style="flex:1">
+              <option value="">— Nenhum —</option>
+              ${(window.__itemCatalog || []).map(it => `<option value="${_esc(it.slug)}" ${it.slug === (draft.item_slug || "") ? "selected" : ""}>${_esc(it.name)}</option>`).join("")}
+            </select>
+          </div>
+          ${slider("Spawn offset X", "item_spawn_offset_x", -5, 5, 0.05)}
+          ${slider("Spawn offset Y (altura)", "item_spawn_offset_y", -2, 5, 0.05)}
+          ${slider("Spawn offset Z", "item_spawn_offset_z", -5, 5, 0.05)}
+          ${slider("Tempo de serviço (ms)", "service_duration_ms", 500, 10000, 100)}
+          ${slider("Auto-despawn item (ms, 0 = nunca)", "auto_despawn_ms", 0, 600000, 1000)}
+        </fieldset>
+        ` : ``}
         <fieldset class="ie-fs"><legend>${standalone ? "Posição no mundo" : "Posição relativa ao objeto"}</legend>
           ${slider("X", "offset_x", -posRange, posRange, posStep)}
           ${slider("Altura (Y)", "offset_y", standalone ? -5 : -2, standalone ? 10 : 3, posStep)}
