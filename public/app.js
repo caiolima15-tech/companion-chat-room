@@ -270,6 +270,12 @@ function loadAnimTunings() {
       if (raw) {
         const parsed = JSON.parse(raw);
         for (const n of ANIM_NAMES) if (parsed[n]) Object.assign(out[n], parsed[n]);
+        // Preserva tunings de animações customizadas (chaves "custom:<id>")
+        for (const k of Object.keys(parsed)) {
+          if (k.startsWith("custom:")) {
+            out[k] = Object.assign(defaultAnimTuning(), parsed[k]);
+          }
+        }
         return out;
       }
     } else {
@@ -288,6 +294,7 @@ function loadAnimTunings() {
   }
   return out;
 }
+
 const animTunings = loadAnimTunings();
 function saveAnimTunings() {
   try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
