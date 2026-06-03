@@ -10845,7 +10845,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   });
 
-  editorEl?.addEventListener("input", (ev) => {
+  editorEl?.addEventListener("input", async (ev) => {
     if (!editingDraft) return;
     const t = ev.target;
     const field = t.dataset?.field; if (!field) return;
@@ -10856,6 +10856,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     editorEl.querySelectorAll(`[data-field="${field}"]`).forEach((el) => {
       if (el !== t) el.value = val;
     });
+    // When the destination map changes, reset the chosen dest portal and
+    // refresh the portal select with the portals from that map.
+    if (field === "dest_map_id") {
+      editingDraft.dest_portal_id = null;
+      const sel = editorEl.querySelector('select[data-field="dest_portal_id"]');
+      if (sel) sel.innerHTML = destPortalOptions(val, null, editingDraft.id);
+      await fetchPortalsForMap(val);
+      if (editingDraft && editingDraft.dest_map_id === val) {
+        const sel2 = editorEl.querySelector('select[data-field="dest_portal_id"]');
+        if (sel2) sel2.innerHTML = destPortalOptions(val, editingDraft.dest_portal_id, editingDraft.id);
+      }
+    }
     // live preview on the mesh
     const m = portalMeshes.get(editingId);
     if (m) {
