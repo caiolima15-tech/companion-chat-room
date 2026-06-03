@@ -10579,6 +10579,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .order("created_at", { ascending: true });
     if (error) { console.warn("[portals] load", error); return; }
     portals = data || [];
+    portalsByMap.set(mapId, portals.map((p) => ({ id: p.id, label: p.label, map_id: p.map_id })));
     syncMeshes();
     renderAdmin();
     // If we arrived here via a portal-to-portal teleport, drop the player on the
