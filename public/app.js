@@ -7247,6 +7247,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     interactions = data || [];
     window.__mapInteractions = interactions;
     window.dispatchEvent(new CustomEvent("interactions:updated"));
+    // Pré-carrega clips FBX de todas as interações do mapa para eliminar T-pose no primeiro uso
+    try {
+      const urls = Array.from(new Set(interactions.map(i => i.animation_url).filter(Boolean)));
+      let i = 0;
+      const runNext = () => {
+        if (i >= urls.length) return;
+        const u = urls[i++];
+        loadFbxClip(u).catch(()=>{}).finally(runNext);
+      };
+      for (let k = 0; k < Math.min(4, urls.length); k++) runNext();
+    } catch {}
     renderAdmin();
   }
 
