@@ -6037,6 +6037,7 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
 
   // Bots panel (already has data attrs)
   makePanel(document.getElementById("botsAdminPanel"));
+  makePanel(document.getElementById("animAdminPanel"));
 
   // Wire existing panels by passing custom selectors
   const mp = document.getElementById("mapAdminPanel");
