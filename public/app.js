@@ -7375,6 +7375,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animClipName: null,
     };
     window.__sittingInteraction = currentSit;
+    try { presenceChannel?.track(presencePayload()); } catch {}
 
     // Atualiza me.x/y para o assento (evita salto ao levantar)
     if (typeof me !== "undefined" && me) {
