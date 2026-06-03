@@ -335,16 +335,86 @@ export type Database = {
         }
         Relationships: []
       }
+      item_catalog: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          drink_animation_url: string | null
+          glb_url: string
+          hold_bone: string
+          hold_offset_x: number
+          hold_offset_y: number
+          hold_offset_z: number
+          hold_rot_x: number
+          hold_rot_y: number
+          hold_rot_z: number
+          hold_scale: number
+          id: string
+          name: string
+          scale: number
+          slug: string
+          spawn_offset_y: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          drink_animation_url?: string | null
+          glb_url: string
+          hold_bone?: string
+          hold_offset_x?: number
+          hold_offset_y?: number
+          hold_offset_z?: number
+          hold_rot_x?: number
+          hold_rot_y?: number
+          hold_rot_z?: number
+          hold_scale?: number
+          id?: string
+          name: string
+          scale?: number
+          slug: string
+          spawn_offset_y?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          drink_animation_url?: string | null
+          glb_url?: string
+          hold_bone?: string
+          hold_offset_x?: number
+          hold_offset_y?: number
+          hold_offset_z?: number
+          hold_rot_x?: number
+          hold_rot_y?: number
+          hold_rot_z?: number
+          hold_scale?: number
+          id?: string
+          name?: string
+          scale?: number
+          slug?: string
+          spawn_offset_y?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       map_asset_interactions: {
         Row: {
           animation_key: string
           animation_url: string | null
           asset_id: string | null
+          auto_despawn_ms: number
+          bot_animation_url: string | null
+          bot_id: string | null
           created_at: string
           created_by: string | null
           exit_radius: number
           icon: string
           id: string
+          item_slug: string | null
+          item_spawn_offset_x: number
+          item_spawn_offset_y: number
+          item_spawn_offset_z: number
           kind: string
           label: string
           loop: boolean
@@ -357,6 +427,7 @@ export type Database = {
           rotation_y: number
           rotation_z: number
           scale_mul: number
+          service_duration_ms: number
           trigger_radius: number
           updated_at: string
         }
@@ -364,11 +435,18 @@ export type Database = {
           animation_key?: string
           animation_url?: string | null
           asset_id?: string | null
+          auto_despawn_ms?: number
+          bot_animation_url?: string | null
+          bot_id?: string | null
           created_at?: string
           created_by?: string | null
           exit_radius?: number
           icon?: string
           id?: string
+          item_slug?: string | null
+          item_spawn_offset_x?: number
+          item_spawn_offset_y?: number
+          item_spawn_offset_z?: number
           kind?: string
           label?: string
           loop?: boolean
@@ -381,6 +459,7 @@ export type Database = {
           rotation_y?: number
           rotation_z?: number
           scale_mul?: number
+          service_duration_ms?: number
           trigger_radius?: number
           updated_at?: string
         }
@@ -388,11 +467,18 @@ export type Database = {
           animation_key?: string
           animation_url?: string | null
           asset_id?: string | null
+          auto_despawn_ms?: number
+          bot_animation_url?: string | null
+          bot_id?: string | null
           created_at?: string
           created_by?: string | null
           exit_radius?: number
           icon?: string
           id?: string
+          item_slug?: string | null
+          item_spawn_offset_x?: number
+          item_spawn_offset_y?: number
+          item_spawn_offset_z?: number
           kind?: string
           label?: string
           loop?: boolean
@@ -405,10 +491,19 @@ export type Database = {
           rotation_y?: number
           rotation_z?: number
           scale_mul?: number
+          service_duration_ms?: number
           trigger_radius?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "map_asset_interactions_bot_id_fkey"
+            columns: ["bot_id"]
+            isOneToOne: false
+            referencedRelation: "map_bots"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       map_assets: {
         Row: {
@@ -594,6 +689,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      map_item_instances: {
+        Row: {
+          created_at: string
+          expires_at: string | null
+          id: string
+          item_slug: string
+          map_id: string
+          rotation_y: number
+          source_interaction_id: string | null
+          spawned_by: string | null
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          item_slug: string
+          map_id: string
+          rotation_y?: number
+          source_interaction_id?: string | null
+          spawned_by?: string | null
+          x?: number
+          y?: number
+          z?: number
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          item_slug?: string
+          map_id?: string
+          rotation_y?: number
+          source_interaction_id?: string | null
+          spawned_by?: string | null
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: []
       }
       map_lights: {
         Row: {
