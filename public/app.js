@@ -5779,9 +5779,12 @@ async function reloadBotAnimations() {
   const { data, error } = await supabase.from("bot_animations").select("*").order("created_at", { ascending: false });
   if (error) { console.warn(error); return; }
   botAnimations = data || [];
+  window.__botAnimations = botAnimations;
+  window.dispatchEvent(new CustomEvent("bot-animations:updated"));
   renderBotAnimList();
   renderBotsAdminList();
 }
+
 
 // Realtime
 supabase.channel("map-bots")
