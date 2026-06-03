@@ -296,12 +296,68 @@ function loadAnimTunings() {
 }
 
 const animTunings = loadAnimTunings();
-function saveAnimTunings() {
+function saveAnimTunings(remoteKey) {
   try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+  if (remoteKey && window.supabase && animTunings[remoteKey]) {
+    const t = animTunings[remoteKey];
+    Promise.resolve().then(async () => {
+      try {
+        const { data: au } = await window.supabase.auth.getUser();
+        const uid = au?.user?.id || null;
+        const { error } = await window.supabase.from("animation_tunings").upsert({
+          anim_key: remoteKey,
+          off_x: t.offX || 0, off_y: t.offY || 0, off_z: t.offZ || 0,
+          rot_x: t.rotX || 0, rot_y: t.rotY || 0, rot_z: t.rotZ || 0,
+          updated_by: uid, updated_at: new Date().toISOString(),
+        }, { onConflict: "anim_key" });
+        if (error) console.warn("[animation_tunings upsert]", error);
+      } catch (e) { console.warn("[animation_tunings upsert]", e); }
+    });
+  }
 }
+async function deleteAnimTuningRemote(key) {
+  try { await window.supabase?.from("animation_tunings").delete().eq("anim_key", key); } catch {}
+}
+async function loadRemoteAnimTunings() {
+  if (!window.supabase) return;
+  try {
+    const { data, error } = await window.supabase.from("animation_tunings").select("*");
+    if (error) { console.warn("[animation_tunings load]", error); return; }
+    for (const row of (data || [])) {
+      const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
+      t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
+      t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+    }
+    try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+    window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+  } catch (e) { console.warn("[animation_tunings load]", e); }
+}
+function subscribeAnimTunings() {
+  if (!window.supabase) return;
+  try {
+    window.supabase.channel("animation_tunings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "animation_tunings" }, (payload) => {
+        const row = payload.new || payload.old;
+        if (!row?.anim_key) return;
+        if (payload.eventType === "DELETE") {
+          if (animTunings[row.anim_key]) animTunings[row.anim_key] = defaultAnimTuning();
+        } else {
+          const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
+          t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
+          t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+        }
+        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+        window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+      })
+      .subscribe();
+  } catch (e) { console.warn("[animation_tunings sub]", e); }
+}
+// Kick off loading + subscription (defers until supabase is ready)
+Promise.resolve().then(() => { loadRemoteAnimTunings(); subscribeAnimTunings(); });
 window.__animTunings = animTunings;
 window.__animNames = ANIM_NAMES;
 window.__saveAnimTunings = saveAnimTunings;
+window.__deleteAnimTuningRemote = deleteAnimTuningRemote;
 window.__defaultAnimTuning = defaultAnimTuning;
 
 // Aplica live as tunings da animação atual no character do jogador local.
@@ -1833,7 +1889,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
   const ALL_PANEL_SELECTORS = [
     "#lightsAdminPanel", "#layersPanel", "#botsAdminPanel",
     "#radioAdminPanel", "#interactionsAdminPanel", "#mapAdminPanel",
-    "#carsAdminPanel",
+    "#carsAdminPanel", "#animAdminPanel", "#speedAdminPanel",
   ];
   dock.addEventListener("click", (ev) => {
     const item = ev.target.closest(".admin-dock-item");
@@ -1864,12 +1920,14 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     }
     const targetSel = item.getAttribute("data-dock-target");
     const target = targetSel && document.querySelector(targetSel);
+    const panel = panelSel ? document.querySelector(panelSel) : null;
+    const wasHidden = panel ? panel.hidden : null;
     if (target) {
       target.click();
-    } else if (panelSel) {
-      // Sem target: alterna o painel diretamente
-      const panel = document.querySelector(panelSel);
-      if (panel) panel.hidden = !panel.hidden;
+      // Fallback: se o clique no botão original não toggleou o painel, força
+      if (panel && panel.hidden === wasHidden) panel.hidden = !panel.hidden;
+    } else if (panel) {
+      panel.hidden = !panel.hidden;
     }
     if (item.hasAttribute("data-dock-toggle") && target) {
       setTimeout(() => {
@@ -1896,6 +1954,7 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     "interactionsAdminPanel": "[data-dock-panel='#interactionsAdminPanel']",
     "mapAdminPanel": "[data-dock-panel='#mapAdminPanel']",
     "carsAdminPanel": "[data-dock-panel='#carsAdminPanel']",
+    "animAdminPanel": "[data-dock-panel='#animAdminPanel']",
   };
   const obs = new MutationObserver((muts) => {
     for (const m of muts) {
@@ -6935,17 +6994,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
     syncMuteUi();
   });
-  volSlider?.addEventListener("input", () => {
+  function applyVolumeFromSlider() {
+    if (!volSlider) return;
     const v = sliderToVol(volSlider.value);
     audio.volume = v;
     if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
-  });
-  // Impede que toques no slider iniciem o pan/movimento do mundo
-  ["pointerdown", "touchstart", "mousedown"].forEach((ev) => {
-    volSlider?.addEventListener(ev, (e) => e.stopPropagation(), { passive: true });
-  });
+  }
+  volSlider?.addEventListener("input", applyVolumeFromSlider);
+  volSlider?.addEventListener("change", applyVolumeFromSlider);
+  // Impede que toques no slider iniciem o pan/movimento do mundo,
+  // sem matar o gesto nativo do range (apenas pointerdown).
+  volSlider?.addEventListener("pointerdown", (e) => e.stopPropagation());
 
   function showHud(st) {
     activeStation = st;
@@ -8492,13 +8553,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       });
     }
     document.getElementById("anSave")?.addEventListener("click", () => {
-      window.__saveAnimTunings?.();
+      window.__saveAnimTunings?.(current);
       if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${sel.options[sel.selectedIndex]?.textContent || current}" salvos.`);
     });
     document.getElementById("anReset")?.addEventListener("click", () => {
       tunings[current] = window.__defaultAnimTuning();
       sync();
-      window.__saveAnimTunings?.();
+      window.__saveAnimTunings?.(current);
     });
     document.getElementById("anTest")?.addEventListener("click", async () => {
       const ent = (typeof myEntity === "function") ? myEntity() : null;
@@ -8564,16 +8625,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const id = current.slice("custom:".length);
       const opt = sel.options[sel.selectedIndex];
       if (!confirm(`Excluir a animação "${opt?.textContent || id}"?`)) return;
+      const key = current;
       const { error } = await supabase.from("bot_animations").delete().eq("id", id);
       if (error) { alert("Erro: " + error.message); return; }
-      delete tunings[current];
-      window.__saveAnimTunings?.();
+      delete tunings[key];
+      try { await window.__deleteAnimTuningRemote?.(key); } catch {}
+      try { localStorage.setItem("neon-tap-room-anim-tunings", JSON.stringify(tunings)); } catch {}
       current = "idle";
     });
 
     window.addEventListener("bot-animations:updated", () => { populateSelect(); sync(); });
+    window.addEventListener("animation-tunings:updated", () => { if (!panel.hidden) sync(); });
 
-    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) { populateSelect(); sync(); } });
+    btn.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) { populateSelect(); sync(); }
+    });
     panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
       const body = panel.querySelector(".panel-body");
@@ -8582,8 +8649,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     populateSelect();
     sync();
   }
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
-  else bind();
+  // Bind seguro: aguarda DOM e idempotente (não duplica)
+  let _bound = false;
+  function _safeBind() {
+    if (_bound) return;
+    const btn = document.getElementById("animAdminToggle");
+    const panel = document.getElementById("animAdminPanel");
+    if (!btn || !panel || !window.__animTunings) { setTimeout(_safeBind, 200); return; }
+    _bound = true;
+    bind();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", _safeBind);
+  else _safeBind();
 })();
 
 

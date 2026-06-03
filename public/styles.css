@@ -692,7 +692,7 @@ input:focus {
   display: none;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 960px) and (orientation: portrait) {
   body {
     overflow: auto;
   }
@@ -709,7 +709,7 @@ input:focus {
 }
 
 
-@media (max-width: 600px) {
+@media (max-width: 600px) and (orientation: portrait) {
   body { overflow: hidden; }
 
   .app-shell {
@@ -1895,7 +1895,7 @@ button[data-variant="primary"] {
   opacity: 1;
   accent-color: #a78bfa;
   height: 22px;
-  touch-action: none;
+  touch-action: manipulation;
   cursor: pointer;
 }
 #radioHud #radioVolumeSlider::-webkit-slider-thumb {
@@ -2048,12 +2048,15 @@ body.world-ready #layersPanel:not([hidden]),
 body.world-ready #botsAdminPanel:not([hidden]),
 body.world-ready #radioAdminPanel:not([hidden]),
 body.world-ready #interactionsAdminPanel:not([hidden]),
-body.world-ready #mapAdminPanel:not([hidden]) {
+body.world-ready #mapAdminPanel:not([hidden]),
+body.world-ready #animAdminPanel:not([hidden]),
+body.world-ready #carsAdminPanel:not([hidden]),
+body.world-ready #speedAdminPanel:not([hidden]) {
   top: 64px !important;
   right: 232px !important;
   left: auto !important;
 }
-@media (max-width: 640px) {
+@media (max-width: 640px) and (orientation: portrait) {
   .admin-dock { width: 168px; top: 60px; right: 8px; padding: 6px; }
   .admin-dock button.admin-dock-item { font-size: 12px; padding: 7px 8px; }
   body.world-ready #lightsAdminPanel:not([hidden]),
@@ -2061,9 +2064,16 @@ body.world-ready #mapAdminPanel:not([hidden]) {
   body.world-ready #botsAdminPanel:not([hidden]),
   body.world-ready #radioAdminPanel:not([hidden]),
   body.world-ready #interactionsAdminPanel:not([hidden]),
-  body.world-ready #mapAdminPanel:not([hidden]) {
+  body.world-ready #mapAdminPanel:not([hidden]),
+  body.world-ready #animAdminPanel:not([hidden]),
+  body.world-ready #carsAdminPanel:not([hidden]),
+  body.world-ready #speedAdminPanel:not([hidden]) {
+    top: 64px !important;
     right: 188px !important;
+    left: auto !important;
     max-width: calc(100vw - 200px) !important;
+    max-height: 70vh !important;
+    overflow: auto !important;
   }
 }
 .world-loading-text {
