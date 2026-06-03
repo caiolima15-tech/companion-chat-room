@@ -4459,6 +4459,16 @@ renderer.domElement.addEventListener("pointerup", (event) => {
   handleSceneClick(event);
 });
 function handleSceneClick(event) {
+  // Primeiro: tenta detectar clique no avatar (GLB) de outro jogador
+  const peerHit = pickPeerAvatar(event);
+  if (peerHit) {
+    if (window.__playerPopup?.open) {
+      // âncora "fake" na posição do clique
+      const fakeAnchor = { getBoundingClientRect: () => ({ left: event.clientX, top: event.clientY, width: 0, height: 0, right: event.clientX, bottom: event.clientY }) };
+      window.__playerPopup.open(peerHit, fakeAnchor);
+    }
+    return;
+  }
   const point = pointerToWorld(event);
   if (!point) return;
   if (isAdmin && movingAssetId) {
@@ -4480,6 +4490,32 @@ function handleSceneClick(event) {
     return;
   }
   moveToWorld(point);
+}
+
+function pickPeerAvatar(event) {
+  if (!playerEntities || playerEntities.size === 0) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const groups = [];
+  for (const [pid, ent] of playerEntities) {
+    if (pid === myId) continue;
+    if (ent?.group && ent.group.visible !== false) groups.push({ pid, group: ent.group });
+  }
+  if (!groups.length) return null;
+  const hits = raycaster.intersectObjects(groups.map((g) => g.group), true);
+  if (!hits.length) return null;
+  // sobe na hierarquia até bater num group de peer conhecido
+  for (const h of hits) {
+    let o = h.object;
+    while (o) {
+      const m = groups.find((g) => g.group === o);
+      if (m) return m.pid;
+      o = o.parent;
+    }
+  }
+  return null;
 }
 
 glbInput?.addEventListener("change", () => {
@@ -6368,6 +6404,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     $("profileEditBtn").hidden = !isMe;
     $("profileFollowBtn").hidden = isMe;
     $("profileDmBtn").hidden = isMe;
+    const goToBtn = $("profileGoToBtn");
+    if (goToBtn) goToBtn.hidden = isMe;
     $("profileAddPhoto").hidden = !isMe;
     $("profileBioEdit").hidden = true;
     $("profileEditActions").hidden = true;
@@ -6600,6 +6638,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     await supabase.from("direct_messages").insert({ from_user: myId, to_user: currentDmPeer, text: t });
   });
   $("profileDmBtn").onclick = () => openDm(currentProfileId);
+  $("profileGoToBtn")?.addEventListener("click", (ev) => {
+    const peerId = currentProfileId;
+    if (!peerId || peerId === myId) return;
+    const anchor = ev.currentTarget;
+    const name = $("profileName")?.textContent || "Usuário";
+    // fecha o modal de perfil e dispara o fluxo de "ir até" reaproveitando a mini-popup
+    document.getElementById("profileOverlay").hidden = true;
+    if (window.__playerPopup?.goToLocation) {
+      window.__playerPopup.goToLocation(peerId, name, anchor);
+    }
+  });
 
   async function openInbox() {
     if (!myId) return;
@@ -9785,7 +9834,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <button data-act="profile">👤 Ver perfil</button>
         <button data-act="dm">💬 Mandar DM</button>
         <button data-act="friend" ${fb.disabled ? "disabled" : ""}>${fb.text}</button>
-        <button data-act="follow-loc">📍 Ir até onde está</button>
       </div>
     `;
     document.body.appendChild(popup);
@@ -9943,4 +9991,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const uid = plate.dataset.user;
     if (uid) { e.stopPropagation(); open(uid, plate); }
   });
+
+  // Exposto para outros módulos (ex: clique no avatar 3D, botão "Ir até" no perfil)
+  window.__playerPopup = {
+    open,
+    async goToLocation(peerId, peerName, anchorEl) {
+      if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
+      close();
+      currentPeerId = peerId;
+      popup = document.createElement("div");
+      popup.className = "player-popup";
+      document.body.appendChild(popup);
+      positionPopup(anchorEl || document.body);
+      await handleFollowLocation(peerId, peerName || "Usuário");
+    },
+  };
 })();
