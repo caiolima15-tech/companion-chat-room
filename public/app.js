@@ -10897,6 +10897,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const patch = {
         label: String(editingDraft.label || "Portal").slice(0, 40),
         dest_map_id: editingDraft.dest_map_id,
+        dest_portal_id: editingDraft.dest_portal_id ? editingDraft.dest_portal_id : null,
         color: editingDraft.color || "#ff3ea5",
         pos_x: Number(editingDraft.pos_x) || 0,
         pos_y: Number(editingDraft.pos_y) || 0,
@@ -10906,6 +10907,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       };
       const { error } = await supabase.from("map_portals").update(patch).eq("id", editingId);
       if (error) { alert("Erro: " + error.message); return; }
+      // Invalidate cached portal lists for the affected maps so the selector refreshes.
+      portalsByMap.delete(currentMapId);
+      if (patch.dest_map_id) portalsByMap.delete(patch.dest_map_id);
       editingId = null; editingDraft = null;
       await load(currentMapId);
     }
