@@ -7452,7 +7452,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animation_url: "",
       loop: true,
       offset_x: 0, offset_y: 0, offset_z: 0,
-      rotation_y: 0, scale_mul: 1,
+      rotation_x: 0, rotation_y: 0, rotation_z: 0, scale_mul: 1,
+
       trigger_radius: 1.5,
       exit_radius: 2.0,
       occupancy: "multi",
