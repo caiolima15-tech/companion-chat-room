@@ -5773,6 +5773,8 @@ scene.add(botsGroup);
 const botEntities = new Map();
 window.__mapBots = new Map(); // id -> row (lightweight, for admin UI)
 let botAnimations = []; // [{id, name, url}]
+let botTemplates = []; // [{id, name, glb_url, default_scale, default_animation_url}]
+window.__botTemplates = botTemplates;
 
 const _animClipCache = new Map(); // url -> Promise<AnimationClip>
 async function loadFbxClip(url) {
