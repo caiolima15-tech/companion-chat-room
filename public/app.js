@@ -5787,9 +5787,33 @@ async function loadFbxClip(url) {
   return _animClipCache.get(url);
 }
 
+function botCharacterFromRow(row) {
+  // Prioridade: glb_url salvo na instância > template > character_slug legado
+  if (row.glb_url) {
+    return {
+      slug: `__bot_glb:${row.glb_url}`,
+      name: row.name || "Bot",
+      base_url: row.glb_url,
+      isBotTemplate: true,
+    };
+  }
+  if (row.template_id) {
+    const tpl = (botTemplates || []).find(t => t.id === row.template_id);
+    if (tpl) {
+      return {
+        slug: `__bot_tpl:${tpl.id}`,
+        name: tpl.name,
+        base_url: tpl.glb_url,
+        isBotTemplate: true,
+      };
+    }
+  }
+  return findCharacterBySlug(row.character_slug);
+}
+
 async function buildBotEntity(row) {
-  const character = findCharacterBySlug(row.character_slug);
-  if (!character) { console.warn("[bot] personagem não encontrado:", row.character_slug); return null; }
+  const character = botCharacterFromRow(row);
+  if (!character) { console.warn("[bot] sem fonte de modelo:", row); return null; }
   const { base, clips } = await loadCharacterAssets(character);
   const cloned = cloneSkeleton(base);
   cloned.traverse((o) => {
@@ -5798,8 +5822,9 @@ async function buildBotEntity(row) {
   const group = new THREE.Group();
   group.add(cloned);
   const mixer = new THREE.AnimationMixer(cloned);
-  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: row.character_slug, clips };
+  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: character.slug, clips };
 }
+
 
 async function applyBotAnimation(entity, url) {
   if (entity.animationUrl === url) return;
