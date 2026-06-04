@@ -6050,11 +6050,16 @@ function botControlRow(row) {
       </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
-  const charOpts = charactersCatalog.map(c =>
+  const tplOpts = `<option value="">— Personagem do catálogo —</option>` +
+    (botTemplates || []).map(t =>
+      `<option value="${t.id}" ${t.id === row.template_id ? "selected" : ""}>${escapeHtml(t.name)}</option>`
+    ).join("");
+  const charOpts = `<option value="">—</option>` + charactersCatalog.map(c =>
     `<option value="${escapeHtml(c.slug)}" ${c.slug === row.character_slug ? "selected" : ""}>${escapeHtml(c.name)}</option>`
   ).join("");
   const animOpts = `<option value="">— Idle embutido —</option>` +
     botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === row.animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  const usingTpl = !!row.template_id || !!row.glb_url;
   return `
     <div data-bot-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">
@@ -6062,19 +6067,24 @@ function botControlRow(row) {
         <button data-action="focus" type="button" title="Centralizar câmera" style="background:#333;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">🎯</button>
         <button data-action="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">✕</button>
       </div>
-      <label style="display:block;margin:2px 0;font-size:11px;">Personagem
-        <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
+      <label style="display:block;margin:2px 0;font-size:11px;">Template de bot
+        <select data-action="set-template" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${tplOpts}</select>
       </label>
+      ${usingTpl ? "" : `
+      <label style="display:block;margin:2px 0;font-size:11px;">Personagem (legado)
+        <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
+      </label>`}
       <label style="display:block;margin:2px 0;font-size:11px;">Animação
         <select data-key="animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${animOpts}</select>
       </label>
-      ${slider("Pos X", "x", -30, 30, 0.1, row.x ?? 0, v => Number(v).toFixed(1))}
-      ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0, v => Number(v).toFixed(2))}
-      ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0, v => Number(v).toFixed(1))}
-      ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0, v => (Number(v) * 180 / Math.PI).toFixed(0) + "°")}
-      ${slider("Escala", "scale", 0.1, 200, 0.05, row.scale ?? 1, v => Number(v).toFixed(2) + "×")}
+      ${slider("Pos X", "x", -30, 30, 0.1, row.x ?? 0)}
+      ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0)}
+      ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0)}
+      ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0)}
+      ${slider("Escala", "scale", 0.1, 200, 0.05, row.scale ?? 1)}
     </div>`;
 }
+
 
 function renderBotsAdminList() {
   const list = document.getElementById("botsAdminList");
