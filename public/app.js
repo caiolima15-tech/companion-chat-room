@@ -5993,22 +5993,34 @@ _initBots();
 // ---------- Bot CRUD UI ----------
 async function createBot() {
   if (!isAdmin) return alert("Apenas admin.");
-  const character = charactersCatalog[0];
-  if (!character) return alert("Cadastre algum personagem primeiro.");
+  // Prioriza templates (GLB próprios); cai pra catálogo de characters como fallback
+  const tpl = botTemplates[0];
+  const character = !tpl ? charactersCatalog[0] : null;
+  if (!tpl && !character) return alert("Suba um GLB em 'Templates de Bot' (ou cadastre um personagem) antes.");
   const c = controls.target;
   const payload = {
     map_id: currentMapId,
-    name: "Bot",
-    character_slug: character.slug,
+    name: tpl ? tpl.name : "Bot",
     x: c.x, y: 0, z: c.z,
-    rotation_y: 0, scale: 1,
+    rotation_y: 0,
+    scale: tpl ? (tpl.default_scale || 1) : 1,
     created_by: myId,
   };
+  if (tpl) {
+    // snapshot da config — instância fica independente do template
+    payload.template_id = tpl.id;
+    payload.glb_url = tpl.glb_url;
+    payload.animation_url = tpl.default_animation_url || null;
+    payload.character_slug = null;
+  } else {
+    payload.character_slug = character.slug;
+  }
   const { data, error } = await supabase.from("map_bots").insert(payload).select().single();
   if (error) return alert("Erro: " + error.message);
   if (data) await upsertBot(data);
   renderBotsAdminList(); window.renderLayersPanel?.();
 }
+
 
 const _botSaveTimers = new Map();
 function scheduleBotSave(id, patch) {
