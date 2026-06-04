@@ -5980,14 +5980,15 @@ const _origReloadAssets = window._noop;
   }, 1000);
 })();
 
-// initial load (defer until characters catalog ready)
+// initial load (templates podem existir mesmo sem characters)
 async function _initBots() {
-  // wait for charactersCatalog to populate
+  // espera no máximo 9s pelo charactersCatalog, mas não bloqueia se vazio (bots agora podem usar templates próprios)
   for (let i = 0; i < 30 && !charactersCatalog.length; i++) await new Promise(r => setTimeout(r, 300));
-  await reloadBotAnimations();
+  await Promise.all([reloadBotAnimations(), reloadBotTemplates()]);
   await reloadMapBots(currentMapId);
 }
 _initBots();
+
 
 // ---------- Bot CRUD UI ----------
 async function createBot() {
