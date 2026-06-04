@@ -5924,6 +5924,17 @@ async function reloadBotAnimations() {
   renderBotsAdminList();
 }
 
+async function reloadBotTemplates() {
+  const { data, error } = await supabase.from("bot_templates").select("*").order("created_at", { ascending: false });
+  if (error) { console.warn("bot_templates load", error); return; }
+  botTemplates = data || [];
+  window.__botTemplates = botTemplates;
+  renderBotTemplatesList();
+  renderBotsAdminList();
+}
+
+
+
 
 // Realtime
 supabase.channel("map-bots")
