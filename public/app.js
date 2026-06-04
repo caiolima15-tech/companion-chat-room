@@ -6114,9 +6114,32 @@ function renderBotsAdminList() {
         scheduleBotSave(id, { [k]: v });
       });
     });
-    card.querySelectorAll("select").forEach(sel => {
+    card.querySelectorAll("select[data-key]").forEach(sel => {
       sel.addEventListener("change", () => scheduleBotSave(id, { [sel.dataset.key]: sel.value || null }));
     });
+    const tplSel = card.querySelector('select[data-action="set-template"]');
+    tplSel?.addEventListener("change", async () => {
+      const tplId = tplSel.value || null;
+      if (!tplId) {
+        // volta pro modo "personagem" — limpa snapshot do template
+        await supabase.from("map_bots").update({ template_id: null, glb_url: null }).eq("id", id);
+        return;
+      }
+      const tpl = botTemplates.find(t => t.id === tplId);
+      if (!tpl) return;
+      // snapshot do template -> instância (continua independente depois)
+      const patch = {
+        template_id: tpl.id,
+        glb_url: tpl.glb_url,
+        character_slug: null,
+      };
+      // só preenche se o usuário ainda não customizou
+      const cur = botEntities.get(id)?.row || {};
+      if (!cur.animation_url && tpl.default_animation_url) patch.animation_url = tpl.default_animation_url;
+      const { error } = await supabase.from("map_bots").update(patch).eq("id", id);
+      if (error) alert("Erro: " + error.message);
+    });
+
     const nameIn = card.querySelector('input[data-key="name"]');
     nameIn?.addEventListener("change", () => scheduleBotSave(id, { name: nameIn.value }));
     card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteBot(id));
