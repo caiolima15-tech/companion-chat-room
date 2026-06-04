@@ -231,6 +231,20 @@
             </div>
             <div class="panel-body" style="padding:10px 12px;overflow-y:auto;">
               <button id="addBotBtn" type="button" style="width:100%;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;margin-bottom:8px;">+ Adicionar bot no centro da câmera</button>
+              <details style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;" open>
+                <summary style="cursor:pointer;padding:6px 8px;background:rgba(255,255,255,0.04);font-weight:600;">🧬 Templates de Bot (GLB)</summary>
+                <div style="padding:8px;">
+                  <div style="display:flex;gap:6px;margin-bottom:6px;">
+                    <input id="botTplName" type="text" placeholder="Nome do bot" maxlength="40" style="flex:1;padding:6px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;">
+                  </div>
+                  <label class="file-picker" style="display:block;text-align:center;margin-bottom:6px;">
+                    <input id="botTplFile" type="file" accept=".glb,.gltf">
+                    Subir GLB do bot
+                  </label>
+                  <div id="botTplStatus" style="font-size:11px;color:#9aa;min-height:14px;margin-bottom:6px;"></div>
+                  <div id="botTplList" style="display:flex;flex-direction:column;gap:4px;"></div>
+                </div>
+              </details>
               <details style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;">
                 <summary style="cursor:pointer;padding:6px 8px;background:rgba(255,255,255,0.04);font-weight:600;">📚 Biblioteca de animações FBX</summary>
                 <div style="padding:8px;">
@@ -246,6 +260,7 @@
                 </div>
               </details>
               <div id="botsAdminList" style="display:flex;flex-direction:column;gap:8px;"></div>
+
             </div>
           </div>
 
