@@ -5858,14 +5858,19 @@ function applyBotTransform(entity, row) {
   entity.group.scale.setScalar(s);
 }
 
+function _botSourceKey(row) {
+  return row.glb_url || (row.template_id ? `tpl:${row.template_id}` : `char:${row.character_slug || ""}`);
+}
+
 async function upsertBot(row) {
   let entity = botEntities.get(row.id);
-  if (entity && entity.characterSlug !== row.character_slug) {
-    // mudou de personagem — rebuild
+  if (entity && entity._sourceKey !== _botSourceKey(row)) {
+    // mudou de fonte de modelo — rebuild
     botsGroup.remove(entity.group);
     botEntities.delete(row.id);
     entity = null;
   }
+
   if (!entity) {
     if (botEntities.has(`__loading_${row.id}`)) return;
     botEntities.set(`__loading_${row.id}`, true);
