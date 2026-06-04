@@ -5949,6 +5949,10 @@ supabase.channel("map-bots")
 supabase.channel("bot-anims")
   .on("postgres_changes", { event: "*", schema: "public", table: "bot_animations" }, () => reloadBotAnimations())
   .subscribe();
+supabase.channel("bot-templates")
+  .on("postgres_changes", { event: "*", schema: "public", table: "bot_templates" }, () => reloadBotTemplates())
+  .subscribe();
+
 
 // Update mixers in animate loop (hook via patch)
 const _origAnimate = animate;
