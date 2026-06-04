@@ -5773,6 +5773,8 @@ scene.add(botsGroup);
 const botEntities = new Map();
 window.__mapBots = new Map(); // id -> row (lightweight, for admin UI)
 let botAnimations = []; // [{id, name, url}]
+let botTemplates = []; // [{id, name, glb_url, default_scale, default_animation_url}]
+window.__botTemplates = botTemplates;
 
 const _animClipCache = new Map(); // url -> Promise<AnimationClip>
 async function loadFbxClip(url) {
@@ -5787,9 +5789,33 @@ async function loadFbxClip(url) {
   return _animClipCache.get(url);
 }
 
+function botCharacterFromRow(row) {
+  // Prioridade: glb_url salvo na instância > template > character_slug legado
+  if (row.glb_url) {
+    return {
+      slug: `__bot_glb:${row.glb_url}`,
+      name: row.name || "Bot",
+      base_url: row.glb_url,
+      isBotTemplate: true,
+    };
+  }
+  if (row.template_id) {
+    const tpl = (botTemplates || []).find(t => t.id === row.template_id);
+    if (tpl) {
+      return {
+        slug: `__bot_tpl:${tpl.id}`,
+        name: tpl.name,
+        base_url: tpl.glb_url,
+        isBotTemplate: true,
+      };
+    }
+  }
+  return findCharacterBySlug(row.character_slug);
+}
+
 async function buildBotEntity(row) {
-  const character = findCharacterBySlug(row.character_slug);
-  if (!character) { console.warn("[bot] personagem não encontrado:", row.character_slug); return null; }
+  const character = botCharacterFromRow(row);
+  if (!character) { console.warn("[bot] sem fonte de modelo:", row); return null; }
   const { base, clips } = await loadCharacterAssets(character);
   const cloned = cloneSkeleton(base);
   cloned.traverse((o) => {
@@ -5798,8 +5824,9 @@ async function buildBotEntity(row) {
   const group = new THREE.Group();
   group.add(cloned);
   const mixer = new THREE.AnimationMixer(cloned);
-  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: row.character_slug, clips };
+  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: character.slug, clips };
 }
+
 
 async function applyBotAnimation(entity, url) {
   if (entity.animationUrl === url) return;
@@ -5831,20 +5858,26 @@ function applyBotTransform(entity, row) {
   entity.group.scale.setScalar(s);
 }
 
+function _botSourceKey(row) {
+  return row.glb_url || (row.template_id ? `tpl:${row.template_id}` : `char:${row.character_slug || ""}`);
+}
+
 async function upsertBot(row) {
   let entity = botEntities.get(row.id);
-  if (entity && entity.characterSlug !== row.character_slug) {
-    // mudou de personagem — rebuild
+  if (entity && entity._sourceKey !== _botSourceKey(row)) {
+    // mudou de fonte de modelo — rebuild
     botsGroup.remove(entity.group);
     botEntities.delete(row.id);
     entity = null;
   }
+
   if (!entity) {
     if (botEntities.has(`__loading_${row.id}`)) return;
     botEntities.set(`__loading_${row.id}`, true);
     entity = await buildBotEntity(row);
     botEntities.delete(`__loading_${row.id}`);
     if (!entity) return;
+    entity._sourceKey = _botSourceKey(row);
     botEntities.set(row.id, entity);
     botsGroup.add(entity.group);
   }
@@ -5853,6 +5886,7 @@ async function upsertBot(row) {
   await applyBotAnimation(entity, row.animation_url || null);
   try { window.__mapBots.set(row.id, row); } catch {}
 }
+
 
 function removeBot(id) {
   const e = botEntities.get(id);
@@ -5890,6 +5924,17 @@ async function reloadBotAnimations() {
   renderBotsAdminList();
 }
 
+async function reloadBotTemplates() {
+  const { data, error } = await supabase.from("bot_templates").select("*").order("created_at", { ascending: false });
+  if (error) { console.warn("bot_templates load", error); return; }
+  botTemplates = data || [];
+  window.__botTemplates = botTemplates;
+  renderBotTemplatesList();
+  renderBotsAdminList();
+}
+
+
+
 
 // Realtime
 supabase.channel("map-bots")
@@ -5904,6 +5949,10 @@ supabase.channel("map-bots")
 supabase.channel("bot-anims")
   .on("postgres_changes", { event: "*", schema: "public", table: "bot_animations" }, () => reloadBotAnimations())
   .subscribe();
+supabase.channel("bot-templates")
+  .on("postgres_changes", { event: "*", schema: "public", table: "bot_templates" }, () => reloadBotTemplates())
+  .subscribe();
+
 
 // Update mixers in animate loop (hook via patch)
 const _origAnimate = animate;
@@ -5931,34 +5980,47 @@ const _origReloadAssets = window._noop;
   }, 1000);
 })();
 
-// initial load (defer until characters catalog ready)
+// initial load (templates podem existir mesmo sem characters)
 async function _initBots() {
-  // wait for charactersCatalog to populate
+  // espera no máximo 9s pelo charactersCatalog, mas não bloqueia se vazio (bots agora podem usar templates próprios)
   for (let i = 0; i < 30 && !charactersCatalog.length; i++) await new Promise(r => setTimeout(r, 300));
-  await reloadBotAnimations();
+  await Promise.all([reloadBotAnimations(), reloadBotTemplates()]);
   await reloadMapBots(currentMapId);
 }
 _initBots();
 
+
 // ---------- Bot CRUD UI ----------
 async function createBot() {
   if (!isAdmin) return alert("Apenas admin.");
-  const character = charactersCatalog[0];
-  if (!character) return alert("Cadastre algum personagem primeiro.");
+  // Prioriza templates (GLB próprios); cai pra catálogo de characters como fallback
+  const tpl = botTemplates[0];
+  const character = !tpl ? charactersCatalog[0] : null;
+  if (!tpl && !character) return alert("Suba um GLB em 'Templates de Bot' (ou cadastre um personagem) antes.");
   const c = controls.target;
   const payload = {
     map_id: currentMapId,
-    name: "Bot",
-    character_slug: character.slug,
+    name: tpl ? tpl.name : "Bot",
     x: c.x, y: 0, z: c.z,
-    rotation_y: 0, scale: 1,
+    rotation_y: 0,
+    scale: tpl ? (tpl.default_scale || 1) : 1,
     created_by: myId,
   };
+  if (tpl) {
+    // snapshot da config — instância fica independente do template
+    payload.template_id = tpl.id;
+    payload.glb_url = tpl.glb_url;
+    payload.animation_url = tpl.default_animation_url || null;
+    payload.character_slug = null;
+  } else {
+    payload.character_slug = character.slug;
+  }
   const { data, error } = await supabase.from("map_bots").insert(payload).select().single();
   if (error) return alert("Erro: " + error.message);
   if (data) await upsertBot(data);
   renderBotsAdminList(); window.renderLayersPanel?.();
 }
+
 
 const _botSaveTimers = new Map();
 function scheduleBotSave(id, patch) {
@@ -5988,11 +6050,16 @@ function botControlRow(row) {
       </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
-  const charOpts = charactersCatalog.map(c =>
+  const tplOpts = `<option value="">— Personagem do catálogo —</option>` +
+    (botTemplates || []).map(t =>
+      `<option value="${t.id}" ${t.id === row.template_id ? "selected" : ""}>${escapeHtml(t.name)}</option>`
+    ).join("");
+  const charOpts = `<option value="">—</option>` + charactersCatalog.map(c =>
     `<option value="${escapeHtml(c.slug)}" ${c.slug === row.character_slug ? "selected" : ""}>${escapeHtml(c.name)}</option>`
   ).join("");
   const animOpts = `<option value="">— Idle embutido —</option>` +
     botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === row.animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  const usingTpl = !!row.template_id || !!row.glb_url;
   return `
     <div data-bot-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:6px;">
@@ -6000,19 +6067,24 @@ function botControlRow(row) {
         <button data-action="focus" type="button" title="Centralizar câmera" style="background:#333;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">🎯</button>
         <button data-action="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;cursor:pointer;">✕</button>
       </div>
-      <label style="display:block;margin:2px 0;font-size:11px;">Personagem
-        <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
+      <label style="display:block;margin:2px 0;font-size:11px;">Template de bot
+        <select data-action="set-template" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${tplOpts}</select>
       </label>
+      ${usingTpl ? "" : `
+      <label style="display:block;margin:2px 0;font-size:11px;">Personagem (legado)
+        <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
+      </label>`}
       <label style="display:block;margin:2px 0;font-size:11px;">Animação
         <select data-key="animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${animOpts}</select>
       </label>
-      ${slider("Pos X", "x", -30, 30, 0.1, row.x ?? 0, v => Number(v).toFixed(1))}
-      ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0, v => Number(v).toFixed(2))}
-      ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0, v => Number(v).toFixed(1))}
-      ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0, v => (Number(v) * 180 / Math.PI).toFixed(0) + "°")}
-      ${slider("Escala", "scale", 0.1, 200, 0.05, row.scale ?? 1, v => Number(v).toFixed(2) + "×")}
+      ${slider("Pos X", "x", -30, 30, 0.1, row.x ?? 0)}
+      ${slider("Pos Y", "y", -2, 10, 0.05, row.y ?? 0)}
+      ${slider("Pos Z", "z", -30, 30, 0.1, row.z ?? 0)}
+      ${slider("Rotação Y", "rotation_y", -3.14159, 3.14159, 0.05, row.rotation_y ?? 0)}
+      ${slider("Escala", "scale", 0.1, 200, 0.05, row.scale ?? 1)}
     </div>`;
 }
+
 
 function renderBotsAdminList() {
   const list = document.getElementById("botsAdminList");
@@ -6042,9 +6114,32 @@ function renderBotsAdminList() {
         scheduleBotSave(id, { [k]: v });
       });
     });
-    card.querySelectorAll("select").forEach(sel => {
+    card.querySelectorAll("select[data-key]").forEach(sel => {
       sel.addEventListener("change", () => scheduleBotSave(id, { [sel.dataset.key]: sel.value || null }));
     });
+    const tplSel = card.querySelector('select[data-action="set-template"]');
+    tplSel?.addEventListener("change", async () => {
+      const tplId = tplSel.value || null;
+      if (!tplId) {
+        // volta pro modo "personagem" — limpa snapshot do template
+        await supabase.from("map_bots").update({ template_id: null, glb_url: null }).eq("id", id);
+        return;
+      }
+      const tpl = botTemplates.find(t => t.id === tplId);
+      if (!tpl) return;
+      // snapshot do template -> instância (continua independente depois)
+      const patch = {
+        template_id: tpl.id,
+        glb_url: tpl.glb_url,
+        character_slug: null,
+      };
+      // só preenche se o usuário ainda não customizou
+      const cur = botEntities.get(id)?.row || {};
+      if (!cur.animation_url && tpl.default_animation_url) patch.animation_url = tpl.default_animation_url;
+      const { error } = await supabase.from("map_bots").update(patch).eq("id", id);
+      if (error) alert("Erro: " + error.message);
+    });
+
     const nameIn = card.querySelector('input[data-key="name"]');
     nameIn?.addEventListener("change", () => scheduleBotSave(id, { name: nameIn.value }));
     card.querySelector('[data-action="del"]')?.addEventListener("click", () => deleteBot(id));
@@ -6093,6 +6188,68 @@ function renderBotAnimList() {
   });
 }
 
+// ---------- Bot Templates UI (catálogo reutilizável de GLBs) ----------
+async function uploadBotTemplate(file, name) {
+  if (!isAdmin) { alert("Apenas admin."); return null; }
+  const status = document.getElementById("botTplStatus");
+  if (status) status.textContent = "Subindo " + file.name + "...";
+  const path = `bot-templates/${Date.now()}-${sanitize(file.name)}`;
+  const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
+  const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
+  const tplName = name || file.name.replace(/\.(glb|gltf)$/i, "");
+  const { data: row, error: e2 } = await supabase.from("bot_templates").insert({
+    name: tplName, glb_url: data.publicUrl, created_by: myId,
+  }).select().single();
+  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
+  if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
+  await reloadBotTemplates();
+  return row;
+}
+window.uploadBotTemplate = uploadBotTemplate;
+
+function renderBotTemplatesList() {
+  const el = document.getElementById("botTplList");
+  if (!el) return;
+  if (!botTemplates.length) {
+    el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem templates. Suba um GLB acima.</div>`;
+    return;
+  }
+  el.innerHTML = botTemplates.map(t => `
+    <div data-tpl-id="${t.id}" style="display:flex;flex-direction:column;gap:4px;padding:6px;background:rgba(255,255,255,0.04);border-radius:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <input data-key="name" type="text" value="${escapeHtml(t.name)}" maxlength="40" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:11px;font-weight:600;">
+        <button data-act="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;">✕</button>
+      </div>
+      <label style="font-size:10px;color:#9aa;">Escala padrão
+        <input data-key="default_scale" type="number" min="0.1" max="10" step="0.05" value="${t.default_scale ?? 1}" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">
+      </label>
+      <label style="font-size:10px;color:#9aa;">Animação padrão
+        <select data-key="default_animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">
+          <option value="">— Idle embutido —</option>
+          ${botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === t.default_animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+        </select>
+      </label>
+    </div>`).join("");
+  el.querySelectorAll("[data-tpl-id]").forEach(card => {
+    const id = card.dataset.tplId;
+    card.querySelectorAll("[data-key]").forEach(inp => {
+      inp.addEventListener("change", async () => {
+        const k = inp.dataset.key;
+        const v = inp.type === "number" ? parseFloat(inp.value) : (inp.value || null);
+        const { error } = await supabase.from("bot_templates").update({ [k]: v }).eq("id", id);
+        if (error) alert(error.message);
+      });
+    });
+    card.querySelector('[data-act="del"]')?.addEventListener("click", async () => {
+      if (!confirm("Apagar template? Bots já criados a partir dele continuam funcionando (a config foi snapshot).")) return;
+      const { error } = await supabase.from("bot_templates").delete().eq("id", id);
+      if (error) return alert(error.message);
+      await reloadBotTemplates();
+    });
+  });
+}
+
 document.getElementById("addBotBtn")?.addEventListener("click", createBot);
 document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   const f = e.target.files?.[0]; if (!f) return;
@@ -6101,6 +6258,15 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   e.target.value = "";
   if (nameInp) nameInp.value = "";
 });
+document.getElementById("botTplFile")?.addEventListener("change", (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  const nameInp = document.getElementById("botTplName");
+  uploadBotTemplate(f, nameInp?.value?.trim());
+  e.target.value = "";
+  if (nameInp) nameInp.value = "";
+});
+
+
 
 // ============================================================
 // ===== Floating panels: draggable + minimizable + closable ==

@@ -74,6 +74,42 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_animation_url: string | null
+          default_scale: number
+          glb_url: string
+          id: string
+          name: string
+          thumbnail_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_animation_url?: string | null
+          default_scale?: number
+          glb_url: string
+          id?: string
+          name?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_animation_url?: string | null
+          default_scale?: number
+          glb_url?: string
+          id?: string
+          name?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cars_catalog: {
         Row: {
           acceleration: number
@@ -559,14 +595,16 @@ export type Database = {
       map_bots: {
         Row: {
           animation_url: string | null
-          character_slug: string
+          character_slug: string | null
           created_at: string
           created_by: string | null
+          glb_url: string | null
           id: string
           map_id: string
           name: string
           rotation_y: number
           scale: number
+          template_id: string | null
           updated_at: string
           x: number
           y: number
@@ -574,14 +612,16 @@ export type Database = {
         }
         Insert: {
           animation_url?: string | null
-          character_slug: string
+          character_slug?: string | null
           created_at?: string
           created_by?: string | null
+          glb_url?: string | null
           id?: string
           map_id: string
           name?: string
           rotation_y?: number
           scale?: number
+          template_id?: string | null
           updated_at?: string
           x?: number
           y?: number
@@ -589,20 +629,30 @@ export type Database = {
         }
         Update: {
           animation_url?: string | null
-          character_slug?: string
+          character_slug?: string | null
           created_at?: string
           created_by?: string | null
+          glb_url?: string | null
           id?: string
           map_id?: string
           name?: string
           rotation_y?: number
           scale?: number
+          template_id?: string | null
           updated_at?: string
           x?: number
           y?: number
           z?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "map_bots_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "bot_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       map_cars: {
         Row: {
