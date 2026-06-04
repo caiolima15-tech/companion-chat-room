@@ -5877,6 +5877,7 @@ async function upsertBot(row) {
     entity = await buildBotEntity(row);
     botEntities.delete(`__loading_${row.id}`);
     if (!entity) return;
+    entity._sourceKey = _botSourceKey(row);
     botEntities.set(row.id, entity);
     botsGroup.add(entity.group);
   }
@@ -5885,6 +5886,7 @@ async function upsertBot(row) {
   await applyBotAnimation(entity, row.animation_url || null);
   try { window.__mapBots.set(row.id, row); } catch {}
 }
+
 
 function removeBot(id) {
   const e = botEntities.get(id);
