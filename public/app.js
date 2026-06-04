@@ -6188,6 +6188,68 @@ function renderBotAnimList() {
   });
 }
 
+// ---------- Bot Templates UI (catálogo reutilizável de GLBs) ----------
+async function uploadBotTemplate(file, name) {
+  if (!isAdmin) { alert("Apenas admin."); return null; }
+  const status = document.getElementById("botTplStatus");
+  if (status) status.textContent = "Subindo " + file.name + "...";
+  const path = `bot-templates/${Date.now()}-${sanitize(file.name)}`;
+  const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
+  const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
+  const tplName = name || file.name.replace(/\.(glb|gltf)$/i, "");
+  const { data: row, error: e2 } = await supabase.from("bot_templates").insert({
+    name: tplName, glb_url: data.publicUrl, created_by: myId,
+  }).select().single();
+  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
+  if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
+  await reloadBotTemplates();
+  return row;
+}
+window.uploadBotTemplate = uploadBotTemplate;
+
+function renderBotTemplatesList() {
+  const el = document.getElementById("botTplList");
+  if (!el) return;
+  if (!botTemplates.length) {
+    el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem templates. Suba um GLB acima.</div>`;
+    return;
+  }
+  el.innerHTML = botTemplates.map(t => `
+    <div data-tpl-id="${t.id}" style="display:flex;flex-direction:column;gap:4px;padding:6px;background:rgba(255,255,255,0.04);border-radius:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+        <input data-key="name" type="text" value="${escapeHtml(t.name)}" maxlength="40" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:11px;font-weight:600;">
+        <button data-act="del" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;">✕</button>
+      </div>
+      <label style="font-size:10px;color:#9aa;">Escala padrão
+        <input data-key="default_scale" type="number" min="0.1" max="10" step="0.05" value="${t.default_scale ?? 1}" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">
+      </label>
+      <label style="font-size:10px;color:#9aa;">Animação padrão
+        <select data-key="default_animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">
+          <option value="">— Idle embutido —</option>
+          ${botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === t.default_animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+        </select>
+      </label>
+    </div>`).join("");
+  el.querySelectorAll("[data-tpl-id]").forEach(card => {
+    const id = card.dataset.tplId;
+    card.querySelectorAll("[data-key]").forEach(inp => {
+      inp.addEventListener("change", async () => {
+        const k = inp.dataset.key;
+        const v = inp.type === "number" ? parseFloat(inp.value) : (inp.value || null);
+        const { error } = await supabase.from("bot_templates").update({ [k]: v }).eq("id", id);
+        if (error) alert(error.message);
+      });
+    });
+    card.querySelector('[data-act="del"]')?.addEventListener("click", async () => {
+      if (!confirm("Apagar template? Bots já criados a partir dele continuam funcionando (a config foi snapshot).")) return;
+      const { error } = await supabase.from("bot_templates").delete().eq("id", id);
+      if (error) return alert(error.message);
+      await reloadBotTemplates();
+    });
+  });
+}
+
 document.getElementById("addBotBtn")?.addEventListener("click", createBot);
 document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   const f = e.target.files?.[0]; if (!f) return;
@@ -6196,6 +6258,15 @@ document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
   e.target.value = "";
   if (nameInp) nameInp.value = "";
 });
+document.getElementById("botTplFile")?.addEventListener("change", (e) => {
+  const f = e.target.files?.[0]; if (!f) return;
+  const nameInp = document.getElementById("botTplName");
+  uploadBotTemplate(f, nameInp?.value?.trim());
+  e.target.value = "";
+  if (nameInp) nameInp.value = "";
+});
+
+
 
 // ============================================================
 // ===== Floating panels: draggable + minimizable + closable ==
