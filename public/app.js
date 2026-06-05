@@ -4229,6 +4229,8 @@ function updatePlayerAnimation(delta) {
         entity.mixer.update(delta);
       }
     }
+    // Aplica também aos jogadores remotos para que vejam as mesmas poses configuradas no admin.
+    if (!culled) applyLocalAnimTuning(entity, delta);
     if (entity.loadingFx && !culled) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
