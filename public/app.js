@@ -7221,9 +7221,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   volSlider?.addEventListener("input", applyVolumeFromSlider);
   volSlider?.addEventListener("change", applyVolumeFromSlider);
-  // Impede que toques no slider iniciem o pan/movimento do mundo,
-  // sem matar o gesto nativo do range (apenas pointerdown).
+  // Impede que toques no slider iniciem o pan/movimento do mundo.
   volSlider?.addEventListener("pointerdown", (e) => e.stopPropagation());
+  volSlider?.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
+  volSlider?.addEventListener("touchmove", (e) => e.stopPropagation(), { passive: true });
+
+  // Fallback robusto para mobile: alguns navegadores móveis não disparam "input"
+  // de forma confiável em <input type=range> dentro de HUDs fixas. Implementamos
+  // arrasto manual via pointer events com captura do ponteiro.
+  if (volSlider) {
+    let pid = null;
+    const updateFromX = (clientX) => {
+      const r = volSlider.getBoundingClientRect();
+      const pct = Math.min(1, Math.max(0, (clientX - r.left) / Math.max(1, r.width)));
+      volSlider.value = String(Math.round(pct * 100));
+      applyVolumeFromSlider();
+    };
+    volSlider.addEventListener("pointerdown", (e) => {
+      pid = e.pointerId;
+      try { volSlider.setPointerCapture(pid); } catch {}
+      updateFromX(e.clientX);
+    });
+    volSlider.addEventListener("pointermove", (e) => {
+      if (pid !== e.pointerId) return;
+      updateFromX(e.clientX);
+    });
+    const endPtr = (e) => {
+      if (pid !== e.pointerId) return;
+      try { volSlider.releasePointerCapture(pid); } catch {}
+      pid = null;
+    };
+    volSlider.addEventListener("pointerup", endPtr);
+    volSlider.addEventListener("pointercancel", endPtr);
+  }
+
 
   function showHud(st) {
     activeStation = st;
