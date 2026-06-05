@@ -7178,25 +7178,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let inRoom = false;
 
   const RADIO_DEFAULT_VOLUME = 0.02;
+  const RADIO_MAX_VOLUME = 0.20; // cap absoluto: 20% do volume real
   const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260603";
-  // Curva exponencial: slider 0-100 -> volume não-linear (mais resolução nos graves)
+  // Slider 0-100 -> volume real (0 .. RADIO_MAX_VOLUME), curva quadrática para resolução nos graves.
   const sliderToVol = (s) => {
     const x = Math.min(1, Math.max(0, (Number(s) || 0) / 100));
-    return x * x; // quadrática
+    return x * x * RADIO_MAX_VOLUME;
   };
-  const volToSlider = (v) => Math.round(Math.sqrt(Math.min(1, Math.max(0, v))) * 100);
+  const volToSlider = (v) => {
+    const x = Math.min(1, Math.max(0, (Number(v) || 0) / RADIO_MAX_VOLUME));
+    return Math.round(Math.sqrt(x) * 100);
+  };
 
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
-  let initialVolume = Number.isFinite(savedVol) ? Math.min(1, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
+  let initialVolume = Number.isFinite(savedVol) ? Math.min(RADIO_MAX_VOLUME, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
   if (localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
-    // Migração: rádio inicia no mínimo; usuário aumenta se quiser.
     initialVolume = RADIO_DEFAULT_VOLUME;
     localStorage.setItem("radio.volume", String(initialVolume));
     localStorage.setItem(RADIO_VOLUME_REDUCED_KEY, "1");
   }
-  audio.volume = initialVolume;
+  audio.volume = Math.min(RADIO_MAX_VOLUME, initialVolume);
   audio.muted = savedMuted;
   if (volSlider) volSlider.value = String(volToSlider(audio.volume));
   syncMuteUi();
@@ -7221,38 +7224,49 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   volSlider?.addEventListener("input", applyVolumeFromSlider);
   volSlider?.addEventListener("change", applyVolumeFromSlider);
-  // Impede que toques no slider iniciem o pan/movimento do mundo.
-  volSlider?.addEventListener("pointerdown", (e) => e.stopPropagation());
-  volSlider?.addEventListener("touchstart", (e) => e.stopPropagation(), { passive: true });
-  volSlider?.addEventListener("touchmove", (e) => e.stopPropagation(), { passive: true });
 
-  // Fallback robusto para mobile: alguns navegadores móveis não disparam "input"
-  // de forma confiável em <input type=range> dentro de HUDs fixas. Implementamos
-  // arrasto manual via pointer events com captura do ponteiro.
+  // Mobile-safe drag: trackeia pointermove/touchmove no documento durante o gesto.
+  // Algumas WebViews móveis não disparam pointermove no próprio <input range>
+  // depois que o toque inicia, mesmo com setPointerCapture.
   if (volSlider) {
-    let pid = null;
+    let dragging = false;
     const updateFromX = (clientX) => {
       const r = volSlider.getBoundingClientRect();
       const pct = Math.min(1, Math.max(0, (clientX - r.left) / Math.max(1, r.width)));
       volSlider.value = String(Math.round(pct * 100));
       applyVolumeFromSlider();
     };
-    volSlider.addEventListener("pointerdown", (e) => {
-      pid = e.pointerId;
-      try { volSlider.setPointerCapture(pid); } catch {}
-      updateFromX(e.clientX);
-    });
-    volSlider.addEventListener("pointermove", (e) => {
-      if (pid !== e.pointerId) return;
-      updateFromX(e.clientX);
-    });
-    const endPtr = (e) => {
-      if (pid !== e.pointerId) return;
-      try { volSlider.releasePointerCapture(pid); } catch {}
-      pid = null;
+    const onMove = (e) => {
+      if (!dragging) return;
+      const x = e.touches ? e.touches[0]?.clientX : e.clientX;
+      if (typeof x === "number") {
+        if (e.cancelable) e.preventDefault();
+        updateFromX(x);
+      }
     };
-    volSlider.addEventListener("pointerup", endPtr);
-    volSlider.addEventListener("pointercancel", endPtr);
+    const onEnd = () => {
+      dragging = false;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onEnd);
+      document.removeEventListener("pointercancel", onEnd);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+    const onStart = (e) => {
+      e.stopPropagation();
+      dragging = true;
+      const x = e.touches ? e.touches[0]?.clientX : e.clientX;
+      if (typeof x === "number") updateFromX(x);
+      document.addEventListener("pointermove", onMove, { passive: false });
+      document.addEventListener("pointerup", onEnd);
+      document.addEventListener("pointercancel", onEnd);
+      document.addEventListener("touchmove", onMove, { passive: false });
+      document.addEventListener("touchend", onEnd);
+      document.addEventListener("touchcancel", onEnd);
+    };
+    volSlider.addEventListener("pointerdown", onStart);
+    volSlider.addEventListener("touchstart", onStart, { passive: false });
   }
 
 
