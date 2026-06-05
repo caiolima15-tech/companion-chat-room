@@ -1895,7 +1895,7 @@ button[data-variant="primary"] {
   opacity: 1;
   accent-color: #a78bfa;
   height: 22px;
-  touch-action: manipulation;
+  touch-action: none;
   cursor: pointer;
 }
 #radioHud #radioVolumeSlider::-webkit-slider-thumb {
@@ -1903,7 +1903,8 @@ button[data-variant="primary"] {
 }
 @media (max-width: 720px) {
   #radioHud { top: 8px; padding: 6px 10px; font-size: 11px; }
-  #radioHud #radioVolumeSlider { width: 140px; height: 26px; }
+  #radioHud #radioVolumeSlider { width: 160px; height: 32px; touch-action: none; }
+  #radioHud #radioVolumeSlider::-webkit-slider-thumb { width: 26px; height: 26px; }
 }
 
 
