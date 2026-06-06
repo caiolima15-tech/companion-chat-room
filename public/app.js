@@ -291,7 +291,7 @@ function loadAnimTunings() {
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     out[n].offY = kp.offY || 0;
     out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = kp.rotX || 0;
+    out[n].rotX = kp.rotX || 90;
   }
   for (const n of ["kickWeak", "kickStrong"]) {
     out[n].rotX = kp.rotX || 0;
@@ -2311,7 +2311,7 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const isKick = true;
+          const isKick = slot === "kickWeak" || slot === "kickStrong";
           const retarg =
             retargetClipToBones(clip, targetBones, { stripRootPosition: isKick, stripHipRotation: isKick }) ||
             clip.clone();
