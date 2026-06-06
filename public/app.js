@@ -286,15 +286,22 @@ function loadAnimTunings() {
       localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
     }
   } catch {}
-  // Migração: usa o antigo kickPose como ponto de partida.
+  // Migração legacy (kick pose): só traz offsets de posição para as locomoções.
+  // NUNCA mais injeta rotX ~90° (ou -90°) nas animações de idle/walk/run/dance/wave.
+  // O rotX de 90° do kick era compensação específica de chute + retarget; aplicar
+  // nas locomoções fazia todo mundo deitar para clientes remotos (via animation_tunings).
   const kp = _legacyKickPose;
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     out[n].offY = kp.offY || 0;
     out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = kp.rotX || 0;
+    out[n].rotX = 0; // força pose base limpa (CHARACTER_DEFAULT_ROT_X cuida do resto)
   }
   for (const n of ["kickWeak", "kickStrong"]) {
-    out[n].rotX = kp.rotX || 0;
+    out[n].rotX = 0; // o retarget já faz stripHipRotation; tuning pequeno se quiser no admin
+  }
+  // Heal defensivo logo após popular (caso localStorage antigo ou migration legada tenha poluído).
+  for (const n of ["idle", "walk", "run", "dance", "wave"]) {
+    if (Math.abs(out[n].rotX) > 30) out[n].rotX = 0;
   }
   return out;
 }
@@ -351,11 +358,11 @@ async function loadRemoteAnimTunings() {
       t.offZ = row.off_z || 0;
       t.rotX = row.rot_x || 0;
       t.rotY = row.rot_y || 0;
-      t.rotZ = row.rot_z || 0;
+         t.rotZ = row.rot_z || 0;
       // Heal: se dados legados poluíram as locomoções com ~90°, zera aqui também.
       if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
         t.rotX = 0;
-      }
+      
     }
     try {
       localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
@@ -382,7 +389,11 @@ function subscribeAnimTunings() {
           t.offZ = row.off_z || 0;
           t.rotX = row.rot_x || 0;
           t.rotY = row.rot_y || 0;
-          t.rotZ = row.rot_z || 0;
+           t.rotZ = row.rot_z || 0;
+          // Heal em tempo real: se um valor ruim (legado) chegar via broadcast, corrige localmente.
+          if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
+            t.rotX = 0;
+          }
         }
         try {
           localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
@@ -417,7 +428,13 @@ function applyLocalAnimTuning(entity, delta) {
   const targetY = tn ? tn.offY || 0 : 0;
   const targetZ = tn ? tn.offZ || 0 : 0;
   const d = Math.PI / 180;
-  const targetRx = CHARACTER_DEFAULT_ROT_X + (tn ? tn.rotX || 0 : 0) * d;
+  let rotX = tn ? tn.rotX || 0 : 0;
+  // Heal de dados legados poluídos (migration do kickPose injetou rotX:90 nas locomoções).
+  // Tunings artísticos devem ser pequenos (<30°). Qualquer coisa maior é erro de dados compartilhados.
+  if (name && ["idle", "walk", "run", "dance", "wave"].includes(name) && Math.abs(rotX) > 30) {
+    rotX = 0;
+  }
+  const targetRx = CHARACTER_DEFAULT_ROT_X + rotX * d;
   const targetRy = (tn ? tn.rotY || 0 : 0) * d;
   const targetRz = (tn ? tn.rotZ || 0 : 0) * d;
   const t = Math.min(1, (delta || 0.016) * 12);
@@ -2315,7 +2332,7 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const isKick = true;
+          const isKick = slot === "kickWeak" || slot === "kickStrong";
           const retarg =
             retargetClipToBones(clip, targetBones, { stripRootPosition: isKick, stripHipRotation: isKick }) ||
             clip.clone();
@@ -2384,11 +2401,18 @@ async function applyCharacter(entity, slug) {
       entity.loadingSpinner.remove();
       entity.loadingSpinner = null;
     }
-    entity.character = cloned;
+     entity.character = cloned;
     entity.group.add(cloned);
-    // Aplica rotação padrão (0 X) a todo personagem; debug sobrepõe pro "me".
+    // Sempre começa com a rotação base correta (0 X). Isso garante que o bind pose
+    // do skinned mesh está "em pé" para TODOS (local e remoto) antes de qualquer
+    // lerp de applyLocalAnimTuning ou poseDebug.
+    // applyPoseDebugTo (só pro "me") e o sistema de tunings aplicam correções ADITIVAS
+    // pequenas em cima disso. O bug anterior acontecia porque a lerp via currentAction="idle"
+    // aplicava tn.rotX ~90° vindo do DB (animation_tunings) em todo frame para remotos.
+    cloned.rotation.x = CHARACTER_DEFAULT_ROT_X;
     if (entity.player?.id && entity.player.id === myId) {
       applyPoseDebugTo(cloned);
+    }
     } else {
       cloned.rotation.x = CHARACTER_DEFAULT_ROT_X;
     }
