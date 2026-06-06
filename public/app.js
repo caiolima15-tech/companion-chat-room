@@ -8110,6 +8110,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
 
     }
+    // Preview ao vivo do item entregue pelo garçom
+    if (editingDraft.kind === "bot_service") {
+      try { window.__setItemEditPreview?.(editingDraft); } catch {}
+    }
   });
 
 
