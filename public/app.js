@@ -291,7 +291,7 @@ function loadAnimTunings() {
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     out[n].offY = kp.offY || 0;
     out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = kp.rotX || 0;
+    out[n].rotX = kp.rotX || 90;
   }
   for (const n of ["kickWeak", "kickStrong"]) {
     out[n].rotX = kp.rotX || 0;
