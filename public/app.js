@@ -207,7 +207,7 @@ const characterCache = new Map(); // slug -> Promise<{base, clips}>
 const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
 const EMOTE_SLOTS = new Set(["dance", "wave"]);
 // Rotação padrão aplicada a todo personagem GLB (Mixamo vem deitado no eixo X).
-const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
+const CHARACTER_DEFAULT_ROT_X = 0;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 
