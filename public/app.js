@@ -8206,6 +8206,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
       if (res.error) { alert("Erro: " + res.error.message); return; }
       editingId = null; editingDraft = null;
+      try { window.__clearItemEditPreview?.(); } catch {}
       await loadInteractions(currentMapId);
     }
   });
