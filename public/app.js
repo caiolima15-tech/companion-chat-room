@@ -8018,6 +8018,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button type="button" class="ie-cancel">Cancelar</button>
         </div>
       </div>`;
+    // Sincroniza preview do item para interações tipo "garçom"
+    try { window.__setItemEditPreview?.(draft); } catch {}
   }
 
 
