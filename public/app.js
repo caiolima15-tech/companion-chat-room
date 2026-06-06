@@ -356,6 +356,38 @@ function subscribeAnimTunings() {
 }
 // Kick off loading + subscription (defers until supabase is ready)
 Promise.resolve().then(() => { loadRemoteAnimTunings(); subscribeAnimTunings(); });
+
+// Canal global de broadcast — sync instantâneo de tunings entre todos os clientes
+// (independente de RLS/replicação postgres_changes). Cada cliente entra automaticamente.
+let __animTuningsBc = null;
+function __ensureAnimTuningsBc() {
+  if (__animTuningsBc || !window.supabase) return;
+  try {
+    __animTuningsBc = window.supabase
+      .channel("anim-tunings-bc", { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "tuning" }, ({ payload }) => {
+        if (!payload?.key) return;
+        const t = animTunings[payload.key] || (animTunings[payload.key] = defaultAnimTuning());
+        t.offX = payload.offX || 0; t.offY = payload.offY || 0; t.offZ = payload.offZ || 0;
+        t.rotX = payload.rotX || 0; t.rotY = payload.rotY || 0; t.rotZ = payload.rotZ || 0;
+        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+        window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+      })
+      .subscribe();
+  } catch (e) { console.warn("[anim-tunings-bc]", e); }
+}
+Promise.resolve().then(__ensureAnimTuningsBc);
+window.__broadcastAnimTuning = function (key) {
+  const t = animTunings[key]; if (!t) return;
+  __ensureAnimTuningsBc();
+  if (!__animTuningsBc) return;
+  try {
+    __animTuningsBc.send({
+      type: "broadcast", event: "tuning",
+      payload: { key, offX: t.offX, offY: t.offY, offZ: t.offZ, rotX: t.rotX, rotY: t.rotY, rotZ: t.rotZ },
+    });
+  } catch {}
+};
 window.__animTunings = animTunings;
 window.__animNames = ANIM_NAMES;
 window.__saveAnimTunings = saveAnimTunings;
