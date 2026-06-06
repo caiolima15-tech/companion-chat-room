@@ -262,7 +262,7 @@ const ANIM_TUNINGS_KEY = "neon-tap-room-anim-tunings";
 const ANIM_TUNINGS_VERSION_KEY = "neon-tap-room-anim-tunings-version";
 const ANIM_TUNINGS_VERSION = "1";
 function defaultAnimTuning() {
-  return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 };
+  return { offX: 0, offY: 0, offZ: 0, rotX: -90, rotY: 0, rotZ: 0 };
 }
 function loadAnimTunings() {
   const out = {};
