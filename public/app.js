@@ -3816,6 +3816,10 @@ function renderAssets(assets = []) {
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
       unregisterCollidable(object);
+      if (object.userData?.__mixer) {
+        try { assetMixers.delete(object.userData.__mixer); } catch {}
+        object.userData.__mixer = null;
+      }
       scene.remove(object);
       assetObjects.delete(id);
     }
@@ -3852,6 +3856,19 @@ function renderAssets(assets = []) {
           object.updateMatrixWorld(true);
           registerCollidable(object);
           assetObjects.set(asset.id, object);
+          // Suporte a GLBs com animação embutida: cria mixer e toca todas em loop
+          if (gltf.animations && gltf.animations.length) {
+            try {
+              const mixer = new THREE.AnimationMixer(object);
+              for (const clip of gltf.animations) {
+                const action = mixer.clipAction(clip);
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                action.play();
+              }
+              object.userData.__mixer = mixer;
+              assetMixers.add(mixer);
+            } catch (e) { console.warn("[map asset anim]", e); }
+          }
           resolve();
         },
         undefined,
