@@ -274,7 +274,6 @@ function loadAnimTunings() {
       if (raw) {
         const parsed = JSON.parse(raw);
         for (const n of ANIM_NAMES) if (parsed[n]) Object.assign(out[n], parsed[n]);
-        // Preserva tunings de animações customizadas (chaves "custom:<id>")
         for (const k of Object.keys(parsed)) {
           if (k.startsWith("custom:")) {
             out[k] = Object.assign(defaultAnimTuning(), parsed[k]);
@@ -286,20 +285,15 @@ function loadAnimTunings() {
       localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
     }
   } catch {}
-  // Migração legacy (kick pose): só traz offsets de posição para as locomoções.
-  // NUNCA mais injeta rotX ~90° (ou -90°) nas animações de idle/walk/run/dance/wave.
-  // O rotX de 90° do kick era compensação específica de chute + retarget; aplicar
-  // nas locomoções fazia todo mundo deitar para clientes remotos (via animation_tunings).
   const kp = _legacyKickPose;
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     out[n].offY = kp.offY || 0;
     out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = 0; // força pose base limpa (CHARACTER_DEFAULT_ROT_X cuida do resto)
+    out[n].rotX = 0;
   }
   for (const n of ["kickWeak", "kickStrong"]) {
-    out[n].rotX = 0; // o retarget já faz stripHipRotation; tuning pequeno se quiser no admin
+    out[n].rotX = 0;
   }
-  // Heal defensivo logo após popular (caso localStorage antigo ou migration legada tenha poluído).
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     if (Math.abs(out[n].rotX) > 30) out[n].rotX = 0;
   }
