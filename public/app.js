@@ -358,11 +358,11 @@ async function loadRemoteAnimTunings() {
       t.offZ = row.off_z || 0;
       t.rotX = row.rot_x || 0;
       t.rotY = row.rot_y || 0;
-         t.rotZ = row.rot_z || 0;
+      t.rotZ = row.rot_z || 0;
       // Heal: se dados legados poluíram as locomoções com ~90°, zera aqui também.
       if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
         t.rotX = 0;
-      
+      }
     }
     try {
       localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
@@ -380,7 +380,7 @@ function subscribeAnimTunings() {
       .on("postgres_changes", { event: "*", schema: "public", table: "animation_tunings" }, (payload) => {
         const row = payload.new || payload.old;
         if (!row?.anim_key) return;
-         if (payload.eventType === "DELETE") {
+        if (payload.eventType === "DELETE") {
           if (animTunings[row.anim_key]) animTunings[row.anim_key] = defaultAnimTuning();
         } else {
           const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
@@ -390,7 +390,7 @@ function subscribeAnimTunings() {
           t.rotX = row.rot_x || 0;
           t.rotY = row.rot_y || 0;
           t.rotZ = row.rot_z || 0;
-          // Heal em tempo real: se um valor ruim (legado) chegar via broadcast, corrige localmente.
+          // Heal em tempo real
           if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
             t.rotX = 0;
           }
