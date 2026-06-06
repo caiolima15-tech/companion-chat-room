@@ -313,6 +313,8 @@ function saveAnimTunings(remoteKey) {
         if (error) console.warn("[animation_tunings upsert]", error);
       } catch (e) { console.warn("[animation_tunings upsert]", e); }
     });
+    // Broadcast immediately (postgres_changes is a slower fallback)
+    try { window.__broadcastAnimTuning?.(remoteKey); } catch {}
   }
 }
 async function deleteAnimTuningRemote(key) {
