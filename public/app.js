@@ -7211,9 +7211,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.02;
+  const RADIO_DEFAULT_VOLUME = 0.20; // 20% real (= slider 100 quando MAX = 0.20)
   const RADIO_MAX_VOLUME = 0.20; // cap absoluto: 20% do volume real
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260603";
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.default20.20260606";
   // Slider 0-100 -> volume real (0 .. RADIO_MAX_VOLUME), curva quadrática para resolução nos graves.
   const sliderToVol = (s) => {
     const x = Math.min(1, Math.max(0, (Number(s) || 0) / 100));
@@ -7224,6 +7224,32 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return Math.round(Math.sqrt(x) * 100);
   };
 
+  // ---- WebAudio gain (iOS/Safari ignora audio.volume em <audio> remoto) ----
+  // O gainNode é ligado entre o <audio> e o destino. Algumas URLs com CORS
+  // restrito podem falhar — nesse caso caímos no audio.volume nativo.
+  let _audioCtx = null, _gainNode = null, _webAudioFailed = false;
+  function ensureWebAudio() {
+    if (_gainNode || _webAudioFailed) return _gainNode;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) { _webAudioFailed = true; return null; }
+      _audioCtx = new Ctx();
+      const src = _audioCtx.createMediaElementSource(audio);
+      _gainNode = _audioCtx.createGain();
+      src.connect(_gainNode);
+      _gainNode.connect(_audioCtx.destination);
+    } catch (e) {
+      console.warn("[radio webaudio]", e);
+      _webAudioFailed = true;
+      _gainNode = null;
+    }
+    return _gainNode;
+  }
+  function resumeAudioCtx() {
+    if (_audioCtx && _audioCtx.state === "suspended") {
+      _audioCtx.resume().catch(() => {});
+    }
+  }
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
@@ -7245,6 +7271,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   muteBtn?.addEventListener("click", () => {
     audio.muted = !audio.muted;
+    const g = ensureWebAudio();
+    if (g) g.gain.value = audio.muted ? 0 : audio.volume;
     localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
     syncMuteUi();
   });
@@ -7252,12 +7280,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!volSlider) return;
     const v = sliderToVol(volSlider.value);
     audio.volume = v;
+    const g = ensureWebAudio();
+    if (g) g.gain.value = audio.muted ? 0 : v;
+    resumeAudioCtx();
     if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
   }
   volSlider?.addEventListener("input", applyVolumeFromSlider);
   volSlider?.addEventListener("change", applyVolumeFromSlider);
+  // Garante que o ganho seja inicializado/aplicado assim que o áudio puder rodar
+  audio.addEventListener("play", () => { ensureWebAudio(); resumeAudioCtx(); applyVolumeFromSlider(); });
 
   // Mobile-safe drag: trackeia pointermove/touchmove no documento durante o gesto.
   // Algumas WebViews móveis não disparam pointermove no próprio <input range>
