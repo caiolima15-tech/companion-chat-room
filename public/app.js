@@ -8119,7 +8119,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   editorEl?.addEventListener("click", async (e) => {
     const t = e.target;
-    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; renderAdmin(); return; }
+    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; try { window.__clearItemEditPreview?.(); } catch {} renderAdmin(); return; }
     if (t.classList.contains("ie-pick")) {
       pickMode = !pickMode;
       addSystemLine?.(pickMode ? "Clique num objeto do mapa para selecionar." : "Seleção cancelada.");
