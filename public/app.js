@@ -458,6 +458,7 @@ window.__applyAnimSpeeds = applyAnimSpeedsAll;
 
 
 const assetObjects = new Map();
+const assetMixers = new Set(); // mixers de GLBs do mapa com animação embutida
 const keyState = new Set();
 
 // ============ Maps catalog ============
