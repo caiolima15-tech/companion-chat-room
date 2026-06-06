@@ -12025,3 +12025,123 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   })();
 
 })();
+
+
+// ============================================================
+// ===== ITEM EDIT PREVIEW (admin: arrastar item com setinhas) =
+// ============================================================
+(function itemEditPreview() {
+  if (typeof THREE === "undefined" || typeof scene === "undefined") return;
+
+  let previewGroup = null;
+  let previewSlug = null;
+  let activeDraft = null;
+  let pendingLoadSlug = null;
+
+  function _baseWorld(draft) {
+    const ox = Number(draft.offset_x) || 0, oy = Number(draft.offset_y) || 0, oz = Number(draft.offset_z) || 0;
+    if (!draft.asset_id) return new THREE.Vector3(ox, oy, oz);
+    const obj = assetObjects.get(draft.asset_id);
+    if (!obj) return new THREE.Vector3(ox, oy, oz);
+    obj.updateMatrixWorld(true);
+    return new THREE.Vector3(ox, oy, oz).applyMatrix4(obj.matrixWorld);
+  }
+  function _spawnWorld(draft) {
+    const b = _baseWorld(draft);
+    b.x += Number(draft.item_spawn_offset_x) || 0;
+    b.y += Number(draft.item_spawn_offset_y) || 0;
+    b.z += Number(draft.item_spawn_offset_z) || 0;
+    return b;
+  }
+
+  function clearPreview() {
+    const wasActive = !!previewGroup;
+    if (previewGroup) {
+      try { scene.remove(previewGroup); } catch {}
+      previewGroup.traverse?.((o) => {
+        if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => { try { m.dispose?.(); } catch {} });
+        }
+      });
+      previewGroup = null;
+    }
+    previewSlug = null;
+    activeDraft = null;
+    pendingLoadSlug = null;
+    if (wasActive) { try { window.detachGizmo?.(); } catch {} }
+  }
+
+  function _attachGizmo() {
+    if (!previewGroup) return;
+    try {
+      window.attachGizmo?.({
+        getPosition: () => previewGroup.position.clone(),
+        setPosition: (v) => {
+          if (!previewGroup || !activeDraft) return;
+          previewGroup.position.copy(v);
+          const base = _baseWorld(activeDraft);
+          activeDraft.item_spawn_offset_x = +(v.x - base.x).toFixed(3);
+          activeDraft.item_spawn_offset_y = +(v.y - base.y).toFixed(3);
+          activeDraft.item_spawn_offset_z = +(v.z - base.z).toFixed(3);
+          // Reflete os valores nos sliders/inputs do editor
+          const ed = document.getElementById("interactionsEditor");
+          if (ed) {
+            for (const k of ["item_spawn_offset_x", "item_spawn_offset_y", "item_spawn_offset_z"]) {
+              ed.querySelectorAll(`[data-field="${k}"]`).forEach((el) => {
+                if (el.type === "number") el.value = Number(activeDraft[k]).toFixed(2);
+                else el.value = String(activeDraft[k]);
+              });
+            }
+          }
+        },
+      });
+    } catch {}
+  }
+
+  function _loadGlb(cat) {
+    return new Promise((res, rej) => {
+      try { loader.load(cat.glb_url, (g) => res(g.scene.clone(true)), undefined, rej); }
+      catch (e) { rej(e); }
+    });
+  }
+
+  async function _ensurePreview(draft) {
+    const cat = (window.__itemCatalog || []).find((c) => c.slug === draft.item_slug);
+    if (!cat) { clearPreview(); return; }
+    if (previewSlug !== draft.item_slug) {
+      clearPreview();
+      previewSlug = draft.item_slug;
+      pendingLoadSlug = draft.item_slug;
+      let mesh = null;
+      try { mesh = await _loadGlb(cat); }
+      catch (e) { console.warn("[item preview]", e); pendingLoadSlug = null; return; }
+      if (pendingLoadSlug !== draft.item_slug) return; // mudou enquanto carregava
+      pendingLoadSlug = null;
+      mesh.scale.setScalar(cat.scale || 1);
+      mesh.traverse((o) => {
+        if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          o.material = mats.map((m) => {
+            const cl = m.clone();
+            cl.transparent = true; cl.opacity = 0.7; cl.depthWrite = false;
+            return cl;
+          });
+        }
+      });
+      previewGroup = new THREE.Group();
+      previewGroup.name = "ItemEditPreview";
+      previewGroup.add(mesh);
+      scene.add(previewGroup);
+      _attachGizmo();
+    }
+    if (previewGroup) previewGroup.position.copy(_spawnWorld(draft));
+  }
+
+  window.__setItemEditPreview = function (draft) {
+    if (!draft || draft.kind !== "bot_service" || !draft.item_slug) { clearPreview(); return; }
+    activeDraft = draft;
+    _ensurePreview(draft);
+  };
+  window.__clearItemEditPreview = clearPreview;
+})();
