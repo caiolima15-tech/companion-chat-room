@@ -313,6 +313,8 @@ function saveAnimTunings(remoteKey) {
         if (error) console.warn("[animation_tunings upsert]", error);
       } catch (e) { console.warn("[animation_tunings upsert]", e); }
     });
+    // Broadcast immediately (postgres_changes is a slower fallback)
+    try { window.__broadcastAnimTuning?.(remoteKey); } catch {}
   }
 }
 async function deleteAnimTuningRemote(key) {
@@ -354,6 +356,38 @@ function subscribeAnimTunings() {
 }
 // Kick off loading + subscription (defers until supabase is ready)
 Promise.resolve().then(() => { loadRemoteAnimTunings(); subscribeAnimTunings(); });
+
+// Canal global de broadcast — sync instantâneo de tunings entre todos os clientes
+// (independente de RLS/replicação postgres_changes). Cada cliente entra automaticamente.
+let __animTuningsBc = null;
+function __ensureAnimTuningsBc() {
+  if (__animTuningsBc || !window.supabase) return;
+  try {
+    __animTuningsBc = window.supabase
+      .channel("anim-tunings-bc", { config: { broadcast: { self: false } } })
+      .on("broadcast", { event: "tuning" }, ({ payload }) => {
+        if (!payload?.key) return;
+        const t = animTunings[payload.key] || (animTunings[payload.key] = defaultAnimTuning());
+        t.offX = payload.offX || 0; t.offY = payload.offY || 0; t.offZ = payload.offZ || 0;
+        t.rotX = payload.rotX || 0; t.rotY = payload.rotY || 0; t.rotZ = payload.rotZ || 0;
+        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+        window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
+      })
+      .subscribe();
+  } catch (e) { console.warn("[anim-tunings-bc]", e); }
+}
+Promise.resolve().then(__ensureAnimTuningsBc);
+window.__broadcastAnimTuning = function (key) {
+  const t = animTunings[key]; if (!t) return;
+  __ensureAnimTuningsBc();
+  if (!__animTuningsBc) return;
+  try {
+    __animTuningsBc.send({
+      type: "broadcast", event: "tuning",
+      payload: { key, offX: t.offX, offY: t.offY, offZ: t.offZ, rotX: t.rotX, rotY: t.rotY, rotZ: t.rotZ },
+    });
+  } catch {}
+};
 window.__animTunings = animTunings;
 window.__animNames = ANIM_NAMES;
 window.__saveAnimTunings = saveAnimTunings;
@@ -424,6 +458,7 @@ window.__applyAnimSpeeds = applyAnimSpeedsAll;
 
 
 const assetObjects = new Map();
+const assetMixers = new Set(); // mixers de GLBs do mapa com animação embutida
 const keyState = new Set();
 
 // ============ Maps catalog ============
@@ -3781,6 +3816,10 @@ function renderAssets(assets = []) {
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
       unregisterCollidable(object);
+      if (object.userData?.__mixer) {
+        try { assetMixers.delete(object.userData.__mixer); } catch {}
+        object.userData.__mixer = null;
+      }
       scene.remove(object);
       assetObjects.delete(id);
     }
@@ -3817,6 +3856,19 @@ function renderAssets(assets = []) {
           object.updateMatrixWorld(true);
           registerCollidable(object);
           assetObjects.set(asset.id, object);
+          // Suporte a GLBs com animação embutida: cria mixer e toca todas em loop
+          if (gltf.animations && gltf.animations.length) {
+            try {
+              const mixer = new THREE.AnimationMixer(object);
+              for (const clip of gltf.animations) {
+                const action = mixer.clipAction(clip);
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                action.play();
+              }
+              object.userData.__mixer = mixer;
+              assetMixers.add(mixer);
+            } catch (e) { console.warn("[map asset anim]", e); }
+          }
           resolve();
         },
         undefined,
@@ -4504,6 +4556,7 @@ function animate() {
   if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
   applyHeldMovement(delta);
   updatePlayerAnimation(delta);
+  if (assetMixers.size) { for (const m of assetMixers) { try { m.update(delta); } catch {} } }
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
     if (entity) {
@@ -7177,9 +7230,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.02;
+  const RADIO_DEFAULT_VOLUME = 0.20; // 20% real (= slider 100 quando MAX = 0.20)
   const RADIO_MAX_VOLUME = 0.20; // cap absoluto: 20% do volume real
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260603";
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.default20.20260606";
   // Slider 0-100 -> volume real (0 .. RADIO_MAX_VOLUME), curva quadrática para resolução nos graves.
   const sliderToVol = (s) => {
     const x = Math.min(1, Math.max(0, (Number(s) || 0) / 100));
@@ -7190,6 +7243,32 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return Math.round(Math.sqrt(x) * 100);
   };
 
+  // ---- WebAudio gain (iOS/Safari ignora audio.volume em <audio> remoto) ----
+  // O gainNode é ligado entre o <audio> e o destino. Algumas URLs com CORS
+  // restrito podem falhar — nesse caso caímos no audio.volume nativo.
+  let _audioCtx = null, _gainNode = null, _webAudioFailed = false;
+  function ensureWebAudio() {
+    if (_gainNode || _webAudioFailed) return _gainNode;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) { _webAudioFailed = true; return null; }
+      _audioCtx = new Ctx();
+      const src = _audioCtx.createMediaElementSource(audio);
+      _gainNode = _audioCtx.createGain();
+      src.connect(_gainNode);
+      _gainNode.connect(_audioCtx.destination);
+    } catch (e) {
+      console.warn("[radio webaudio]", e);
+      _webAudioFailed = true;
+      _gainNode = null;
+    }
+    return _gainNode;
+  }
+  function resumeAudioCtx() {
+    if (_audioCtx && _audioCtx.state === "suspended") {
+      _audioCtx.resume().catch(() => {});
+    }
+  }
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
@@ -7211,6 +7290,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   muteBtn?.addEventListener("click", () => {
     audio.muted = !audio.muted;
+    const g = ensureWebAudio();
+    if (g) g.gain.value = audio.muted ? 0 : audio.volume;
     localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
     syncMuteUi();
   });
@@ -7218,12 +7299,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!volSlider) return;
     const v = sliderToVol(volSlider.value);
     audio.volume = v;
+    const g = ensureWebAudio();
+    if (g) g.gain.value = audio.muted ? 0 : v;
+    resumeAudioCtx();
     if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
   }
   volSlider?.addEventListener("input", applyVolumeFromSlider);
   volSlider?.addEventListener("change", applyVolumeFromSlider);
+  // Garante que o ganho seja inicializado/aplicado assim que o áudio puder rodar
+  audio.addEventListener("play", () => { ensureWebAudio(); resumeAudioCtx(); applyVolumeFromSlider(); });
 
   // Mobile-safe drag: trackeia pointermove/touchmove no documento durante o gesto.
   // Algumas WebViews móveis não disparam pointermove no próprio <input range>
@@ -7799,7 +7885,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }).join("");
     }
     // Editor form
-    if (editingId === null) { editorEl.innerHTML = ""; return; }
+    if (editingId === null) { editorEl.innerHTML = ""; window.__clearItemEditPreview?.(); return; }
     const isNew = editingId === "new";
     const base = isNew ? editingDraft : (interactions.find((i) => i.id === editingId) || null);
     if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
@@ -7932,6 +8018,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button type="button" class="ie-cancel">Cancelar</button>
         </div>
       </div>`;
+    // Sincroniza preview do item para interações tipo "garçom"
+    try { window.__setItemEditPreview?.(draft); } catch {}
   }
 
 
@@ -8022,12 +8110,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
 
     }
+    // Preview ao vivo do item entregue pelo garçom
+    if (editingDraft.kind === "bot_service") {
+      try { window.__setItemEditPreview?.(editingDraft); } catch {}
+    }
   });
 
 
   editorEl?.addEventListener("click", async (e) => {
     const t = e.target;
-    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; renderAdmin(); return; }
+    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; try { window.__clearItemEditPreview?.(); } catch {} renderAdmin(); return; }
     if (t.classList.contains("ie-pick")) {
       pickMode = !pickMode;
       addSystemLine?.(pickMode ? "Clique num objeto do mapa para selecionar." : "Seleção cancelada.");
@@ -8114,6 +8206,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
       if (res.error) { alert("Erro: " + res.error.message); return; }
       editingId = null; editingDraft = null;
+      try { window.__clearItemEditPreview?.(); } catch {}
       await loadInteractions(currentMapId);
     }
   });
@@ -11938,4 +12031,124 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     setTimeout(() => { reloadMapItems(currentMapId); subscribeItemsForMap(currentMapId); }, 800);
   })();
 
+})();
+
+
+// ============================================================
+// ===== ITEM EDIT PREVIEW (admin: arrastar item com setinhas) =
+// ============================================================
+(function itemEditPreview() {
+  if (typeof THREE === "undefined" || typeof scene === "undefined") return;
+
+  let previewGroup = null;
+  let previewSlug = null;
+  let activeDraft = null;
+  let pendingLoadSlug = null;
+
+  function _baseWorld(draft) {
+    const ox = Number(draft.offset_x) || 0, oy = Number(draft.offset_y) || 0, oz = Number(draft.offset_z) || 0;
+    if (!draft.asset_id) return new THREE.Vector3(ox, oy, oz);
+    const obj = assetObjects.get(draft.asset_id);
+    if (!obj) return new THREE.Vector3(ox, oy, oz);
+    obj.updateMatrixWorld(true);
+    return new THREE.Vector3(ox, oy, oz).applyMatrix4(obj.matrixWorld);
+  }
+  function _spawnWorld(draft) {
+    const b = _baseWorld(draft);
+    b.x += Number(draft.item_spawn_offset_x) || 0;
+    b.y += Number(draft.item_spawn_offset_y) || 0;
+    b.z += Number(draft.item_spawn_offset_z) || 0;
+    return b;
+  }
+
+  function clearPreview() {
+    const wasActive = !!previewGroup;
+    if (previewGroup) {
+      try { scene.remove(previewGroup); } catch {}
+      previewGroup.traverse?.((o) => {
+        if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => { try { m.dispose?.(); } catch {} });
+        }
+      });
+      previewGroup = null;
+    }
+    previewSlug = null;
+    activeDraft = null;
+    pendingLoadSlug = null;
+    if (wasActive) { try { window.detachGizmo?.(); } catch {} }
+  }
+
+  function _attachGizmo() {
+    if (!previewGroup) return;
+    try {
+      window.attachGizmo?.({
+        getPosition: () => previewGroup.position.clone(),
+        setPosition: (v) => {
+          if (!previewGroup || !activeDraft) return;
+          previewGroup.position.copy(v);
+          const base = _baseWorld(activeDraft);
+          activeDraft.item_spawn_offset_x = +(v.x - base.x).toFixed(3);
+          activeDraft.item_spawn_offset_y = +(v.y - base.y).toFixed(3);
+          activeDraft.item_spawn_offset_z = +(v.z - base.z).toFixed(3);
+          // Reflete os valores nos sliders/inputs do editor
+          const ed = document.getElementById("interactionsEditor");
+          if (ed) {
+            for (const k of ["item_spawn_offset_x", "item_spawn_offset_y", "item_spawn_offset_z"]) {
+              ed.querySelectorAll(`[data-field="${k}"]`).forEach((el) => {
+                if (el.type === "number") el.value = Number(activeDraft[k]).toFixed(2);
+                else el.value = String(activeDraft[k]);
+              });
+            }
+          }
+        },
+      });
+    } catch {}
+  }
+
+  function _loadGlb(cat) {
+    return new Promise((res, rej) => {
+      try { loader.load(cat.glb_url, (g) => res(g.scene.clone(true)), undefined, rej); }
+      catch (e) { rej(e); }
+    });
+  }
+
+  async function _ensurePreview(draft) {
+    const cat = (window.__itemCatalog || []).find((c) => c.slug === draft.item_slug);
+    if (!cat) { clearPreview(); return; }
+    if (previewSlug !== draft.item_slug) {
+      clearPreview();
+      previewSlug = draft.item_slug;
+      pendingLoadSlug = draft.item_slug;
+      let mesh = null;
+      try { mesh = await _loadGlb(cat); }
+      catch (e) { console.warn("[item preview]", e); pendingLoadSlug = null; return; }
+      if (pendingLoadSlug !== draft.item_slug) return; // mudou enquanto carregava
+      pendingLoadSlug = null;
+      mesh.scale.setScalar(cat.scale || 1);
+      mesh.traverse((o) => {
+        if (o.isMesh) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          o.material = mats.map((m) => {
+            const cl = m.clone();
+            cl.transparent = true; cl.opacity = 0.7; cl.depthWrite = false;
+            return cl;
+          });
+        }
+      });
+      previewGroup = new THREE.Group();
+      previewGroup.name = "ItemEditPreview";
+      previewGroup.add(mesh);
+      scene.add(previewGroup);
+      _attachGizmo();
+    }
+    if (previewGroup) previewGroup.position.copy(_spawnWorld(draft));
+  }
+
+  window.__setItemEditPreview = function (draft) {
+    if (!draft || draft.kind !== "bot_service" || !draft.item_slug) { clearPreview(); return; }
+    activeDraft = draft;
+    _ensurePreview(draft);
+  };
+  window.__clearItemEditPreview = clearPreview;
 })();
