@@ -359,7 +359,6 @@ async function loadRemoteAnimTunings() {
       t.rotX = row.rot_x || 0;
       t.rotY = row.rot_y || 0;
       t.rotZ = row.rot_z || 0;
-      // Heal: se dados legados poluíram as locomoções com ~90°, zera aqui também.
       if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
         t.rotX = 0;
       }
@@ -390,7 +389,6 @@ function subscribeAnimTunings() {
           t.rotX = row.rot_x || 0;
           t.rotY = row.rot_y || 0;
           t.rotZ = row.rot_z || 0;
-          // Heal em tempo real
           if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
             t.rotX = 0;
           }
