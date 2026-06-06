@@ -67,7 +67,7 @@ const onlineCount = document.querySelector("#onlineCount");
 const roomTitleEl = document.querySelector("#roomTitle");
 function updateRoomTitle() {
   if (!roomTitleEl) return;
-  const m = (typeof MAPS !== "undefined" && Array.isArray(MAPS)) ? MAPS.find((x) => x.id === currentMapId) : null;
+  const m = typeof MAPS !== "undefined" && Array.isArray(MAPS) ? MAPS.find((x) => x.id === currentMapId) : null;
   if (m?.name) roomTitleEl.textContent = m.name;
 }
 const chatLog = document.querySelector("#chatLog");
@@ -119,13 +119,19 @@ const MAP_DEPTH = 14;
 const clock = new THREE.Clock();
 const loadingManager = new THREE.LoadingManager();
 loadingManager.onProgress = (url, loaded, total) => {
-  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+  try {
+    window.setWorldLoadingProgress?.(loaded, total);
+  } catch {}
 };
 loadingManager.onStart = (url, loaded, total) => {
-  try { window.setWorldLoadingProgress?.(loaded, total); } catch {}
+  try {
+    window.setWorldLoadingProgress?.(loaded, total);
+  } catch {}
 };
 loadingManager.onLoad = () => {
-  try { window.setWorldLoadingProgress?.(1, 1); } catch {}
+  try {
+    window.setWorldLoadingProgress?.(1, 1);
+  } catch {}
 };
 const loader = new GLTFLoader(loadingManager);
 const fbxLoader = new FBXLoader(loadingManager);
@@ -201,7 +207,7 @@ const characterCache = new Map(); // slug -> Promise<{base, clips}>
 const ANIMATION_SLOTS = ["base", "idle", "walk", "run", "dance", "wave"];
 const EMOTE_SLOTS = new Set(["dance", "wave"]);
 // Rotação padrão aplicada a todo personagem GLB (Mixamo vem deitado no eixo X).
-const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
+const CHARACTER_DEFAULT_ROT_X = 0;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
 
@@ -218,11 +224,7 @@ const poseDebug = loadPoseDebug();
 function applyPoseDebugTo(character) {
   if (!character) return;
   const d = Math.PI / 180;
-  character.rotation.set(
-    CHARACTER_DEFAULT_ROT_X + poseDebug.rotX * d,
-    poseDebug.rotY * d,
-    poseDebug.rotZ * d,
-  );
+  character.rotation.set(CHARACTER_DEFAULT_ROT_X + poseDebug.rotX * d, poseDebug.rotY * d, poseDebug.rotZ * d);
   character.position.y = poseDebug.offY;
 }
 function applyPoseDebugToMe() {
@@ -235,7 +237,7 @@ function applyPoseDebugToMe() {
 const KICK_POSE_KEY = "neon-tap-room-kick-pose";
 const KICK_POSE_VERSION_KEY = "neon-tap-room-kick-pose-version";
 const KICK_POSE_VERSION = "2";
-const KICK_POSE_DEFAULTS = { offY: 0, offFwd: 0, rotX: -90 };
+const KICK_POSE_DEFAULTS = { offY: 0, offFwd: 0, rotX: 90 };
 function loadLegacyKickPose() {
   try {
     const ver = localStorage.getItem(KICK_POSE_VERSION_KEY);
@@ -259,7 +261,9 @@ const ANIM_NAMES = ["idle", "walk", "run", "dance", "wave", "kickWeak", "kickStr
 const ANIM_TUNINGS_KEY = "neon-tap-room-anim-tunings";
 const ANIM_TUNINGS_VERSION_KEY = "neon-tap-room-anim-tunings-version";
 const ANIM_TUNINGS_VERSION = "1";
-function defaultAnimTuning() { return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 }; }
+function defaultAnimTuning() {
+  return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 };
+}
 function loadAnimTunings() {
   const out = {};
   for (const n of ANIM_NAMES) out[n] = defaultAnimTuning();
@@ -282,62 +286,97 @@ function loadAnimTunings() {
       localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
     }
   } catch {}
-  // Migração: usa o antigo kickPose como ponto de partida.
+  // Migração legacy (kick pose): só traz offsets de posição para as locomoções.
+  // NUNCA mais injeta rotX ~90° (ou -90°) nas animações de idle/walk/run/dance/wave.
+  // O rotX de 90° do kick era compensação específica de chute + retarget; aplicar
+  // nas locomoções fazia todo mundo deitar para clientes remotos (via animation_tunings).
   const kp = _legacyKickPose;
   for (const n of ["idle", "walk", "run", "dance", "wave"]) {
     out[n].offY = kp.offY || 0;
     out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = kp.rotX || 0;
+    out[n].rotX = 0; // força pose base limpa (CHARACTER_DEFAULT_ROT_X cuida do resto)
   }
   for (const n of ["kickWeak", "kickStrong"]) {
-    out[n].rotX = kp.rotX || -90;
+    out[n].rotX = 0; // o retarget já faz stripHipRotation; tuning pequeno se quiser no admin
+  }
+  // Heal defensivo logo após popular (caso localStorage antigo ou migration legada tenha poluído).
+  for (const n of ["idle", "walk", "run", "dance", "wave"]) {
+    if (Math.abs(out[n].rotX) > 30) out[n].rotX = 0;
   }
   return out;
 }
 
 const animTunings = loadAnimTunings();
 function saveAnimTunings(remoteKey) {
-  try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+  try {
+    localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
+  } catch {}
   if (remoteKey && window.supabase && animTunings[remoteKey]) {
     const t = animTunings[remoteKey];
     Promise.resolve().then(async () => {
       try {
         const { data: au } = await window.supabase.auth.getUser();
         const uid = au?.user?.id || null;
-        const { error } = await window.supabase.from("animation_tunings").upsert({
-          anim_key: remoteKey,
-          off_x: t.offX || 0, off_y: t.offY || 0, off_z: t.offZ || 0,
-          rot_x: t.rotX || 0, rot_y: t.rotY || 0, rot_z: t.rotZ || 0,
-          updated_by: uid, updated_at: new Date().toISOString(),
-        }, { onConflict: "anim_key" });
+        const { error } = await window.supabase.from("animation_tunings").upsert(
+          {
+            anim_key: remoteKey,
+            off_x: t.offX || 0,
+            off_y: t.offY || 0,
+            off_z: t.offZ || 0,
+            rot_x: t.rotX || 0,
+            rot_y: t.rotY || 0,
+            rot_z: t.rotZ || 0,
+            updated_by: uid,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "anim_key" },
+        );
         if (error) console.warn("[animation_tunings upsert]", error);
-      } catch (e) { console.warn("[animation_tunings upsert]", e); }
+      } catch (e) {
+        console.warn("[animation_tunings upsert]", e);
+      }
     });
-    // Broadcast immediately (postgres_changes is a slower fallback)
-    try { window.__broadcastAnimTuning?.(remoteKey); } catch {}
   }
 }
 async function deleteAnimTuningRemote(key) {
-  try { await window.supabase?.from("animation_tunings").delete().eq("anim_key", key); } catch {}
+  try {
+    await window.supabase?.from("animation_tunings").delete().eq("anim_key", key);
+  } catch {}
 }
 async function loadRemoteAnimTunings() {
   if (!window.supabase) return;
   try {
     const { data, error } = await window.supabase.from("animation_tunings").select("*");
-    if (error) { console.warn("[animation_tunings load]", error); return; }
-    for (const row of (data || [])) {
-      const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
-      t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
-      t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+    if (error) {
+      console.warn("[animation_tunings load]", error);
+      return;
     }
-    try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+    for (const row of data || []) {
+      const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
+      t.offX = row.off_x || 0;
+      t.offY = row.off_y || 0;
+      t.offZ = row.off_z || 0;
+      t.rotX = row.rot_x || 0;
+      t.rotY = row.rot_y || 0;
+         t.rotZ = row.rot_z || 0;
+      // Heal: se dados legados poluíram as locomoções com ~90°, zera aqui também.
+      if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
+        t.rotX = 0;
+      
+    }
+    try {
+      localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
+    } catch {}
     window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
-  } catch (e) { console.warn("[animation_tunings load]", e); }
+  } catch (e) {
+    console.warn("[animation_tunings load]", e);
+  }
 }
 function subscribeAnimTunings() {
   if (!window.supabase) return;
   try {
-    window.supabase.channel("animation_tunings")
+    window.supabase
+      .channel("animation_tunings")
       .on("postgres_changes", { event: "*", schema: "public", table: "animation_tunings" }, (payload) => {
         const row = payload.new || payload.old;
         if (!row?.anim_key) return;
@@ -345,49 +384,32 @@ function subscribeAnimTunings() {
           if (animTunings[row.anim_key]) animTunings[row.anim_key] = defaultAnimTuning();
         } else {
           const t = animTunings[row.anim_key] || (animTunings[row.anim_key] = defaultAnimTuning());
-          t.offX = row.off_x || 0; t.offY = row.off_y || 0; t.offZ = row.off_z || 0;
-          t.rotX = row.rot_x || 0; t.rotY = row.rot_y || 0; t.rotZ = row.rot_z || 0;
+          t.offX = row.off_x || 0;
+          t.offY = row.off_y || 0;
+          t.offZ = row.off_z || 0;
+          t.rotX = row.rot_x || 0;
+          t.rotY = row.rot_y || 0;
+           t.rotZ = row.rot_z || 0;
+          // Heal em tempo real: se um valor ruim (legado) chegar via broadcast, corrige localmente.
+          if (["idle", "walk", "run", "dance", "wave"].includes(row.anim_key) && Math.abs(t.rotX) > 30) {
+            t.rotX = 0;
+          }
         }
-        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
+        try {
+          localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings));
+        } catch {}
         window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
       })
       .subscribe();
-  } catch (e) { console.warn("[animation_tunings sub]", e); }
+  } catch (e) {
+    console.warn("[animation_tunings sub]", e);
+  }
 }
 // Kick off loading + subscription (defers until supabase is ready)
-Promise.resolve().then(() => { loadRemoteAnimTunings(); subscribeAnimTunings(); });
-
-// Canal global de broadcast — sync instantâneo de tunings entre todos os clientes
-// (independente de RLS/replicação postgres_changes). Cada cliente entra automaticamente.
-let __animTuningsBc = null;
-function __ensureAnimTuningsBc() {
-  if (__animTuningsBc || !window.supabase) return;
-  try {
-    __animTuningsBc = window.supabase
-      .channel("anim-tunings-bc", { config: { broadcast: { self: false } } })
-      .on("broadcast", { event: "tuning" }, ({ payload }) => {
-        if (!payload?.key) return;
-        const t = animTunings[payload.key] || (animTunings[payload.key] = defaultAnimTuning());
-        t.offX = payload.offX || 0; t.offY = payload.offY || 0; t.offZ = payload.offZ || 0;
-        t.rotX = payload.rotX || 0; t.rotY = payload.rotY || 0; t.rotZ = payload.rotZ || 0;
-        try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(animTunings)); } catch {}
-        window.dispatchEvent(new CustomEvent("animation-tunings:updated"));
-      })
-      .subscribe();
-  } catch (e) { console.warn("[anim-tunings-bc]", e); }
-}
-Promise.resolve().then(__ensureAnimTuningsBc);
-window.__broadcastAnimTuning = function (key) {
-  const t = animTunings[key]; if (!t) return;
-  __ensureAnimTuningsBc();
-  if (!__animTuningsBc) return;
-  try {
-    __animTuningsBc.send({
-      type: "broadcast", event: "tuning",
-      payload: { key, offX: t.offX, offY: t.offY, offZ: t.offZ, rotX: t.rotX, rotY: t.rotY, rotZ: t.rotZ },
-    });
-  } catch {}
-};
+Promise.resolve().then(() => {
+  loadRemoteAnimTunings();
+  subscribeAnimTunings();
+});
 window.__animTunings = animTunings;
 window.__animNames = ANIM_NAMES;
 window.__saveAnimTunings = saveAnimTunings;
@@ -402,13 +424,19 @@ function applyLocalAnimTuning(entity, delta) {
   if (entity.__fbKicking) name = entity.__lastKickStrong ? "kickStrong" : "kickWeak";
   else if (entity.currentAction && animTunings[entity.currentAction]) name = entity.currentAction;
   const tn = name ? animTunings[name] : null;
-  const targetX = tn ? (tn.offX || 0) : 0;
-  const targetY = tn ? (tn.offY || 0) : 0;
-  const targetZ = tn ? (tn.offZ || 0) : 0;
+  const targetX = tn ? tn.offX || 0 : 0;
+  const targetY = tn ? tn.offY || 0 : 0;
+  const targetZ = tn ? tn.offZ || 0 : 0;
   const d = Math.PI / 180;
-  const targetRx = CHARACTER_DEFAULT_ROT_X + (tn ? (tn.rotX || 0) : 0) * d;
-  const targetRy = (tn ? (tn.rotY || 0) : 0) * d;
-  const targetRz = (tn ? (tn.rotZ || 0) : 0) * d;
+  let rotX = tn ? tn.rotX || 0 : 0;
+  // Heal de dados legados poluídos (migration do kickPose injetou rotX:90 nas locomoções).
+  // Tunings artísticos devem ser pequenos (<30°). Qualquer coisa maior é erro de dados compartilhados.
+  if (name && ["idle", "walk", "run", "dance", "wave"].includes(name) && Math.abs(rotX) > 30) {
+    rotX = 0;
+  }
+  const targetRx = CHARACTER_DEFAULT_ROT_X + rotX * d;
+  const targetRy = (tn ? tn.rotY || 0 : 0) * d;
+  const targetRz = (tn ? tn.rotZ || 0 : 0) * d;
   const t = Math.min(1, (delta || 0.016) * 12);
   ch.position.x += (targetX - ch.position.x) * t;
   ch.position.y += (targetY - ch.position.y) * t;
@@ -444,7 +472,11 @@ function loadSpeedCfg() {
   return { ...SPEED_DEFAULTS };
 }
 const speedCfg = loadSpeedCfg();
-function saveSpeedCfg() { try { localStorage.setItem(SPEED_CFG_KEY, JSON.stringify(speedCfg)); } catch {} }
+function saveSpeedCfg() {
+  try {
+    localStorage.setItem(SPEED_CFG_KEY, JSON.stringify(speedCfg));
+  } catch {}
+}
 window.__speedCfg = speedCfg;
 window.__saveSpeedCfg = saveSpeedCfg;
 function applyAnimSpeedsAll() {
@@ -455,26 +487,22 @@ function applyAnimSpeedsAll() {
 }
 window.__applyAnimSpeeds = applyAnimSpeedsAll;
 
-
-
 const assetObjects = new Map();
-const assetMixers = new Set(); // mixers de GLBs do mapa com animação embutida
 const keyState = new Set();
 
 // ============ Maps catalog ============
 const BUILTIN_MAPS = [
-  { id: "bar",      name: "Bar Neon",   url: "/assets/maps/bar.glb",      mood: "night", bg: "#08090c", thumb: "🍻" },
-  { id: "old_bar",  name: "Bar Antigo", url: "/assets/maps/old_bar.glb",  mood: "night", bg: "#1a120a", thumb: "🥃" },
-  { id: "milk_bar", name: "Milk Bar",   url: "/assets/maps/milk_bar.glb", mood: "day",   bg: "#dfeaf2", thumb: "🥤" },
-  { id: "scifi",    name: "Sci-Fi",     url: "/assets/maps/scifi.glb",    mood: "night", bg: "#040814", thumb: "🛸" },
-  { id: "cinema",   name: "Cinema",     url: "/assets/maps/cinema.glb",   mood: "night", bg: "#0a0a14", thumb: "🎬" },
-  { id: "beach",    name: "Praia",      url: "/assets/maps/beach.glb",    mood: "day",   bg: "#9bd3e0", thumb: "🏖️" },
-  { id: "maikai",   name: "Maikai",     url: "/assets/maps/maikai.glb",   mood: "day",   bg: "#1b2a3a", thumb: "🌺" },
+  { id: "bar", name: "Bar Neon", url: "/assets/maps/bar.glb", mood: "night", bg: "#08090c", thumb: "🍻" },
+  { id: "old_bar", name: "Bar Antigo", url: "/assets/maps/old_bar.glb", mood: "night", bg: "#1a120a", thumb: "🥃" },
+  { id: "milk_bar", name: "Milk Bar", url: "/assets/maps/milk_bar.glb", mood: "day", bg: "#dfeaf2", thumb: "🥤" },
+  { id: "scifi", name: "Sci-Fi", url: "/assets/maps/scifi.glb", mood: "night", bg: "#040814", thumb: "🛸" },
+  { id: "cinema", name: "Cinema", url: "/assets/maps/cinema.glb", mood: "night", bg: "#0a0a14", thumb: "🎬" },
+  { id: "beach", name: "Praia", url: "/assets/maps/beach.glb", mood: "day", bg: "#9bd3e0", thumb: "🏖️" },
+  { id: "maikai", name: "Maikai", url: "/assets/maps/maikai.glb", mood: "day", bg: "#1b2a3a", thumb: "🌺" },
 ];
 let MAPS = [...BUILTIN_MAPS];
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
 let selectedMapId = currentMapId;
-
 
 // ============ Scene ============
 const scene = new THREE.Scene();
@@ -510,7 +538,9 @@ controls.enablePan = false; // shift+drag continua girando a câmera (sem panor�
 const BASE_MAX_DISTANCE = 60;
 controls.target.set(0, 1.0, 0);
 
-controls.addEventListener("start", () => { window.__camUserDragging = true; });
+controls.addEventListener("start", () => {
+  window.__camUserDragging = true;
+});
 controls.addEventListener("end", () => {
   window.__camUserDragging = false;
   window.__camUserHoldUntil = performance.now() + 600;
@@ -520,15 +550,19 @@ controls.addEventListener("end", () => {
 // isso bloqueia a rotação enquanto o jogador segura Shift pra correr. Aqui
 // removemos as modificadoras do pointerdown ANTES do OrbitControls processar,
 // preservando rotate e zoom com Shift segurado.
-renderer.domElement.addEventListener("pointerdown", (e) => {
-  if (e.shiftKey || e.ctrlKey || e.metaKey) {
-    try {
-      Object.defineProperty(e, "shiftKey", { value: false, configurable: true });
-      Object.defineProperty(e, "ctrlKey",  { value: false, configurable: true });
-      Object.defineProperty(e, "metaKey",  { value: false, configurable: true });
-    } catch {}
-  }
-}, true);
+renderer.domElement.addEventListener(
+  "pointerdown",
+  (e) => {
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      try {
+        Object.defineProperty(e, "shiftKey", { value: false, configurable: true });
+        Object.defineProperty(e, "ctrlKey", { value: false, configurable: true });
+        Object.defineProperty(e, "metaKey", { value: false, configurable: true });
+      } catch {}
+    }
+  },
+  true,
+);
 
 const stage = new THREE.Group();
 scene.add(stage);
@@ -548,10 +582,15 @@ function showAuth(mode = "signin") {
   authOverlay.hidden = false;
   document.body.classList.remove("in-world");
   document.body.classList.remove("world-ready");
-  try { window.radioLeaveRoom?.(); } catch {}
-  try { window.interactionsLeaveRoom?.(); } catch {}
-  try { window.hideWorldLoading?.(true); } catch {}
-
+  try {
+    window.radioLeaveRoom?.();
+  } catch {}
+  try {
+    window.interactionsLeaveRoom?.();
+  } catch {}
+  try {
+    window.hideWorldLoading?.(true);
+  } catch {}
 
   authError.hidden = true;
   if (mode === "signin") {
@@ -585,12 +624,15 @@ authSwitch.addEventListener("click", () => showAuth(authMode === "signin" ? "sig
 const authForgot = document.getElementById("authForgot");
 if (authForgot) {
   authForgot.addEventListener("click", async () => {
-    const email = (authEmail.value || "").trim().toLowerCase()
-      || (window.prompt("Digite seu email para receber o link de redefinição:") || "").trim().toLowerCase();
+    const email =
+      (authEmail.value || "").trim().toLowerCase() ||
+      (window.prompt("Digite seu email para receber o link de redefinição:") || "").trim().toLowerCase();
     if (!email) return;
     authForgot.disabled = true;
     try {
-      try { localStorage.setItem("neon-tap-room-password-recovery", String(Date.now())); } catch {}
+      try {
+        localStorage.setItem("neon-tap-room-password-recovery", String(Date.now()));
+      } catch {}
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: window.location.origin + window.location.pathname + "?recovery=1",
       });
@@ -627,7 +669,11 @@ function getRecoveryUrlInfo() {
     code: search.get("code"),
     accessToken: hashParams.get("access_token"),
     refreshToken: hashParams.get("refresh_token"),
-    error: search.get("error_description") || hashParams.get("error_description") || search.get("error") || hashParams.get("error"),
+    error:
+      search.get("error_description") ||
+      hashParams.get("error_description") ||
+      search.get("error") ||
+      hashParams.get("error"),
   };
 }
 
@@ -637,7 +683,10 @@ async function ensureRecoverySession() {
   const info = getRecoveryUrlInfo();
   if (info.error) throw new Error(decodeURIComponent(info.error).replace(/\+/g, " "));
   if (info.accessToken && info.refreshToken) {
-    const { error } = await supabase.auth.setSession({ access_token: info.accessToken, refresh_token: info.refreshToken });
+    const { error } = await supabase.auth.setSession({
+      access_token: info.accessToken,
+      refresh_token: info.refreshToken,
+    });
     if (error) throw error;
   } else if (info.code) {
     const { error } = await supabase.auth.exchangeCodeForSession(info.code);
@@ -677,8 +726,13 @@ function showRecoveryOverlay() {
       <button type="submit" id="recoverySubmit">Salvar nova senha</button>
     </form>`;
   document.body.appendChild(wrap);
-  try { document.body.classList.remove("in-world"); } catch {}
-  try { authOverlay.hidden = true; authOverlay.style.display = "none"; } catch {}
+  try {
+    document.body.classList.remove("in-world");
+  } catch {}
+  try {
+    authOverlay.hidden = true;
+    authOverlay.style.display = "none";
+  } catch {}
 
   const form = wrap.querySelector("#recoveryForm");
   const p1 = wrap.querySelector("#recoveryPass1");
@@ -688,18 +742,31 @@ function showRecoveryOverlay() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     err.hidden = true;
-    const a = p1.value.trim(), b = p2.value.trim();
-    if (a.length < 6) { err.textContent = "Senha precisa ter pelo menos 6 caracteres."; err.hidden = false; return; }
-    if (a !== b) { err.textContent = "As senhas não coincidem."; err.hidden = false; return; }
+    const a = p1.value.trim(),
+      b = p2.value.trim();
+    if (a.length < 6) {
+      err.textContent = "Senha precisa ter pelo menos 6 caracteres.";
+      err.hidden = false;
+      return;
+    }
+    if (a !== b) {
+      err.textContent = "As senhas não coincidem.";
+      err.hidden = false;
+      return;
+    }
     btn.disabled = true;
     try {
       await ensureRecoverySession();
       const { error } = await supabase.auth.updateUser({ password: a });
       if (error) throw error;
       window.__isRecoveringPassword = false;
-      try { localStorage.removeItem("neon-tap-room-password-recovery"); } catch {}
+      try {
+        localStorage.removeItem("neon-tap-room-password-recovery");
+      } catch {}
       await supabase.auth.signOut();
-      try { history.replaceState(null, "", window.location.pathname); } catch {}
+      try {
+        history.replaceState(null, "", window.location.pathname);
+      } catch {}
       wrap.remove();
       showAuth("signin");
       authError.hidden = false;
@@ -739,7 +806,8 @@ function translateAuthError(err) {
   if (code === "invalid_credentials" || /invalid login/i.test(msg)) return "Email ou senha incorretos.";
   if (code === "user_already_exists") return "Esse email já tem conta. Use 'Já tenho conta' pra entrar.";
   if (code === "email_not_confirmed") return "Confirme seu email antes de entrar.";
-  if (code === "weak_password" || /password/i.test(msg) && /6/.test(msg)) return "Senha precisa ter pelo menos 6 caracteres.";
+  if (code === "weak_password" || (/password/i.test(msg) && /6/.test(msg)))
+    return "Senha precisa ter pelo menos 6 caracteres.";
   if (/email/i.test(msg) && /valid/i.test(msg)) return "Email inválido.";
   return msg || "Falha de autenticação.";
 }
@@ -820,7 +888,10 @@ if (!LOGIN_DISABLED_FOR_TEST) {
 
 (async () => {
   hideAuth();
-  if (window.__isRecoveringPassword) { showRecoveryOverlay(); return; }
+  if (window.__isRecoveringPassword) {
+    showRecoveryOverlay();
+    return;
+  }
   const { data: existing } = await supabase.auth.getSession();
   if (existing.session?.user) {
     bootstrapSession(existing.session.user);
@@ -840,7 +911,8 @@ async function bootstrapSession(user) {
     .eq("id", user.id)
     .maybeSingle();
 
-  const nickname = profile?.nickname || user.user_metadata?.nickname || localStorage.getItem("neon-tap-room-nickname") || "Visitante";
+  const nickname =
+    profile?.nickname || user.user_metadata?.nickname || localStorage.getItem("neon-tap-room-nickname") || "Visitante";
   const color = profile?.color || randomColor();
   const avatarUrl = profile?.avatar_url || null;
   const characterSlug = profile?.character_slug || localStorage.getItem("neon-tap-room-character") || null;
@@ -893,9 +965,21 @@ async function enterRoom() {
     if (me) renderPlayers([me, ...players.filter((p) => p.id !== myId)]);
     document.body.classList.add("world-ready");
     // Garante que todos os painéis admin comecem fechados ao entrar
-    document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => { if (p) { p.hidden = true; p.style.display = ""; } });
+    document
+      .querySelectorAll(
+        "#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel",
+      )
+      .forEach((p) => {
+        if (p) {
+          p.hidden = true;
+          p.style.display = "";
+        }
+      });
     const _dock = document.querySelector("#adminDock");
-    if (_dock) { _dock.hidden = true; _dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false")); }
+    if (_dock) {
+      _dock.hidden = true;
+      _dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
+    }
     const _shield = document.querySelector("#adminShortcut");
     if (_shield) _shield.setAttribute("aria-pressed", "false");
     addSystemLine(isAdmin ? "Você entrou como admin da sala." : "Bem-vindo à sala!");
@@ -905,11 +989,18 @@ async function enterRoom() {
   // Pós-entrada (não bloqueia)
   loadInitialChat().catch(() => {});
   connectRealtime().catch(() => {});
-  Promise.resolve().then(() => window.radioEnterRoom?.(currentMapId)).catch(() => {});
-  Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
-  Promise.resolve().then(() => window.portalsEnterRoom?.(currentMapId)).catch(() => {});
-  Promise.resolve().then(() => window.carsEnterRoom?.(currentMapId)).catch(() => {});
-
+  Promise.resolve()
+    .then(() => window.radioEnterRoom?.(currentMapId))
+    .catch(() => {});
+  Promise.resolve()
+    .then(() => window.interactionsEnterRoom?.(currentMapId))
+    .catch(() => {});
+  Promise.resolve()
+    .then(() => window.portalsEnterRoom?.(currentMapId))
+    .catch(() => {});
+  Promise.resolve()
+    .then(() => window.carsEnterRoom?.(currentMapId))
+    .catch(() => {});
 }
 
 function randomColor() {
@@ -919,10 +1010,7 @@ function randomColor() {
 
 // ============ Characters ============
 async function loadCharactersCatalog() {
-  const { data, error } = await supabase
-    .from("characters")
-    .select("*")
-    .order("position", { ascending: true });
+  const { data, error } = await supabase.from("characters").select("*").order("position", { ascending: true });
   if (error) {
     console.warn("Não consegui carregar personagens", error);
     charactersCatalog = [];
@@ -932,10 +1020,7 @@ async function loadCharactersCatalog() {
 }
 
 async function loadUserAvatars() {
-  const { data, error } = await supabase
-    .from("user_avatars")
-    .select("*")
-    .order("created_at", { ascending: false });
+  const { data, error } = await supabase.from("user_avatars").select("*").order("created_at", { ascending: false });
   if (error) {
     console.warn("Não consegui carregar avatares de usuários", error);
     userAvatars = [];
@@ -993,9 +1078,16 @@ const charCreateBtn = document.querySelector("#charCreateBtn");
 
 let selectableChars = [];
 let previewIndex = 0;
-let previewRenderer = null, previewScene = null, previewCamera = null, previewControls = null;
-let previewMixer = null, previewClock = null, previewRaf = null;
-let previewCharObj = null, previewGround = null, previewRing = null;
+let previewRenderer = null,
+  previewScene = null,
+  previewCamera = null,
+  previewControls = null;
+let previewMixer = null,
+  previewClock = null,
+  previewRaf = null;
+let previewCharObj = null,
+  previewGround = null,
+  previewRing = null;
 let previewSmoke = null;
 let previewLoadToken = 0;
 let previewBodySize = null; // tamanho (Vector3) do avatar atual, para reenquadrar no resize
@@ -1078,7 +1170,7 @@ function reframePreview() {
   const tan = Math.tan(vFov / 2);
   // halfH = metade da altura visível (em unidades de mundo) no plano do alvo.
   // Garante caber o corpo todo em altura e largura, com folga.
-  const halfH = Math.max((size.y * 0.62), (size.x * 0.58) / aspect, 0.4);
+  const halfH = Math.max(size.y * 0.62, (size.x * 0.58) / aspect, 0.4);
   const dist = halfH / tan;
   // Câmera nivelada (mesma altura do alvo). Cy controla onde a base cai na tela:
   // ground (y=0) ficará a ~12% do fundo do quadro → logo acima do nome.
@@ -1104,17 +1196,26 @@ function startPreviewLoop() {
   previewLoop();
 }
 function stopPreviewLoop() {
-  if (previewRaf) { cancelAnimationFrame(previewRaf); previewRaf = null; }
+  if (previewRaf) {
+    cancelAnimationFrame(previewRaf);
+    previewRaf = null;
+  }
 }
 
 async function loadPreviewCharacter(character) {
   if (!previewScene || !character) return;
   const token = ++previewLoadToken;
-  if (previewCharObj) { previewScene.remove(previewCharObj); previewCharObj = null; }
+  if (previewCharObj) {
+    previewScene.remove(previewCharObj);
+    previewCharObj = null;
+  }
   previewMixer = null;
   // Mesma fumaça 3D usada ao carregar o avatar na sala (em vez do spinner HTML).
   if (charStageLoader) charStageLoader.hidden = true;
-  if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+  if (previewSmoke) {
+    previewScene.remove(previewSmoke);
+    previewSmoke = null;
+  }
   previewSmoke = createLoadingSmoke();
   previewSmoke.position.set(0, 0.35, 0);
   previewScene.add(previewSmoke);
@@ -1126,7 +1227,10 @@ async function loadPreviewCharacter(character) {
     obj.position.set(0, 0, 0);
     obj.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
     obj.traverse((c) => {
-      if (c.isMesh || c.isSkinnedMesh) { c.castShadow = true; c.frustumCulled = false; }
+      if (c.isMesh || c.isSkinnedMesh) {
+        c.castShadow = true;
+        c.frustumCulled = false;
+      }
     });
     previewScene.add(obj);
     previewCharObj = obj;
@@ -1137,8 +1241,13 @@ async function loadPreviewCharacter(character) {
       o.updateMatrixWorld(true);
       o.traverse((c) => {
         if (c.isSkinnedMesh && c.skeleton) {
-          try { c.skeleton.update(); } catch {}
-          try { c.computeBoundingBox(); c.computeBoundingSphere(); } catch {}
+          try {
+            c.skeleton.update();
+          } catch {}
+          try {
+            c.computeBoundingBox();
+            c.computeBoundingSphere();
+          } catch {}
         }
       });
       const b = new THREE.Box3();
@@ -1170,19 +1279,22 @@ async function loadPreviewCharacter(character) {
     console.warn("[preview] falha ao carregar personagem", e);
   } finally {
     if (token === previewLoadToken) {
-      if (previewSmoke) { previewScene.remove(previewSmoke); previewSmoke = null; }
+      if (previewSmoke) {
+        previewScene.remove(previewSmoke);
+        previewSmoke = null;
+      }
       if (charStageLoader) charStageLoader.hidden = true;
     }
   }
 }
 
 function buildSelectableChars() {
-  const myAvatarTiles = userAvatars
-    .filter((av) => av.user_id === myId)
-    .map((av) => userAvatarToCharacter(av));
+  const myAvatarTiles = userAvatars.filter((av) => av.user_id === myId).map((av) => userAvatarToCharacter(av));
   selectableChars = [...charactersCatalog.filter((c) => c.base_url), ...myAvatarTiles];
 }
-function currentPreviewChar() { return selectableChars[previewIndex] || null; }
+function currentPreviewChar() {
+  return selectableChars[previewIndex] || null;
+}
 
 function refreshCharacterCarousel() {
   buildSelectableChars();
@@ -1195,7 +1307,10 @@ function refreshCharacterCarousel() {
 function renderDots() {
   if (!charDots) return;
   charDots.innerHTML = selectableChars
-    .map((c, i) => `<button type="button" class="char-dot ${i === previewIndex ? "is-active" : ""}" data-i="${i}" aria-label="${escapeHtml(c.name)}"></button>`)
+    .map(
+      (c, i) =>
+        `<button type="button" class="char-dot ${i === previewIndex ? "is-active" : ""}" data-i="${i}" aria-label="${escapeHtml(c.name)}"></button>`,
+    )
     .join("");
 }
 
@@ -1212,7 +1327,11 @@ function updateCarouselUI() {
   renderDots();
   updateEnterButtonState();
   if (c) loadPreviewCharacter(c);
-  else if (previewCharObj && previewScene) { previewScene.remove(previewCharObj); previewCharObj = null; previewMixer = null; }
+  else if (previewCharObj && previewScene) {
+    previewScene.remove(previewCharObj);
+    previewCharObj = null;
+    previewMixer = null;
+  }
 }
 
 function previewGo(delta) {
@@ -1241,12 +1360,17 @@ charDeleteBtn?.addEventListener("click", async () => {
   if (!confirm("Excluir este avatar? Essa ação não pode ser desfeita.")) return;
   const oldBaseUrl = userAvatars.find((a) => a.id === c.userAvatarId)?.base_url || null;
   const { error } = await supabase.from("user_avatars").delete().eq("id", c.userAvatarId);
-  if (error) { alert("Não foi possível excluir: " + error.message); return; }
+  if (error) {
+    alert("Não foi possível excluir: " + error.message);
+    return;
+  }
   // Remove o GLB do storage para não deixar arquivos órfãos.
   if (oldBaseUrl) {
     const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
     if (oldPath) {
-      supabase.storage.from("characters").remove([oldPath])
+      supabase.storage
+        .from("characters")
+        .remove([oldPath])
         .catch((e) => console.warn("[avatar] falha ao remover GLB excluído", e));
     }
   }
@@ -1351,9 +1475,16 @@ function exitRoomToLobby() {
     dock.hidden = true;
     dock.querySelectorAll("[data-dock-panel]").forEach((b) => b.setAttribute("aria-pressed", "false"));
   }
-  document.querySelectorAll("#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel").forEach((p) => {
-    if (p) { p.hidden = true; p.style.display = ""; }
-  });
+  document
+    .querySelectorAll(
+      "#lightsAdminPanel, #layersPanel, #mapAdminPanel, #botsAdminPanel, #radioAdminPanel, #interactionsAdminPanel, .floating-panel",
+    )
+    .forEach((p) => {
+      if (p) {
+        p.hidden = true;
+        p.style.display = "";
+      }
+    });
 }
 
 // ===== Avatar Creator (Avaturn workaround) =====
@@ -1372,7 +1503,9 @@ let _avaturnSaving = false;
 function hideAvaturnLoader() {
   if (!avatarCreatorLoader) return;
   avatarCreatorLoader.style.opacity = "0";
-  setTimeout(() => { if (avatarCreatorLoader) avatarCreatorLoader.style.display = "none"; }, 400);
+  setTimeout(() => {
+    if (avatarCreatorLoader) avatarCreatorLoader.style.display = "none";
+  }, 400);
 }
 
 let _editingAvatarId = null;
@@ -1381,9 +1514,7 @@ function openAvatarCreator(opts = {}) {
   _editingAvatarId = opts.editId || null;
   const heading = avatarCreatorOverlay.querySelector("h2");
   if (heading) heading.textContent = _editingAvatarId ? "Editar meu avatar" : "Criar meu avatar";
-  avatarCreatorStatus.textContent = _editingAvatarId
-    ? "Ajuste seu avatar e clique em “Next” para atualizar."
-    : "";
+  avatarCreatorStatus.textContent = _editingAvatarId ? "Ajuste seu avatar e clique em “Next” para atualizar." : "";
   avatarCreatorStatus.style.color = "";
   avatarCreatorName.value = opts.name || "";
   avatarCreatorFile.value = "";
@@ -1407,9 +1538,6 @@ function closeAvatarCreator() {
   if (avatarCreatorOverlay) avatarCreatorOverlay.hidden = true;
 }
 avatarCreatorClose?.addEventListener("click", closeAvatarCreator);
-
-
-
 
 // Converte uma URL pública do Storage de volta para o caminho interno do bucket.
 function storagePathFromPublicUrl(url, bucket) {
@@ -1472,7 +1600,9 @@ async function handleAvatarUpload(file) {
       if (oldBaseUrl && oldBaseUrl !== baseUrl) {
         const oldPath = storagePathFromPublicUrl(oldBaseUrl, "characters");
         if (oldPath) {
-          supabase.storage.from("characters").remove([oldPath])
+          supabase.storage
+            .from("characters")
+            .remove([oldPath])
             .catch((e) => console.warn("[avatar] falha ao remover GLB antigo", e));
         }
       }
@@ -1592,13 +1722,16 @@ window.addEventListener("message", async (event) => {
   try {
     const host = new URL(String(event.origin || "")).hostname;
     isAvaturn = /(^|\.)avaturn\.(dev|me)$/.test(host);
-  } catch { return; }
+  } catch {
+    return;
+  }
   if (!isAvaturn) return;
 
   let payload = event.data;
   if (typeof payload === "string") {
-    try { payload = JSON.parse(payload); }
-    catch {
+    try {
+      payload = JSON.parse(payload);
+    } catch {
       if (isGlbUrlString(payload)) payload = { url: payload };
       else return;
     }
@@ -1655,8 +1788,6 @@ window.addEventListener("message", async (event) => {
   }
 });
 
-
-
 // ===== Map (location) select =====
 const mapSelectOverlay = document.querySelector("#mapSelectOverlay");
 const mapGrid = document.querySelector("#mapGrid");
@@ -1667,8 +1798,10 @@ async function openMapSelect() {
   if (!mapSelectOverlay) return;
   selectedMapId = currentMapId;
   // Sempre busca a lista mais recente (importante p/ não-admin ver exclusões/edições)
-  try { await loadCustomMaps(); } catch {}
-  selectedMapId = MAPS.some((m) => m.id === selectedMapId) ? selectedMapId : (MAPS[0]?.id || null);
+  try {
+    await loadCustomMaps();
+  } catch {}
+  selectedMapId = MAPS.some((m) => m.id === selectedMapId) ? selectedMapId : MAPS[0]?.id || null;
   renderMapTiles();
   updateConfirmMapButton();
   mapSelectOverlay.hidden = false;
@@ -1679,17 +1812,20 @@ function closeMapSelect() {
 function renderMapTiles() {
   if (!mapGrid) return;
   const visibleMaps = MAPS.filter((m) => isAdmin || !m.hidden);
-  mapGrid.innerHTML = visibleMaps.map((m) => {
-    const isSelected = selectedMapId === m.id;
-    const moodLabel = m.mood === "day" ? "☀️ Dia" : m.mood === "sunset" ? "🌅 Tarde" : "🌙 Noite";
-    const count = lobbyCounts[m.id] || 0;
-    const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
-    const isCurrent = currentRoomChannelsMapId === m.id;
-    const thumbInner = m.thumbUrl
-      ? `<img src="${m.thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;">`
-      : `<span style="font-size:32px;">${m.thumb}</span>`;
-    const hiddenBadge = m.hidden ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(120,40,160,0.85);color:#fff;border-radius:8px;padding:2px 7px;font-size:10px;font-weight:600;z-index:2;">🔒 OCULTO</div>` : "";
-    return `
+  mapGrid.innerHTML = visibleMaps
+    .map((m) => {
+      const isSelected = selectedMapId === m.id;
+      const moodLabel = m.mood === "day" ? "☀️ Dia" : m.mood === "sunset" ? "🌅 Tarde" : "🌙 Noite";
+      const count = lobbyCounts[m.id] || 0;
+      const peopleLabel = count === 0 ? "Vazia" : `${count} ${count === 1 ? "pessoa" : "pessoas"}`;
+      const isCurrent = currentRoomChannelsMapId === m.id;
+      const thumbInner = m.thumbUrl
+        ? `<img src="${m.thumbUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:8px;display:block;">`
+        : `<span style="font-size:32px;">${m.thumb}</span>`;
+      const hiddenBadge = m.hidden
+        ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(120,40,160,0.85);color:#fff;border-radius:8px;padding:2px 7px;font-size:10px;font-weight:600;z-index:2;">🔒 OCULTO</div>`
+        : "";
+      return `
       <div class="char-tile ${isSelected ? "is-selected" : ""}" data-map-id="${m.id}" style="position:relative;${m.hidden ? "opacity:0.78;" : ""}">
         <div style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,0.55);color:#fff;border-radius:10px;padding:2px 8px;font-size:11px;display:flex;align-items:center;gap:4px;z-index:2;">
           <span style="width:6px;height:6px;border-radius:50%;background:${count > 0 ? "#29d3bd" : "#666"};"></span>
@@ -1701,7 +1837,8 @@ function renderMapTiles() {
         <div class="char-tile-name">${m.name}${isCurrent ? " · você está aqui" : ""}</div>
         <div class="char-tile-warn" style="background:transparent;color:#aeb6c4">${moodLabel}</div>
       </div>`;
-  }).join("");
+    })
+    .join("");
 }
 function updateConfirmMapButton() {
   if (!confirmMapButton) return;
@@ -1752,7 +1889,6 @@ confirmMapButton?.addEventListener("click", async () => {
   }
 });
 
-
 characterAdminClose?.addEventListener("click", () => {
   if (characterAdminOverlay) characterAdminOverlay.hidden = true;
 });
@@ -1781,17 +1917,15 @@ function openCharacterAdmin() {
 
 async function renderCharacterAdmin() {
   if (!characterAdminList) return;
-  const { data, error } = await supabase
-    .from("characters")
-    .select("*")
-    .order("position", { ascending: true });
+  const { data, error } = await supabase.from("characters").select("*").order("position", { ascending: true });
   if (error) {
     characterAdminList.innerHTML = `<div class="char-hint">Erro: ${escapeHtml(error.message)}</div>`;
     return;
   }
   charactersCatalog = data || [];
 
-  characterAdminList.innerHTML = `
+  characterAdminList.innerHTML =
+    `
     <div class="char-admin-row" style="background: rgba(41,211,189,0.08)">
       <div class="char-admin-row-head">
         <div class="char-admin-name">+ Novo personagem</div>
@@ -1804,14 +1938,14 @@ async function renderCharacterAdmin() {
         <button id="createCharBtn" type="button" class="char-enter" style="padding:8px 14px;">Criar</button>
       </div>
     </div>
-  ` + charactersCatalog.map((c) => {
-    const thumb = c.thumbnail_url
-      ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="">`
-      : "🧍";
-    const slots = CHAR_SLOTS.map((s) => {
-      const urlKey = s.key === "thumbnail" ? "thumbnail_url" : `${s.key}_url`;
-      const hasUrl = !!c[urlKey];
-      return `
+  ` +
+    charactersCatalog
+      .map((c) => {
+        const thumb = c.thumbnail_url ? `<img src="${escapeHtml(c.thumbnail_url)}" alt="">` : "🧍";
+        const slots = CHAR_SLOTS.map((s) => {
+          const urlKey = s.key === "thumbnail" ? "thumbnail_url" : `${s.key}_url`;
+          const hasUrl = !!c[urlKey];
+          return `
         <div class="char-slot">
           <div class="char-slot-label">${s.label}</div>
           <div class="char-slot-status ${hasUrl ? "ok" : "empty"}">${hasUrl ? "✓ ok" : "vazio"}</div>
@@ -1820,8 +1954,8 @@ async function renderCharacterAdmin() {
             ${hasUrl ? "Trocar" : "Subir"}
           </label>
         </div>`;
-    }).join("");
-    return `
+        }).join("");
+        return `
       <div class="char-admin-row" data-row-slug="${escapeHtml(c.slug)}">
         <div class="char-admin-row-head">
           <div class="char-admin-thumb">${thumb}</div>
@@ -1833,7 +1967,8 @@ async function renderCharacterAdmin() {
         </div>
         <div class="char-admin-grid">${slots}</div>
       </div>`;
-  }).join("");
+      })
+      .join("");
 
   characterAdminList.querySelectorAll("input[type=file][data-char-slug]").forEach((inp) => {
     inp.addEventListener("change", () => handleCharacterUpload(inp));
@@ -1843,7 +1978,10 @@ async function renderCharacterAdmin() {
       const slug = btn.getAttribute("data-delete-char");
       if (!confirm(`Remover personagem "${slug}"?`)) return;
       const { error } = await supabase.from("characters").delete().eq("slug", slug);
-      if (error) { alert(error.message); return; }
+      if (error) {
+        alert(error.message);
+        return;
+      }
       await renderCharacterAdmin();
       await loadCharactersCatalog();
     });
@@ -1851,11 +1989,21 @@ async function renderCharacterAdmin() {
   const createBtn = characterAdminList.querySelector("#createCharBtn");
   createBtn?.addEventListener("click", async () => {
     const name = characterAdminList.querySelector("#newCharName").value.trim();
-    const slug = characterAdminList.querySelector("#newCharSlug").value.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
-    if (!name || !slug) { alert("Preencha nome e slug."); return; }
+    const slug = characterAdminList
+      .querySelector("#newCharSlug")
+      .value.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-");
+    if (!name || !slug) {
+      alert("Preencha nome e slug.");
+      return;
+    }
     const nextPos = (charactersCatalog.reduce((m, c) => Math.max(m, c.position || 0), 0) || 0) + 1;
     const { error } = await supabase.from("characters").insert({ slug, name, position: nextPos });
-    if (error) { alert(error.message); return; }
+    if (error) {
+      alert(error.message);
+      return;
+    }
     await renderCharacterAdmin();
     await loadCharactersCatalog();
   });
@@ -1870,7 +2018,10 @@ async function handleCharacterUpload(input) {
   const ext = file.name.split(".").pop()?.toLowerCase() || slotDef.ext;
   const path = `${slug}/${slotKey}.${ext}`;
   const status = input.closest(".char-slot")?.querySelector(".char-slot-status");
-  if (status) { status.textContent = "enviando..."; status.className = "char-slot-status"; }
+  if (status) {
+    status.textContent = "enviando...";
+    status.className = "char-slot-status";
+  }
   try {
     const { error: upErr } = await supabase.storage
       .from("characters")
@@ -1893,7 +2044,10 @@ async function handleCharacterUpload(input) {
     await loadCharactersCatalog();
   } catch (err) {
     alert("Falha no upload: " + (err?.message || err));
-    if (status) { status.textContent = "erro"; status.className = "char-slot-status empty"; }
+    if (status) {
+      status.textContent = "erro";
+      status.className = "char-slot-status empty";
+    }
   } finally {
     input.value = "";
   }
@@ -1909,7 +2063,9 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
   function setDock(open) {
     dock.hidden = !open;
     shield.setAttribute("aria-pressed", open ? "true" : "false");
-    try { localStorage.setItem(DOCK_KEY, open ? "1" : "0"); } catch {}
+    try {
+      localStorage.setItem(DOCK_KEY, open ? "1" : "0");
+    } catch {}
     if (!open) {
       // Fecha todos os painéis admin ao recolher o dock
       dock.querySelectorAll("[data-dock-panel]").forEach((b) => {
@@ -1926,10 +2082,17 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
 
   // Delegação: cada barra do dock clica no botão original correspondente
   const ALL_PANEL_SELECTORS = [
-    "#lightsAdminPanel", "#layersPanel", "#botsAdminPanel",
-    "#radioAdminPanel", "#interactionsAdminPanel", "#mapAdminPanel",
-    "#carsAdminPanel", "#animAdminPanel", "#speedAdminPanel",
-    "#portalsAdminPanel", "#itemsAdminPanel",
+    "#lightsAdminPanel",
+    "#layersPanel",
+    "#botsAdminPanel",
+    "#radioAdminPanel",
+    "#interactionsAdminPanel",
+    "#mapAdminPanel",
+    "#carsAdminPanel",
+    "#animAdminPanel",
+    "#speedAdminPanel",
+    "#portalsAdminPanel",
+    "#itemsAdminPanel",
   ];
   dock.addEventListener("click", (ev) => {
     const item = ev.target.closest(".admin-dock-item");
@@ -1983,20 +2146,19 @@ manageCharactersButton?.addEventListener("click", openCharacterAdmin);
     }
   });
 
-
   // Quando um painel é fechado pelos seus próprios botões internos (×/−),
   // remove o destaque da barra correspondente no dock.
   const panelMap = {
-    "lightsAdminPanel": "[data-dock-panel='#lightsAdminPanel']",
-    "layersPanel": "[data-dock-panel='#layersPanel']",
-    "botsAdminPanel": "[data-dock-panel='#botsAdminPanel']",
-    "radioAdminPanel": "[data-dock-panel='#radioAdminPanel']",
-    "interactionsAdminPanel": "[data-dock-panel='#interactionsAdminPanel']",
-    "mapAdminPanel": "[data-dock-panel='#mapAdminPanel']",
-    "carsAdminPanel": "[data-dock-panel='#carsAdminPanel']",
-    "animAdminPanel": "[data-dock-panel='#animAdminPanel']",
-    "portalsAdminPanel": "[data-dock-panel='#portalsAdminPanel']",
-    "itemsAdminPanel": "[data-dock-panel='#itemsAdminPanel']",
+    lightsAdminPanel: "[data-dock-panel='#lightsAdminPanel']",
+    layersPanel: "[data-dock-panel='#layersPanel']",
+    botsAdminPanel: "[data-dock-panel='#botsAdminPanel']",
+    radioAdminPanel: "[data-dock-panel='#radioAdminPanel']",
+    interactionsAdminPanel: "[data-dock-panel='#interactionsAdminPanel']",
+    mapAdminPanel: "[data-dock-panel='#mapAdminPanel']",
+    carsAdminPanel: "[data-dock-panel='#carsAdminPanel']",
+    animAdminPanel: "[data-dock-panel='#animAdminPanel']",
+    portalsAdminPanel: "[data-dock-panel='#portalsAdminPanel']",
+    itemsAdminPanel: "[data-dock-panel='#itemsAdminPanel']",
   };
   const obs = new MutationObserver((muts) => {
     for (const m of muts) {
@@ -2081,7 +2243,10 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   const tracks = [];
   for (const t of out.tracks) {
     const dot = t.name.indexOf(".");
-    if (dot < 0) { tracks.push(t); continue; }
+    if (dot < 0) {
+      tracks.push(t);
+      continue;
+    }
     const boneName = t.name.slice(0, dot);
     const prop = t.name.slice(dot);
     if (stripRootPosition && prop === ".position") continue;
@@ -2109,9 +2274,7 @@ function loadCharacterAssets(character) {
   const promise = (async () => {
     if (!character.base_url) throw new Error("Personagem sem base");
     const isGlb = /\.glb(\?|$)/i.test(character.base_url);
-    const base = isGlb
-      ? await loadGlbAsScene(character.base_url)
-      : await loadFbxFromUrl(character.base_url);
+    const base = isGlb ? await loadGlbAsScene(character.base_url) : await loadFbxFromUrl(character.base_url);
     let box = new THREE.Box3().setFromObject(base);
     let size = box.getSize(new THREE.Vector3());
     // Normaliza escala
@@ -2144,7 +2307,11 @@ function loadCharacterAssets(character) {
         if (!a || a.duration <= 0.05) continue;
         const lname = (a.name || "").toLowerCase();
         let slot = null;
-        for (const s of animSlots) if (lname.includes(s)) { slot = s; break; }
+        for (const s of animSlots)
+          if (lname.includes(s)) {
+            slot = s;
+            break;
+          }
         if (slot && !clips[slot]) {
           const c = a.clone();
           c.name = slot;
@@ -2153,9 +2320,6 @@ function loadCharacterAssets(character) {
         }
       }
     }
-
-
-
 
     // 2) Para cada slot: usa override do banco; senão, biblioteca compartilhada
     await Promise.all(
@@ -2168,22 +2332,21 @@ function loadCharacterAssets(character) {
           const src = await loadSharedAnimSource(url);
           const clip = src.animations?.[0];
           if (!clip || clip.duration <= 0) return;
-          const isKick = (slot === "kickWeak" || slot === "kickStrong");
-          const retarg = retargetClipToBones(clip, targetBones, { stripRootPosition: isKick, stripHipRotation: isKick }) || clip.clone();
+          const isKick = slot === "kickWeak" || slot === "kickStrong";
+          const retarg =
+            retargetClipToBones(clip, targetBones, { stripRootPosition: isKick, stripHipRotation: isKick }) ||
+            clip.clone();
           retarg.name = slot;
           clips[slot] = retarg;
           console.log(`[char ${character.slug}] "${slot}" <- ${override ? "override" : "shared"}`);
         } catch (e) {
           console.warn(`[anim ${slot}] falhou para ${character.slug}`, e);
         }
-
-
       }),
     );
 
     // Fallback mínimo: garante slot "idle" se nada carregou.
     if (!clips.idle) clips.idle = new THREE.AnimationClip("idle", 1, []);
-
 
     return { base, clips, scale };
   })();
@@ -2230,13 +2393,26 @@ async function applyCharacter(entity, slug) {
     cloned.scale.copy(base.scale);
     cloned.position.set(0, 0, 0);
     // Remove efeitos de loading
-    if (entity.loadingFx) { entity.group.remove(entity.loadingFx); entity.loadingFx = null; }
-    if (entity.loadingSpinner) { entity.loadingSpinner.remove(); entity.loadingSpinner = null; }
-    entity.character = cloned;
+    if (entity.loadingFx) {
+      entity.group.remove(entity.loadingFx);
+      entity.loadingFx = null;
+    }
+    if (entity.loadingSpinner) {
+      entity.loadingSpinner.remove();
+      entity.loadingSpinner = null;
+    }
+     entity.character = cloned;
     entity.group.add(cloned);
-    // Aplica rotação padrão (-90 X) a todo personagem; debug sobrepõe pro "me".
+    // Sempre começa com a rotação base correta (0 X). Isso garante que o bind pose
+    // do skinned mesh está "em pé" para TODOS (local e remoto) antes de qualquer
+    // lerp de applyLocalAnimTuning ou poseDebug.
+    // applyPoseDebugTo (só pro "me") e o sistema de tunings aplicam correções ADITIVAS
+    // pequenas em cima disso. O bug anterior acontecia porque a lerp via currentAction="idle"
+    // aplicava tn.rotX ~90° vindo do DB (animation_tunings) em todo frame para remotos.
+    cloned.rotation.x = CHARACTER_DEFAULT_ROT_X;
     if (entity.player?.id && entity.player.id === myId) {
       applyPoseDebugTo(cloned);
+    }
     } else {
       cloned.rotation.x = CHARACTER_DEFAULT_ROT_X;
     }
@@ -2300,7 +2476,9 @@ async function loadInitialChat() {
     .eq("map_id", currentMapId)
     .order("created_at", { ascending: true })
     .limit(80);
-  (data || []).forEach((m) => addMessage({ user_id: m.user_id, name: m.nickname, color: m.color, text: m.text, avatar_url: m.avatar_url }));
+  (data || []).forEach((m) =>
+    addMessage({ user_id: m.user_id, name: m.nickname, color: m.color, text: m.text, avatar_url: m.avatar_url }),
+  );
 }
 
 function rowToAsset(row) {
@@ -2396,7 +2574,14 @@ async function setupRoomChannels(mapId) {
         const presenceV = p.character_v || 0;
         const keepLocalChar = old && localV > presenceV;
         const base = old
-          ? { ...p, x: old.x ?? p.x, y: old.y ?? p.y, facing: old.facing ?? p.facing, speech: old.speech ?? p.speech, running: old.running ?? false }
+          ? {
+              ...p,
+              x: old.x ?? p.x,
+              y: old.y ?? p.y,
+              facing: old.facing ?? p.facing,
+              speech: old.speech ?? p.speech,
+              running: old.running ?? false,
+            }
           : p;
         if (keepLocalChar) {
           base.character_slug = old.character_slug ?? base.character_slug;
@@ -2458,7 +2643,13 @@ async function setupRoomChannels(mapId) {
       if (!payload || payload.id === myId) return;
       const idx = players.findIndex((p) => p.id === payload.id);
       if (idx >= 0) {
-        players[idx] = { ...players[idx], x: payload.x, y: payload.y, facing: payload.facing, running: !!payload.running };
+        players[idx] = {
+          ...players[idx],
+          x: payload.x,
+          y: payload.y,
+          facing: payload.facing,
+          running: !!payload.running,
+        };
         const entity = playerEntities.get(payload.id);
         if (entity) {
           entity.player = players[idx];
@@ -2648,7 +2839,9 @@ async function setupLobbyChannel() {
 
 async function trackLobby() {
   if (!lobbyChannel) return;
-  try { await lobbyChannel.track({ map_id: currentMapId }); } catch {}
+  try {
+    await lobbyChannel.track({ map_id: currentMapId });
+  } catch {}
 }
 
 // === Trocar de sala em runtime ===
@@ -2659,10 +2852,18 @@ async function switchRoom(newMapId) {
     return;
   }
   window.showWorldLoading?.("Carregando o mundo");
-  try { await window.radioLeaveRoom?.(); } catch {}
-  try { await window.interactionsLeaveRoom?.(); } catch {}
-  try { await window.portalsLeaveRoom?.(); } catch {}
-  try { await window.carsLeaveRoom?.(); } catch {}
+  try {
+    await window.radioLeaveRoom?.();
+  } catch {}
+  try {
+    await window.interactionsLeaveRoom?.();
+  } catch {}
+  try {
+    await window.portalsLeaveRoom?.();
+  } catch {}
+  try {
+    await window.carsLeaveRoom?.();
+  } catch {}
 
   try {
     // Tira do canal antigo: derruba presence/movement/chat
@@ -2673,10 +2874,26 @@ async function switchRoom(newMapId) {
         payload: { id: myId },
       });
     } catch {}
-    if (presenceChannel) { try { await presenceChannel.untrack(); } catch {} await supabase.removeChannel(presenceChannel); presenceChannel = null; }
-    if (movementChannel) { await supabase.removeChannel(movementChannel); movementChannel = null; }
-    if (chatChannel) { await supabase.removeChannel(chatChannel); chatChannel = null; }
-    if (voiceChannel) { await supabase.removeChannel(voiceChannel); voiceChannel = null; window.__voice?.setChannel?.(null); }
+    if (presenceChannel) {
+      try {
+        await presenceChannel.untrack();
+      } catch {}
+      await supabase.removeChannel(presenceChannel);
+      presenceChannel = null;
+    }
+    if (movementChannel) {
+      await supabase.removeChannel(movementChannel);
+      movementChannel = null;
+    }
+    if (chatChannel) {
+      await supabase.removeChannel(chatChannel);
+      chatChannel = null;
+    }
+    if (voiceChannel) {
+      await supabase.removeChannel(voiceChannel);
+      voiceChannel = null;
+      window.__voice?.setChannel?.(null);
+    }
 
     // Limpa os outros jogadores da cena (mantém o meu) — eles estão em outra sala agora
     for (const [id, entity] of Array.from(playerEntities)) {
@@ -2701,25 +2918,36 @@ async function switchRoom(newMapId) {
     const myEntity = playerEntities.get(myId);
     if (myEntity) {
       myEntity.group.position.set(0, 0, 0);
-      if (me) { me.x = 50; me.y = 50; }
+      if (me) {
+        me.x = 50;
+        me.y = 50;
+      }
       const idx = players.findIndex((p) => p.id === myId);
       if (idx >= 0 && me) players[idx] = { ...players[idx], x: 50, y: 50 };
     }
 
     loadInitialChat().catch(() => {});
-    setupRoomChannels(newMapId).then(() => trackLobby()).catch(() => {});
-    Promise.resolve().then(() => window.radioEnterRoom?.(newMapId)).catch(() => {});
-    Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
-    Promise.resolve().then(() => window.portalsEnterRoom?.(newMapId)).catch(() => {});
-    Promise.resolve().then(() => window.carsEnterRoom?.(newMapId)).catch(() => {});
+    setupRoomChannels(newMapId)
+      .then(() => trackLobby())
+      .catch(() => {});
+    Promise.resolve()
+      .then(() => window.radioEnterRoom?.(newMapId))
+      .catch(() => {});
+    Promise.resolve()
+      .then(() => window.interactionsEnterRoom?.(newMapId))
+      .catch(() => {});
+    Promise.resolve()
+      .then(() => window.portalsEnterRoom?.(newMapId))
+      .catch(() => {});
+    Promise.resolve()
+      .then(() => window.carsEnterRoom?.(newMapId))
+      .catch(() => {});
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
     window.hideWorldLoading?.();
   }
 }
-
-
 
 function presencePayload() {
   return {
@@ -2756,7 +2984,9 @@ async function trackMe(updateRoster = true) {
   if (!presenceChannel) return;
   // Atualiza roster (nome/cor/avatar) via presence só quando necessário
   if (updateRoster) {
-    try { await presenceChannel.track(presencePayload()); } catch {}
+    try {
+      await presenceChannel.track(presencePayload());
+    } catch {}
   }
   // Posição/facing via broadcast dedicado
   try {
@@ -2778,19 +3008,30 @@ function notifyLeaveAndUntrack() {
       payload: { id: myId },
     });
   } catch {}
-  try { presenceChannel?.untrack(); } catch {}
-  try { lobbyChannel?.untrack(); } catch {}
+  try {
+    presenceChannel?.untrack();
+  } catch {}
+  try {
+    lobbyChannel?.untrack();
+  } catch {}
   // Se estiver dirigindo um carro, dispara uma persistência da posição atual
   // (best-effort) e libera o assento de motorista. O save periódico de 3s
   // do simulateDriving é a rede de segurança principal.
   try {
     const dc = window.__drivingCar;
     if (dc?.row && dc?.group) {
-      supabase.from("map_cars").update({
-        x: dc.group.position.x, y: dc.group.position.y, z: dc.group.position.z,
-        rotation_y: dc.state.yaw,
-        driver_user_id: null, driver_since: null,
-      }).eq("id", dc.row.id).then(() => {});
+      supabase
+        .from("map_cars")
+        .update({
+          x: dc.group.position.x,
+          y: dc.group.position.y,
+          z: dc.group.position.z,
+          rotation_y: dc.state.yaw,
+          driver_user_id: null,
+          driver_since: null,
+        })
+        .eq("id", dc.row.id)
+        .then(() => {});
     }
   } catch {}
 }
@@ -2802,13 +3043,16 @@ const AFK_LEAVE_MS = 5 * 60 * 1000; // 5 minutos
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
     if (_afkLeaveTimer) clearTimeout(_afkLeaveTimer);
-    _afkLeaveTimer = setTimeout(() => { notifyLeaveAndUntrack(); }, AFK_LEAVE_MS);
+    _afkLeaveTimer = setTimeout(() => {
+      notifyLeaveAndUntrack();
+    }, AFK_LEAVE_MS);
   } else {
-    if (_afkLeaveTimer) { clearTimeout(_afkLeaveTimer); _afkLeaveTimer = null; }
+    if (_afkLeaveTimer) {
+      clearTimeout(_afkLeaveTimer);
+      _afkLeaveTimer = null;
+    }
   }
 });
-
-
 
 // ============ HUD permissions ============
 function renderPermissions() {
@@ -2829,8 +3073,7 @@ function renderPermissions() {
 function escapeHtml(value) {
   return String(value).replace(
     /[&<>"']/g,
-    (char) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+    (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
   );
 }
 
@@ -2840,11 +3083,7 @@ function getMapScale() {
 }
 function worldFromPercent(x, y) {
   const s = getMapScale();
-  return new THREE.Vector3(
-    (x / 100 - 0.5) * MAP_WIDTH * s,
-    0,
-    (y / 100 - 0.5) * MAP_DEPTH * s,
-  );
+  return new THREE.Vector3((x / 100 - 0.5) * MAP_WIDTH * s, 0, (y / 100 - 0.5) * MAP_DEPTH * s);
 }
 function getWalkRange() {
   const v = parseFloat(localStorage.getItem("neon-walk-range") || "1");
@@ -2876,9 +3115,9 @@ function makeBox(name, size, position, color, options = {}) {
 }
 
 // ============ Map (default scenery) ============
-const colliderMeshes = [];   // walls / counters / chairs — block movement
-const walkableMeshes = [];   // floor / stairs / ramps — drive Y height
-const occluderMeshes = [];   // any visible env mesh — candidates for camera occlusion fade
+const colliderMeshes = []; // walls / counters / chairs — block movement
+const walkableMeshes = []; // floor / stairs / ramps — drive Y height
+const occluderMeshes = []; // any visible env mesh — candidates for camera occlusion fade
 const _fadedNow = new Set();
 const _fadedPrev = new Set();
 const _collRay = new THREE.Raycaster();
@@ -2888,8 +3127,8 @@ const _groundRay = new THREE.Raycaster();
 const _down = new THREE.Vector3(0, -1, 0);
 const _groundOrigin = new THREE.Vector3();
 const COLLISION_RADIUS = 0.4;
-const STEP_UP = 0.6;          // altura máxima de degrau que o personagem sobe automaticamente
-const PLAYER_HEIGHT = 1.6;    // altura aproximada do peito/cabeça para colisão
+const STEP_UP = 0.6; // altura máxima de degrau que o personagem sobe automaticamente
+const PLAYER_HEIGHT = 1.6; // altura aproximada do peito/cabeça para colisão
 const STAIR_NAME_RE = /stair|escad|step|ramp|slope/i;
 
 // Registra todas as malhas de um root (env ou GLB colocado) como sólidos:
@@ -2919,7 +3158,6 @@ function unregisterCollidable(root) {
   root.userData._collidableMeshes = null;
 }
 
-
 // Lighting groups we can swap when the map mood changes
 const lightingGroup = new THREE.Group();
 scene.add(lightingGroup);
@@ -2940,9 +3178,9 @@ const boundaryHelper = (() => {
   return mesh;
 })();
 function updateBoundaryHelper() {
-  const s = (typeof getMapScale === "function") ? getMapScale() : 1;
-  const r = (typeof getWalkRange === "function") ? getWalkRange() : 1;
-  const w = MAP_WIDTH * s * 0.90 * r;
+  const s = typeof getMapScale === "function" ? getMapScale() : 1;
+  const r = typeof getWalkRange === "function" ? getWalkRange() : 1;
+  const w = MAP_WIDTH * s * 0.9 * r;
   const d = MAP_DEPTH * s * 0.84 * r;
   boundaryHelper.scale.set(w, 1.2, d);
 }
@@ -2973,9 +3211,12 @@ function applyLightingForMood(mood) {
   function configSun(light) {
     light.castShadow = true;
     light.shadow.mapSize.set(2048, 2048);
-    light.shadow.camera.near = 1; light.shadow.camera.far = 50;
-    light.shadow.camera.left = -18; light.shadow.camera.right = 18;
-    light.shadow.camera.top = 18; light.shadow.camera.bottom = -18;
+    light.shadow.camera.near = 1;
+    light.shadow.camera.far = 50;
+    light.shadow.camera.left = -18;
+    light.shadow.camera.right = 18;
+    light.shadow.camera.top = 18;
+    light.shadow.camera.bottom = -18;
     light.shadow.bias = -0.0001;
     light.shadow.radius = 3;
     light.shadow.normalBias = 0.02;
@@ -3079,9 +3320,8 @@ function clearEnvironment() {
   invalidateEnvCullCache?.();
 }
 
-let currentEnvRoot = null;       // o gltf.scene atualmente carregado
-let currentEnvBaseScale = 1;     // escala "auto-fit" base, antes do multiplicador admin
-
+let currentEnvRoot = null; // o gltf.scene atualmente carregado
+let currentEnvBaseScale = 1; // escala "auto-fit" base, antes do multiplicador admin
 
 async function fetchMapTransform(mapId) {
   try {
@@ -3147,12 +3387,18 @@ async function loadEnvironment(mapId, opts = {}) {
   // Mapa sem GLB: apenas aplica transform/luzes e sai (admin pode colocar GLBs dentro)
   if (!map.url) {
     currentMapTransform = await transformPromise;
-    if (token !== __envLoadToken) { assetsPromise?.catch(() => {}); return; }
+    if (token !== __envLoadToken) {
+      assetsPromise?.catch(() => {});
+      return;
+    }
     setDarkMode(!!currentMapTransform?.dark_mode);
     applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
     reloadMapLights(currentMapId);
     syncMapAdminPanel();
-    if (waitForAssets) try { await assetsPromise; } catch {}
+    if (waitForAssets)
+      try {
+        await assetsPromise;
+      } catch {}
     else startAssetsLoad().catch(() => {});
     return;
   }
@@ -3225,7 +3471,6 @@ async function loadEnvironment(mapId, opts = {}) {
     startAssetsLoad().catch(() => {});
   }
 }
-
 
 // Retorna a altura Y do chão sob `pos`, escolhendo o topo mais alto que o
 // personagem consegue subir (até STEP_UP acima do Y atual). Permite subir
@@ -3300,7 +3545,6 @@ const _occDir = new THREE.Vector3();
 const _occFrom = new THREE.Vector3();
 const FADE_OPACITY = 0.0;
 
-
 function setMeshFaded(mesh, faded) {
   if (!mesh.material) return;
   if (faded) {
@@ -3340,27 +3584,39 @@ const _ceilOrigin = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
 function clampCameraToCeiling() {
   if (window.__freeCameraMode) return;
-  if (!colliderMeshes.length) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  if (!colliderMeshes.length) {
+    controls.maxDistance = BASE_MAX_DISTANCE;
+    return;
+  }
   _ceilOrigin.copy(controls.target);
   _ceilRay.set(_ceilOrigin, _up);
   _ceilRay.far = 50;
   const hits = _ceilRay.intersectObjects(colliderMeshes, false);
   let ceilingY = Infinity;
-  for (const h of hits) { if (h.point.y > controls.target.y + 0.5 && h.point.y < ceilingY) ceilingY = h.point.y; }
-  if (!isFinite(ceilingY)) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  for (const h of hits) {
+    if (h.point.y > controls.target.y + 0.5 && h.point.y < ceilingY) ceilingY = h.point.y;
+  }
+  if (!isFinite(ceilingY)) {
+    controls.maxDistance = BASE_MAX_DISTANCE;
+    return;
+  }
   const margin = 0.3;
   const maxY = ceilingY - margin;
   // direção câmera→alvo (normalizada)
   const dy = camera.position.y - controls.target.y;
   const dist = camera.position.distanceTo(controls.target);
-  if (dy <= 0 || dist < 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  if (dy <= 0 || dist < 0.001) {
+    controls.maxDistance = BASE_MAX_DISTANCE;
+    return;
+  }
   const sinElev = dy / dist; // componente vertical do vetor unitário
-  if (sinElev <= 0.001) { controls.maxDistance = BASE_MAX_DISTANCE; return; }
+  if (sinElev <= 0.001) {
+    controls.maxDistance = BASE_MAX_DISTANCE;
+    return;
+  }
   const maxDist = (maxY - controls.target.y) / sinElev;
   controls.maxDistance = Math.max(controls.minDistance + 0.1, Math.min(BASE_MAX_DISTANCE, maxDist));
 }
-
-
 
 // ============ Character ============
 function createCharacter(color = "#29d3bd", opts = {}) {
@@ -3458,7 +3714,11 @@ function createCharacterClips() {
   ]);
   const walkTimes = [0, 0.22, 0.44, 0.66, 0.88];
   const walk = new THREE.AnimationClip("Walk", 0.88, [
-    new THREE.VectorKeyframeTrack("Torso.position", walkTimes, [0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0]),
+    new THREE.VectorKeyframeTrack(
+      "Torso.position",
+      walkTimes,
+      [0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0, 0, 1.16, 0, 0, 1.08, 0],
+    ),
     new THREE.QuaternionKeyframeTrack("LeftArm.quaternion", walkTimes, quatValues(xAxis, [-26, 22, -26, 22, -26])),
     new THREE.QuaternionKeyframeTrack("RightArm.quaternion", walkTimes, quatValues(xAxis, [26, -22, 26, -22, 26])),
     new THREE.QuaternionKeyframeTrack("LeftLeg.quaternion", walkTimes, quatValues(xAxis, [28, -25, 28, -25, 28])),
@@ -3480,8 +3740,6 @@ function createPlayerEntity(player) {
   plate.dataset.user = player.id;
   if (player.id !== myId) plate.classList.add("is-clickable");
   nameplatesLayer.appendChild(plate);
-
-
 
   let character = null;
   let mixer = null;
@@ -3598,9 +3856,14 @@ function applyAvatar(entity, url) {
           c.castShadow = true;
           c.receiveShadow = true;
           if (c.isSkinnedMesh && c.skeleton) {
-            try { c.skeleton.update(); } catch {}
+            try {
+              c.skeleton.update();
+            } catch {}
             // Recalcula bounding box/sphere com base nas posições com skin
-            try { c.computeBoundingBox(); c.computeBoundingSphere(); } catch {}
+            try {
+              c.computeBoundingBox();
+              c.computeBoundingSphere();
+            } catch {}
             c.frustumCulled = false;
           }
         }
@@ -3645,7 +3908,11 @@ function setPlayerAction(entity, name) {
     if (isLoopEmote && (name === "walk" || name === "run")) {
       entity.emoteAction.fadeOut(0.18);
       const finished = entity.emoteAction;
-      setTimeout(() => { try { finished.stop(); } catch {} }, 220);
+      setTimeout(() => {
+        try {
+          finished.stop();
+        } catch {}
+      }, 220);
       entity.emoteAction = null;
       entity.emoteUntil = 0;
       entity.currentAction = null;
@@ -3666,8 +3933,6 @@ function setPlayerAction(entity, name) {
   entity.currentAction = name;
 }
 
-
-
 function playEmote(entity, slot) {
   if (!entity?.actions?.[slot]) return;
   if (entity.currentAction && entity.actions[entity.currentAction]) {
@@ -3687,17 +3952,18 @@ function playEmote(entity, slot) {
   entity.currentAction = null;
 }
 
-
 function triggerLocalEmote(slot) {
   if (!me || !myId) return;
   const entity = playerEntities.get(myId);
   if (!entity) return;
   playEmote(entity, slot);
-  movementChannel?.send({
-    type: "broadcast",
-    event: "emote",
-    payload: { id: myId, slot },
-  }).catch(() => {});
+  movementChannel
+    ?.send({
+      type: "broadcast",
+      event: "emote",
+      payload: { id: myId, slot },
+    })
+    .catch(() => {});
 }
 
 // jump removido: animação desativada
@@ -3708,25 +3974,33 @@ emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 const darkModeToggleBtn = document.getElementById("darkModeToggle");
 if (darkModeToggleBtn) {
   darkModeToggleBtn.addEventListener("click", async () => {
-    if (!isAdmin) { alert("Apenas admin."); return; }
+    if (!isAdmin) {
+      alert("Apenas admin.");
+      return;
+    }
     const next = !DARK_MODE;
     setDarkMode(next);
     currentMapTransform = { ...currentMapTransform, dark_mode: next };
     // Persiste pra todo mundo (igual mood)
     try {
-      await supabase.from("map_transforms").upsert({
-        map_id: currentMapId,
-        offset_x: currentMapTransform.offset_x || 0,
-        offset_y: currentMapTransform.offset_y || 0,
-        offset_z: currentMapTransform.offset_z || 0,
-        rotation_y: currentMapTransform.rotation_y || 0,
-        scale_mul: currentMapTransform.scale_mul || 1,
-        mood: currentMapTransform.mood || null,
-        dark_mode: next,
-        updated_by: myId,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: "map_id" });
-    } catch (e) { console.warn("dark_mode save", e); }
+      await supabase.from("map_transforms").upsert(
+        {
+          map_id: currentMapId,
+          offset_x: currentMapTransform.offset_x || 0,
+          offset_y: currentMapTransform.offset_y || 0,
+          offset_z: currentMapTransform.offset_z || 0,
+          rotation_y: currentMapTransform.rotation_y || 0,
+          scale_mul: currentMapTransform.scale_mul || 1,
+          mood: currentMapTransform.mood || null,
+          dark_mode: next,
+          updated_by: myId,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "map_id" },
+      );
+    } catch (e) {
+      console.warn("dark_mode save", e);
+    }
   });
 }
 
@@ -3757,7 +4031,9 @@ function renderPlayers(nextPlayers) {
     // valores antigos e reverter a troca de personagem ou teleportar o jogador.
     const localChar = me?.character_slug || null;
     const localAvatar = me?.avatar_url || null;
-    const localX = me?.x; const localY = me?.y; const localFacing = me?.facing;
+    const localX = me?.x;
+    const localY = me?.y;
+    const localFacing = me?.facing;
     me = { ...me, ...mine };
     if (localChar) me.character_slug = localChar;
     if (localAvatar) me.avatar_url = localAvatar;
@@ -3789,7 +4065,7 @@ function renderPlayers(nextPlayers) {
     entity.player = player;
     // Para o próprio jogador, a fonte da verdade é `me.character_slug`,
     // não o presence (que pode chegar atrasado e reverter a troca).
-    const desiredSlug = player.id === myId ? (me.character_slug || player.character_slug) : player.character_slug;
+    const desiredSlug = player.id === myId ? me.character_slug || player.character_slug : player.character_slug;
     if (desiredSlug && entity.characterSlug !== desiredSlug && entity.pendingCharacterSlug !== desiredSlug) {
       applyCharacter(entity, desiredSlug);
     }
@@ -3816,10 +4092,6 @@ function renderAssets(assets = []) {
   for (const [id, object] of assetObjects) {
     if (!byId.has(id)) {
       unregisterCollidable(object);
-      if (object.userData?.__mixer) {
-        try { assetMixers.delete(object.userData.__mixer); } catch {}
-        object.userData.__mixer = null;
-      }
       scene.remove(object);
       assetObjects.delete(id);
     }
@@ -3830,60 +4102,48 @@ function renderAssets(assets = []) {
       const object = assetObjects.get(asset.id);
       object.position.set(asset.x, asset.y, asset.z);
       object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-      if (object.userData.baseScale)
-        object.scale.setScalar(object.userData.baseScale * asset.scale);
+      if (object.userData.baseScale) object.scale.setScalar(object.userData.baseScale * asset.scale);
       object.updateMatrixWorld(true);
       unregisterCollidable(object);
       registerCollidable(object);
       continue;
     }
-    pending.push(new Promise((resolve) => {
-      loader.load(
-        asset.url,
-        (gltf) => {
-          const object = gltf.scene;
-          object.name = asset.name;
-          normalizeImportedObject(object, asset.scale);
-          object.position.set(asset.x, asset.y, asset.z);
-          object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-          object.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          scene.add(object);
-          object.updateMatrixWorld(true);
-          registerCollidable(object);
-          assetObjects.set(asset.id, object);
-          // Suporte a GLBs com animação embutida: cria mixer e toca todas em loop
-          if (gltf.animations && gltf.animations.length) {
-            try {
-              const mixer = new THREE.AnimationMixer(object);
-              for (const clip of gltf.animations) {
-                const action = mixer.clipAction(clip);
-                action.setLoop(THREE.LoopRepeat, Infinity);
-                action.play();
+    pending.push(
+      new Promise((resolve) => {
+        loader.load(
+          asset.url,
+          (gltf) => {
+            const object = gltf.scene;
+            object.name = asset.name;
+            normalizeImportedObject(object, asset.scale);
+            object.position.set(asset.x, asset.y, asset.z);
+            object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+            object.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
               }
-              object.userData.__mixer = mixer;
-              assetMixers.add(mixer);
-            } catch (e) { console.warn("[map asset anim]", e); }
-          }
-          resolve();
-        },
-        undefined,
-        () => {
-          const fallback = makeFallbackAsset(asset.name, asset.scale);
-          fallback.position.set(asset.x, asset.y, asset.z);
-          fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-          scene.add(fallback);
-          fallback.updateMatrixWorld(true);
-          registerCollidable(fallback);
-          assetObjects.set(asset.id, fallback);
-          resolve();
-        },
-      );
-    }));
+            });
+            scene.add(object);
+            object.updateMatrixWorld(true);
+            registerCollidable(object);
+            assetObjects.set(asset.id, object);
+            resolve();
+          },
+          undefined,
+          () => {
+            const fallback = makeFallbackAsset(asset.name, asset.scale);
+            fallback.position.set(asset.x, asset.y, asset.z);
+            fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+            scene.add(fallback);
+            fallback.updateMatrixWorld(true);
+            registerCollidable(fallback);
+            assetObjects.set(asset.id, fallback);
+            resolve();
+          },
+        );
+      }),
+    );
   }
   updateAssetList(assets);
   return Promise.all(pending);
@@ -3989,21 +4249,20 @@ function addMessage(message) {
   item.setAttribute("data-ts", String(Date.now()));
   const avatarStyle = message.avatar_url
     ? `background-image:url('${escapeHtml(message.avatar_url)}')`
-    : `background:${escapeHtml(message.color || '#6c5ce7')}`;
+    : `background:${escapeHtml(message.color || "#6c5ce7")}`;
   const initial = (message.name || "?").trim().charAt(0).toUpperCase();
   const avatarClass = message.avatar_url ? "chat-avatar" : "chat-avatar placeholder";
   const avatarContent = message.avatar_url ? "" : escapeHtml(initial);
   item.innerHTML = `
-    <div class="${avatarClass}" data-user="${escapeHtml(message.user_id || '')}" style="${avatarStyle}">${avatarContent}</div>
+    <div class="${avatarClass}" data-user="${escapeHtml(message.user_id || "")}" style="${avatarStyle}">${avatarContent}</div>
     <div class="chat-copy">
-      ${isSelf ? "" : `<span class="chat-name" data-user="${escapeHtml(message.user_id || '')}">${escapeHtml(message.name)}</span>`}
+      ${isSelf ? "" : `<span class="chat-name" data-user="${escapeHtml(message.user_id || "")}">${escapeHtml(message.name)}</span>`}
       <div class="chat-bubble">${escapeHtml(message.text)}</div>
     </div>
   `;
   chatLog.appendChild(item);
   chatLog.scrollTop = chatLog.scrollHeight;
 }
-
 
 // ============ Movement ============
 function move(dx, dy, facing) {
@@ -4074,22 +4333,39 @@ function applyJoystickMoveNormal(jx, jy, mag) {
   const idx = players.findIndex((p) => p.id === myId);
   if (idx >= 0) players[idx] = { ...players[idx], ...me };
   const now = performance.now();
-  if (now - lastMoveSent > 90) { lastMoveSent = now; trackMe(false).catch(() => {}); }
+  if (now - lastMoveSent > 90) {
+    lastMoveSent = now;
+    trackMe(false).catch(() => {});
+  }
 }
 
 function applyHeldMovement(delta) {
   if (window.__drivingCar) return; // dirigindo carro: controles do veículo
-  if (window.__ridingCar) return;  // de carona: posição controlada pelo carro
+  if (window.__ridingCar) return; // de carona: posição controlada pelo carro
   if (window.__footballMode) return; // módulo de futebol controla o movimento
-  if (window.__freeCameraMode) { applyFreeCameraMovement(); return; }
+  if (window.__freeCameraMode) {
+    applyFreeCameraMovement();
+    return;
+  }
   // Joystick na tela (modo normal)
   const j = window.__joyState;
   const usingJoy = !!(j && j.active && Math.hypot(j.x, j.y) > 0.12);
   // Auto-levantar ao detectar qualquer input de movimento
   if (window.__sittingInteraction) {
-    const hasKey = keyState.has("arrowup") || keyState.has("arrowdown") || keyState.has("arrowleft") || keyState.has("arrowright") || keyState.has("w") || keyState.has("a") || keyState.has("s") || keyState.has("d");
-    if (hasKey || usingJoy) { try { window.standUpFromInteraction?.(); } catch {} }
-    else return;
+    const hasKey =
+      keyState.has("arrowup") ||
+      keyState.has("arrowdown") ||
+      keyState.has("arrowleft") ||
+      keyState.has("arrowright") ||
+      keyState.has("w") ||
+      keyState.has("a") ||
+      keyState.has("s") ||
+      keyState.has("d");
+    if (hasKey || usingJoy) {
+      try {
+        window.standUpFromInteraction?.();
+      } catch {}
+    } else return;
   }
   if (!me || !myId) return;
   const entity = playerEntities.get(myId);
@@ -4108,7 +4384,8 @@ function applyHeldMovement(delta) {
   }
 
   // Direção de entrada (teclado WASD/setas tem prioridade; senão usa joystick)
-  let ix = 0, iy = 0;
+  let ix = 0,
+    iy = 0;
   if (keyState.has("arrowup") || keyState.has("w")) iy += 1;
   if (keyState.has("arrowdown") || keyState.has("s")) iy -= 1;
   if (keyState.has("arrowleft") || keyState.has("a")) ix -= 1;
@@ -4116,7 +4393,8 @@ function applyHeldMovement(delta) {
   let mag = Math.hypot(ix, iy);
   let running = keyState.has("shift");
   if (mag < 0.01 && usingJoy) {
-    ix = j.x; iy = j.y; // joystick: joy.y já é positivo quando o knob vai pra cima
+    ix = j.x;
+    iy = j.y; // joystick: joy.y já é positivo quando o knob vai pra cima
     mag = Math.min(1, Math.hypot(ix, iy));
     running = !!j.run; // só corre quando arrasta para fora do círculo
   }
@@ -4136,9 +4414,7 @@ function applyHeldMovement(delta) {
   if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
   camFwd.normalize();
   const camRight = new THREE.Vector3(-camFwd.z, 0, camFwd.x);
-  const dir = new THREE.Vector3()
-    .addScaledVector(camFwd, iy)
-    .addScaledVector(camRight, ix);
+  const dir = new THREE.Vector3().addScaledVector(camFwd, iy).addScaledVector(camRight, ix);
   if (dir.lengthSq() < 1e-5) return;
   dir.normalize();
 
@@ -4153,7 +4429,7 @@ function applyHeldMovement(delta) {
   entity.group.rotation.y = Math.atan2(dir.x, dir.z);
   // Só auto-rotaciona a câmera para frente/laterais; ré (S) não vira a câmera
   // (evita flip de 180° quando o jogador anda de costas).
-  entity.__moveDir = (iy >= -0.1) ? { x: dir.x, z: dir.z } : null;
+  entity.__moveDir = iy >= -0.1 ? { x: dir.x, z: dir.z } : null;
   if (entity.__jumpVy == null) {
     const gy = groundHeightAt(entity.group.position, entity.group.position.y);
     entity.group.position.y += (gy - entity.group.position.y) * Math.min(1, dt * 12);
@@ -4168,19 +4444,22 @@ function applyHeldMovement(delta) {
     const pct = percentFromWorld(entity.group.position.x, entity.group.position.z);
     me.x = Math.max(5, Math.min(95, pct.x));
     me.y = Math.max(8, Math.min(92, pct.y));
-    me.facing = Math.abs(dir.x) > Math.abs(dir.z)
-      ? (dir.x > 0 ? "right" : "left")
-      : (dir.z > 0 ? "down" : "up");
+    me.facing = Math.abs(dir.x) > Math.abs(dir.z) ? (dir.x > 0 ? "right" : "left") : dir.z > 0 ? "down" : "up";
     const idx = players.findIndex((p) => p.id === myId);
     if (idx >= 0) players[idx] = { ...players[idx], ...me };
     const now = performance.now();
-    if (now - lastMoveSent > 90) { lastMoveSent = now; trackMe(false).catch(() => {}); }
+    if (now - lastMoveSent > 90) {
+      lastMoveSent = now;
+      trackMe(false).catch(() => {});
+    }
   }
 }
 
 function applyFreeCameraMovement() {
   const amount = 0.35;
-  let fwd = 0, right = 0, up = 0;
+  let fwd = 0,
+    right = 0,
+    up = 0;
   if (keyState.has("arrowup") || keyState.has("w")) fwd += amount;
   if (keyState.has("arrowdown") || keyState.has("s")) fwd -= amount;
   if (keyState.has("arrowleft") || keyState.has("a")) right -= amount;
@@ -4190,12 +4469,13 @@ function applyFreeCameraMovement() {
   if (!fwd && !right && !up) return;
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
-  dir.y = 0; dir.normalize();
+  dir.y = 0;
+  dir.normalize();
   const side = new THREE.Vector3().crossVectors(dir, camera.up).normalize();
   const delta = new THREE.Vector3()
     .addScaledVector(dir, fwd)
     .addScaledVector(side, right)
-    .addScaledVector(new THREE.Vector3(0,1,0), up);
+    .addScaledVector(new THREE.Vector3(0, 1, 0), up);
   camera.position.add(delta);
   controls.target.add(delta);
 }
@@ -4211,7 +4491,12 @@ function updatePlayerAnimation(delta) {
     }
     // Jogador local em modo normal: applyHeldMovement já posiciona/anima.
     // Aqui só atualizamos o mixer, aplicamos a tuning por animação, e seguimos.
-    if (entity.player?.id === myId && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode) {
+    if (
+      entity.player?.id === myId &&
+      !window.__drivingCar &&
+      !window.__sittingInteraction &&
+      !window.__freeCameraMode
+    ) {
       if (entity.mixer) entity.mixer.update(delta);
       applyLocalAnimTuning(entity, delta);
       if (entity.loadingFx) updateLoadingSmoke(entity, performance.now() / 1000);
@@ -4276,7 +4561,10 @@ function updatePlayerAnimation(delta) {
     if (entity.mixer) {
       if (culled) {
         entity._mixerAccum = (entity._mixerAccum || 0) + delta;
-        if (entity._mixerAccum > 0.1) { entity.mixer.update(entity._mixerAccum); entity._mixerAccum = 0; }
+        if (entity._mixerAccum > 0.1) {
+          entity.mixer.update(entity._mixerAccum);
+          entity._mixerAccum = 0;
+        }
       } else {
         entity.mixer.update(delta);
       }
@@ -4286,7 +4574,6 @@ function updatePlayerAnimation(delta) {
     if (entity.loadingFx && !culled) updateLoadingSmoke(entity, performance.now() / 1000);
   }
 }
-
 
 function updateNameplates() {
   const rect = renderer.domElement.getBoundingClientRect();
@@ -4485,7 +4772,9 @@ let _lodLastDistance = -1;
 let _lodAccum = 0;
 let _envCullCache = null; // [{node, cx,cy,cz, r}]
 let _envCullDirty = true;
-function invalidateEnvCullCache() { _envCullDirty = true; }
+function invalidateEnvCullCache() {
+  _envCullDirty = true;
+}
 window.invalidateEnvCullCache = invalidateEnvCullCache;
 function _rebuildEnvCullCache() {
   envGroup.updateMatrixWorld(true);
@@ -4524,8 +4813,14 @@ function updateRenderDistanceCulling(force = false) {
   // Outros jogadores (esconde quem está dirigindo um carro)
   const hidden = window.__hiddenDrivers;
   for (const [id, e] of playerEntities) {
-    if (hidden && hidden.has(id)) { e.group.visible = false; continue; }
-    if (id === myId) { e.group.visible = true; continue; }
+    if (hidden && hidden.has(id)) {
+      e.group.visible = false;
+      continue;
+    }
+    if (id === myId) {
+      e.group.visible = true;
+      continue;
+    }
     e.group.getWorldPosition(_lodTmp);
     e.group.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
   }
@@ -4538,12 +4833,16 @@ function updateRenderDistanceCulling(force = false) {
   // Malhas do mapa via cache (estático): só compara distância ao quadrado.
   if (_envCullDirty || !_envCullCache) _rebuildEnvCullCache();
   const cache = _envCullCache;
-  const rx = _lodRef.x, ry = _lodRef.y, rz = _lodRef.z;
+  const rx = _lodRef.x,
+    ry = _lodRef.y,
+    rz = _lodRef.z;
   for (let i = 0; i < cache.length; i++) {
     const m = cache[i];
-    const dx = m.cx - rx, dy = m.cy - ry, dz = m.cz - rz;
+    const dx = m.cx - rx,
+      dy = m.cy - ry,
+      dz = m.cz - rz;
     const lim = RENDER_DISTANCE + m.r;
-    m.node.visible = (dx*dx + dy*dy + dz*dz) < (lim * lim);
+    m.node.visible = dx * dx + dy * dy + dz * dz < lim * lim;
   }
   if (envBaseFloor) envBaseFloor.visible = true;
 }
@@ -4552,15 +4851,30 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
   // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
-  if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
-  if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
+  if (window.__footballFrame) {
+    try {
+      window.__footballFrame(delta);
+    } catch (e) {
+      console.warn("[football] frame", e);
+    }
+  }
+  if (window.__carsFrame) {
+    try {
+      window.__carsFrame(delta);
+    } catch (e) {
+      console.warn("[cars] frame", e);
+    }
+  }
   applyHeldMovement(delta);
   updatePlayerAnimation(delta);
-  if (assetMixers.size) { for (const m of assetMixers) { try { m.update(delta); } catch {} } }
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
     if (entity) {
-      const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
+      const desired = new THREE.Vector3(
+        entity.group.position.x,
+        entity.group.position.y + 0.85,
+        entity.group.position.z,
+      );
       const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
       controls.target.lerp(desired, delta * 4.0);
       // Auto-orbit: enquanto se move, gira a câmera para ficar atrás do personagem.
@@ -4590,18 +4904,24 @@ function animate() {
   }
   if (window.__footballMode) {
     // Câmera 3ª pessoa controlada pelo módulo de futebol.
-    if (window.__footballCamera) { try { window.__footballCamera(delta); } catch {} }
+    if (window.__footballCamera) {
+      try {
+        window.__footballCamera(delta);
+      } catch {}
+    }
   } else {
     clampCameraToCeiling();
     controls.update();
     updateCameraOcclusion();
   }
   _lodAccum += delta;
-  if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
+  if (_lodAccum >= 0.2) {
+    _lodAccum = 0;
+    updateRenderDistanceCulling();
+  }
   renderer.render(scene, camera);
   updateNameplates();
 }
-
 
 // ============ Event wiring ============
 window.addEventListener("resize", resize);
@@ -4626,8 +4946,10 @@ document.addEventListener("keydown", (event) => {
   if (event.target.matches("input, textarea")) return;
   if (!event.key) return;
   const key = event.key.toLowerCase();
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "shift"].includes(key)
-      || (window.__freeCameraMode && (key === "q" || key === "e"))) {
+  if (
+    ["arrowup", "arrowdown", "arrowleft", "arrowright", "w", "a", "s", "d", "shift"].includes(key) ||
+    (window.__freeCameraMode && (key === "q" || key === "e"))
+  ) {
     event.preventDefault();
     keyState.add(key);
     return;
@@ -4635,7 +4957,13 @@ document.addEventListener("keydown", (event) => {
   if (key === " " || key === "spacebar") {
     event.preventDefault();
     // Pulo (modo normal apenas)
-    if (!window.__footballMode && !window.__drivingCar && !window.__sittingInteraction && !window.__freeCameraMode && myId) {
+    if (
+      !window.__footballMode &&
+      !window.__drivingCar &&
+      !window.__sittingInteraction &&
+      !window.__freeCameraMode &&
+      myId
+    ) {
       const ent = playerEntities.get(myId);
       if (ent && ent.__jumpVy == null) ent.__jumpVy = 7.2;
     }
@@ -4643,13 +4971,22 @@ document.addEventListener("keydown", (event) => {
   }
   if (key === "e" && !window.__freeCameraMode && window.__sittingInteraction) {
     event.preventDefault();
-    try { window.standUpFromInteraction?.(); } catch {}
+    try {
+      window.standUpFromInteraction?.();
+    } catch {}
     return;
   }
   if (window.__sittingInteraction) return; // bloqueia emotes enquanto sentado
-  if (key === "1") { event.preventDefault(); triggerLocalEmote("dance"); return; }
-  if (key === "2") { event.preventDefault(); triggerLocalEmote("wave"); return; }
-
+  if (key === "1") {
+    event.preventDefault();
+    triggerLocalEmote("dance");
+    return;
+  }
+  if (key === "2") {
+    event.preventDefault();
+    triggerLocalEmote("wave");
+    return;
+  }
 });
 document.addEventListener("keyup", (event) => {
   if (!event.key) return;
@@ -4690,7 +5027,16 @@ function handleSceneClick(event) {
   if (peerHit) {
     if (window.__playerPopup?.open) {
       // âncora "fake" na posição do clique
-      const fakeAnchor = { getBoundingClientRect: () => ({ left: event.clientX, top: event.clientY, width: 0, height: 0, right: event.clientX, bottom: event.clientY }) };
+      const fakeAnchor = {
+        getBoundingClientRect: () => ({
+          left: event.clientX,
+          top: event.clientY,
+          width: 0,
+          height: 0,
+          right: event.clientX,
+          bottom: event.clientY,
+        }),
+      };
       window.__playerPopup.open(peerHit, fakeAnchor);
     }
     return;
@@ -4730,7 +5076,10 @@ function pickPeerAvatar(event) {
     if (ent?.group && ent.group.visible !== false) groups.push({ pid, group: ent.group });
   }
   if (!groups.length) return null;
-  const hits = raycaster.intersectObjects(groups.map((g) => g.group), true);
+  const hits = raycaster.intersectObjects(
+    groups.map((g) => g.group),
+    true,
+  );
   if (!hits.length) return null;
   // sobe na hierarquia até bater num group de peer conhecido
   for (const h of hits) {
@@ -4822,8 +5171,7 @@ assetList.addEventListener("input", (event) => {
   if (object) {
     object.position.set(asset.x, asset.y, asset.z);
     object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-    if (object.userData.baseScale)
-      object.scale.setScalar(object.userData.baseScale * asset.scale);
+    if (object.userData.baseScale) object.scale.setScalar(object.userData.baseScale * asset.scale);
   }
   // Debounce do update no banco
   clearTimeout(updateAsset._t);
@@ -4888,7 +5236,6 @@ resize();
 renderPermissions();
 requestAnimationFrame(animate);
 
-
 // ===== Admin: editar transform do mapa =====
 const mapAdminToggle = document.querySelector("#mapAdminToggle");
 const mapAdminPanel = document.querySelector("#mapAdminPanel");
@@ -4928,15 +5275,30 @@ function syncMapAdminPanel() {
   const ox = t.offset_x ?? 1;
   const oy = t.offset_y ?? 1;
   const oz = t.offset_z ?? 1;
-  if (mapScaleInput) { mapScaleInput.value = scale; mapScaleVal.textContent = scale.toFixed(2) + "×"; }
+  if (mapScaleInput) {
+    mapScaleInput.value = scale;
+    mapScaleVal.textContent = scale.toFixed(2) + "×";
+  }
   if (mapScaleNum) mapScaleNum.value = scale;
-  if (mapRotYInput) { mapRotYInput.value = deg; mapRotYVal.textContent = deg + "°"; }
+  if (mapRotYInput) {
+    mapRotYInput.value = deg;
+    mapRotYVal.textContent = deg + "°";
+  }
   if (mapRotYNum) mapRotYNum.value = deg;
-  if (mapOffXInput) { mapOffXInput.value = ox; mapOffXVal.textContent = ox.toFixed(2); }
+  if (mapOffXInput) {
+    mapOffXInput.value = ox;
+    mapOffXVal.textContent = ox.toFixed(2);
+  }
   if (mapOffXNum) mapOffXNum.value = ox;
-  if (mapOffYInput) { mapOffYInput.value = oy; mapOffYVal.textContent = oy.toFixed(2); }
+  if (mapOffYInput) {
+    mapOffYInput.value = oy;
+    mapOffYVal.textContent = oy.toFixed(2);
+  }
   if (mapOffYNum) mapOffYNum.value = oy;
-  if (mapOffZInput) { mapOffZInput.value = oz; mapOffZVal.textContent = oz.toFixed(2); }
+  if (mapOffZInput) {
+    mapOffZInput.value = oz;
+    mapOffZVal.textContent = oz.toFixed(2);
+  }
   if (mapOffZNum) mapOffZNum.value = oz;
   if (mapMoodInput) mapMoodInput.value = currentMapMoodEffective();
   if (mapAdminTitle) {
@@ -4946,12 +5308,17 @@ function syncMapAdminPanel() {
 }
 
 mapAdminToggle?.addEventListener("click", () => {
-  if (!isAdmin) { alert("Apenas admin."); return; }
+  if (!isAdmin) {
+    alert("Apenas admin.");
+    return;
+  }
   if (!mapAdminPanel) return;
   mapAdminPanel.hidden = !mapAdminPanel.hidden;
   if (!mapAdminPanel.hidden) syncMapAdminPanel();
 });
-mapAdminClose?.addEventListener("click", () => { if (mapAdminPanel) mapAdminPanel.hidden = true; });
+mapAdminClose?.addEventListener("click", () => {
+  if (mapAdminPanel) mapAdminPanel.hidden = true;
+});
 
 // Collapse/expand do painel Editar mapa (igual ao Pose Debug)
 (() => {
@@ -4997,7 +5364,9 @@ function onMapAdminInput() {
   if (mapOffZNum) mapOffZNum.value = oz;
   currentMapTransform = {
     ...currentMapTransform,
-    offset_x: ox, offset_y: oy, offset_z: oz,
+    offset_x: ox,
+    offset_y: oy,
+    offset_z: oz,
     rotation_y: (rotDeg * Math.PI) / 180,
     scale_mul: scale,
   };
@@ -5010,7 +5379,10 @@ function onMapAdminInput() {
 function onMapAdminNumInput(el, slider) {
   return () => {
     const v = parseFloat(el.value);
-    if (!Number.isNaN(v)) { slider.value = v; onMapAdminInput(); }
+    if (!Number.isNaN(v)) {
+      slider.value = v;
+      onMapAdminInput();
+    }
   };
 }
 if (mapScaleNum && mapScaleInput) mapScaleNum.addEventListener("input", onMapAdminNumInput(mapScaleNum, mapScaleInput));
@@ -5075,8 +5447,11 @@ mapAdminSave?.addEventListener("click", async () => {
     updated_at: new Date().toISOString(),
   };
   const { error } = await supabase.from("map_transforms").upsert(payload, { onConflict: "map_id" });
-  if (mapAdminStatus) mapAdminStatus.textContent = error ? ("Erro: " + error.message) : "Salvo ✓";
-  if (!error) setTimeout(() => { if (mapAdminStatus) mapAdminStatus.textContent = ""; }, 2000);
+  if (mapAdminStatus) mapAdminStatus.textContent = error ? "Erro: " + error.message : "Salvo ✓";
+  if (!error)
+    setTimeout(() => {
+      if (mapAdminStatus) mapAdminStatus.textContent = "";
+    }, 2000);
 });
 
 // Realtime: sincroniza ajustes feitos pelo admin para todos os usuários
@@ -5086,18 +5461,30 @@ supabase
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") {
-      currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null, dark_mode: false };
+      currentMapTransform = {
+        offset_x: 0,
+        offset_y: 0,
+        offset_z: 0,
+        rotation_y: 0,
+        scale_mul: 1,
+        mood: null,
+        dark_mode: false,
+      };
       setDarkMode(false);
       const m = MAPS.find((x) => x.id === currentMapId);
       applyLightingForMood(m?.mood || "day");
     } else {
       currentMapTransform = {
-        offset_x: row.offset_x, offset_y: row.offset_y, offset_z: row.offset_z,
-        rotation_y: row.rotation_y, scale_mul: row.scale_mul, mood: row.mood || null,
+        offset_x: row.offset_x,
+        offset_y: row.offset_y,
+        offset_z: row.offset_z,
+        rotation_y: row.rotation_y,
+        scale_mul: row.scale_mul,
+        mood: row.mood || null,
         dark_mode: !!row.dark_mode,
       };
       setDarkMode(!!row.dark_mode);
-      applyLightingForMood(row.mood || (MAPS.find((x) => x.id === currentMapId)?.mood) || "day");
+      applyLightingForMood(row.mood || MAPS.find((x) => x.id === currentMapId)?.mood || "day");
     }
     applyEnvTransform();
     if (mapAdminPanel && !mapAdminPanel.hidden) syncMapAdminPanel();
@@ -5107,10 +5494,16 @@ supabase
 // ===== Custom maps (admin-created) =====
 async function loadCustomMaps() {
   const [{ data, error }, { data: thumbs }] = await Promise.all([
-    supabase.from("custom_maps").select("slug, name, url, mood, bg, thumb, hidden").order("created_at", { ascending: true }),
+    supabase
+      .from("custom_maps")
+      .select("slug, name, url, mood, bg, thumb, hidden")
+      .order("created_at", { ascending: true }),
     supabase.from("map_thumbnails").select("map_id, thumb_url"),
   ]);
-  if (error) { console.warn("custom_maps load:", error.message); return; }
+  if (error) {
+    console.warn("custom_maps load:", error.message);
+    return;
+  }
   const thumbMap = new Map();
   for (const t of thumbs || []) thumbMap.set(t.map_id, t.thumb_url);
   const builtinSlugs = new Set(BUILTIN_MAPS.map((m) => m.id));
@@ -5121,13 +5514,22 @@ async function loadCustomMaps() {
     if (m.hidden) hiddenSet.add(m.slug);
     if (builtinSlugs.has(m.slug)) {
       overrides.set(m.slug, {
-        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
-        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️",
+        id: m.slug,
+        name: m.name,
+        url: m.url,
+        mood: m.mood || "day",
+        bg: m.bg || "#0e1117",
+        thumb: m.thumb || "🗺️",
       });
     } else {
       customs.push({
-        id: m.slug, name: m.name, url: m.url, mood: m.mood || "day",
-        bg: m.bg || "#0e1117", thumb: m.thumb || "🗺️", custom: true,
+        id: m.slug,
+        name: m.name,
+        url: m.url,
+        mood: m.mood || "day",
+        bg: m.bg || "#0e1117",
+        thumb: m.thumb || "🗺️",
+        custom: true,
       });
     }
   }
@@ -5176,17 +5578,28 @@ const newMapCreate = document.querySelector("#newMapCreate");
 const newMapStatus = document.querySelector("#newMapStatus");
 
 function slugifyMap(s) {
-  return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
 }
 
 newMapCreate?.addEventListener("click", async () => {
   if (!isAdmin) return;
   const name = (newMapName?.value || "").trim();
   const file = newMapGlb?.files?.[0];
-  if (!name) { newMapStatus.textContent = "Informe um nome"; return; }
+  if (!name) {
+    newMapStatus.textContent = "Informe um nome";
+    return;
+  }
   let slug = slugifyMap(name);
-  if (!slug) { newMapStatus.textContent = "Nome inválido"; return; }
+  if (!slug) {
+    newMapStatus.textContent = "Nome inválido";
+    return;
+  }
   // Avoid collision with builtins
   if (BUILTIN_MAPS.some((m) => m.id === slug)) slug = slug + "-" + Date.now().toString(36).slice(-4);
   newMapCreate.disabled = true;
@@ -5195,7 +5608,8 @@ newMapCreate?.addEventListener("click", async () => {
     if (file) {
       newMapStatus.textContent = "Enviando arquivo…";
       const path = `maps/${slug}-${Date.now()}.glb`;
-      const { error: upErr } = await supabase.storage.from("map-assets")
+      const { error: upErr } = await supabase.storage
+        .from("map-assets")
         .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
@@ -5203,7 +5617,9 @@ newMapCreate?.addEventListener("click", async () => {
     }
     newMapStatus.textContent = "Salvando mapa…";
     const { error: insErr } = await supabase.from("custom_maps").insert({
-      slug, name, url: publicUrl,
+      slug,
+      name,
+      url: publicUrl,
       mood: newMapMood?.value || "day",
       bg: newMapBg?.value || "#0e1117",
       thumb: (newMapThumb?.value || "🗺️").trim() || "🗺️",
@@ -5211,16 +5627,19 @@ newMapCreate?.addEventListener("click", async () => {
     });
     if (insErr) throw insErr;
     newMapStatus.textContent = file ? "Mapa criado ✓" : "Mapa vazio criado ✓ — adicione GLBs dentro dele";
-    newMapName.value = ""; newMapThumb.value = ""; if (newMapGlb) newMapGlb.value = "";
+    newMapName.value = "";
+    newMapThumb.value = "";
+    if (newMapGlb) newMapGlb.value = "";
     await loadCustomMaps();
   } catch (e) {
     newMapStatus.textContent = "Erro: " + (e.message || e);
   } finally {
     newMapCreate.disabled = false;
-    setTimeout(() => { if (newMapStatus) newMapStatus.textContent = ""; }, 4000);
+    setTimeout(() => {
+      if (newMapStatus) newMapStatus.textContent = "";
+    }, 4000);
   }
 });
-
 
 // ===== Admin: editar mapa custom (lápis) =====
 async function openMapEdit(mapId) {
@@ -5234,7 +5653,8 @@ async function openMapEdit(mapId) {
 
   const modal = document.createElement("div");
   modal.id = "mapEditModal";
-  modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
+  modal.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);";
   modal.innerHTML = `
     <div style="background:#13161c;color:#eee;border:1px solid #333;border-radius:12px;padding:18px;width:min(420px,92vw);max-height:90vh;overflow-y:auto;font:13px/1.4 system-ui;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
@@ -5297,13 +5717,18 @@ async function openMapEdit(mapId) {
   const close = () => modal.remove();
   modal.querySelector("#mapEditClose").onclick = close;
   modal.querySelector("#meCancel").onclick = close;
-  modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) close();
+  });
 
   const status = modal.querySelector("#meStatus");
 
   modal.querySelector("#meSave").onclick = async () => {
     const name = modal.querySelector("#meName").value.trim();
-    if (!name) { status.textContent = "Nome obrigatório"; return; }
+    if (!name) {
+      status.textContent = "Nome obrigatório";
+      return;
+    }
     const thumb = (modal.querySelector("#meThumb").value || "🗺️").trim() || "🗺️";
     const mood = modal.querySelector("#meMood").value;
     const bg = modal.querySelector("#meBg").value;
@@ -5318,29 +5743,32 @@ async function openMapEdit(mapId) {
       if (file) {
         status.textContent = "Enviando novo GLB…";
         const path = `maps/${m.id}-${Date.now()}.glb`;
-        const { error: upErr } = await supabase.storage.from("map-assets")
+        const { error: upErr } = await supabase.storage
+          .from("map-assets")
           .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
         if (upErr) throw upErr;
         const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
         patch.url = pub.publicUrl;
       }
-      const { error } = await supabase.from("custom_maps").upsert(
-        { slug: m.id, ...patch, url: patch.url || m.url },
-        { onConflict: "slug" }
-      );
+      const { error } = await supabase
+        .from("custom_maps")
+        .upsert({ slug: m.id, ...patch, url: patch.url || m.url }, { onConflict: "slug" });
       if (error) throw error;
       if (thumbFile) {
         status.textContent = "Enviando thumbnail…";
         const ext = (thumbFile.name.split(".").pop() || "png").toLowerCase();
         const tpath = `thumbs/${m.id}-${Date.now()}.${ext}`;
-        const { error: tErr } = await supabase.storage.from("map-assets")
+        const { error: tErr } = await supabase.storage
+          .from("map-assets")
           .upload(tpath, thumbFile, { contentType: thumbFile.type || "image/png", upsert: false });
         if (tErr) throw tErr;
         const { data: tpub } = supabase.storage.from("map-assets").getPublicUrl(tpath);
-        const { error: thErr } = await supabase.from("map_thumbnails").upsert(
-          { map_id: m.id, thumb_url: tpub.publicUrl, updated_by: myId, updated_at: new Date().toISOString() },
-          { onConflict: "map_id" }
-        );
+        const { error: thErr } = await supabase
+          .from("map_thumbnails")
+          .upsert(
+            { map_id: m.id, thumb_url: tpub.publicUrl, updated_by: myId, updated_at: new Date().toISOString() },
+            { onConflict: "map_id" },
+          );
         if (thErr) throw thErr;
       }
       status.textContent = "Salvo ✓";
@@ -5369,7 +5797,15 @@ async function openMapEdit(mapId) {
   });
 
   async function cascadeDeleteMapData(mapId) {
-    const tables = ["map_thumbnails", "map_transforms", "map_lights", "map_radios", "map_assets", "map_bots", "map_asset_interactions"];
+    const tables = [
+      "map_thumbnails",
+      "map_transforms",
+      "map_lights",
+      "map_radios",
+      "map_assets",
+      "map_bots",
+      "map_asset_interactions",
+    ];
     await Promise.all(tables.map((t) => supabase.from(t).delete().eq("map_id", mapId)));
   }
 
@@ -5382,10 +5818,12 @@ async function openMapEdit(mapId) {
       await cascadeDeleteMapData(m.id);
       if (isBuiltin) {
         // Built-in: marca como hidden (a entrada hardcoded continua existindo no código, mas some da UI)
-        const { error } = await supabase.from("custom_maps").upsert(
-          { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
-          { onConflict: "slug" }
-        );
+        const { error } = await supabase
+          .from("custom_maps")
+          .upsert(
+            { slug: m.id, name: m.name, url: m.url, mood: m.mood, bg: m.bg, thumb: m.thumb, hidden: true },
+            { onConflict: "slug" },
+          );
         if (error) throw error;
       } else {
         const { error } = await supabase.from("custom_maps").delete().eq("slug", m.id);
@@ -5424,8 +5862,6 @@ async function openMapEdit(mapId) {
     };
   }
 }
-
-
 
 // ============================================================
 // ===== Custom map lights (admin spotlights + sun globe) =====
@@ -5470,8 +5906,10 @@ function rebuildCustomLight(row) {
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = 80;
     const halfBox = 24;
-    sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
-    sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
+    sun.shadow.camera.left = -halfBox;
+    sun.shadow.camera.right = halfBox;
+    sun.shadow.camera.top = halfBox;
+    sun.shadow.camera.bottom = -halfBox;
     sun.shadow.bias = -0.0002;
     sun.shadow.normalBias = 0.03;
     const tgt = new THREE.Object3D();
@@ -5522,24 +5960,30 @@ function rebuildCustomLight(row) {
 async function reloadMapLights(mapId) {
   clearAllCustomLights();
   try {
-    const { data, error } = await supabase
-      .from("map_lights")
-      .select("*")
-      .eq("map_id", mapId);
-    if (error) { console.warn("map_lights load", error.message); return; }
+    const { data, error } = await supabase.from("map_lights").select("*").eq("map_id", mapId);
+    if (error) {
+      console.warn("map_lights load", error.message);
+      return;
+    }
     for (const row of data || []) rebuildCustomLight(row);
     renderLightsAdminList();
-  } catch (e) { console.warn("map_lights load", e); }
+  } catch (e) {
+    console.warn("map_lights load", e);
+  }
 }
 
 // Realtime
-supabase.channel("map-lights")
+supabase
+  .channel("map-lights")
   .on("postgres_changes", { event: "*", schema: "public", table: "map_lights" }, (payload) => {
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") {
       const e = customLightsMap.get(row.id);
-      if (e) { disposeCustomLight(e); customLightsMap.delete(row.id); }
+      if (e) {
+        disposeCustomLight(e);
+        customLightsMap.delete(row.id);
+      }
     } else {
       rebuildCustomLight(payload.new);
     }
@@ -5556,23 +6000,62 @@ const addSpotLightBtn = document.getElementById("addSpotLightBtn");
 const addSunLightBtn = document.getElementById("addSunLightBtn");
 
 lightsAdminToggle?.addEventListener("click", () => {
-  if (!isAdmin) { alert("Apenas admin."); return; }
+  if (!isAdmin) {
+    alert("Apenas admin.");
+    return;
+  }
   lightsAdminPanel.hidden = !lightsAdminPanel.hidden;
   if (!lightsAdminPanel.hidden) renderLightsAdminList();
 });
-lightsAdminClose?.addEventListener("click", () => { lightsAdminPanel.hidden = true; });
+lightsAdminClose?.addEventListener("click", () => {
+  lightsAdminPanel.hidden = true;
+});
 
 async function createLight(kind) {
   if (!isAdmin) return;
   // Spawn at the camera focus point (center of view)
   const c = controls.target;
-  const cx = c.x, cy = c.y, cz = c.z;
-  const defaults = kind === "sun"
-    ? { kind: "sun", name: "Sol", color: "#ffd27a", intensity: 2.5, pos_x: cx, pos_y: cy + 8, pos_z: cz + 2, target_x: cx, target_y: cy, target_z: cz, radius: 2.0, cast_shadow: true }
-    : { kind: "spot", name: "Spot", color: "#ffffff", intensity: 8, pos_x: cx, pos_y: cy + 5, pos_z: cz, target_x: cx, target_y: cy, target_z: cz, angle_deg: 35, penumbra: 0.4, distance: 30, cast_shadow: true };
+  const cx = c.x,
+    cy = c.y,
+    cz = c.z;
+  const defaults =
+    kind === "sun"
+      ? {
+          kind: "sun",
+          name: "Sol",
+          color: "#ffd27a",
+          intensity: 2.5,
+          pos_x: cx,
+          pos_y: cy + 8,
+          pos_z: cz + 2,
+          target_x: cx,
+          target_y: cy,
+          target_z: cz,
+          radius: 2.0,
+          cast_shadow: true,
+        }
+      : {
+          kind: "spot",
+          name: "Spot",
+          color: "#ffffff",
+          intensity: 8,
+          pos_x: cx,
+          pos_y: cy + 5,
+          pos_z: cz,
+          target_x: cx,
+          target_y: cy,
+          target_z: cz,
+          angle_deg: 35,
+          penumbra: 0.4,
+          distance: 30,
+          cast_shadow: true,
+        };
   const payload = { map_id: currentMapId, enabled: true, created_by: myId, ...defaults };
   const { error, data } = await supabase.from("map_lights").insert(payload).select().single();
-  if (error) { alert("Erro: " + error.message); return; }
+  if (error) {
+    alert("Erro: " + error.message);
+    return;
+  }
   if (data) rebuildCustomLight(data);
   renderLightsAdminList();
   renderLayersPanel?.();
@@ -5590,18 +6073,27 @@ function scheduleLightSave(id, patch) {
     rebuildCustomLight(entry.row);
   }
   clearTimeout(_lightSaveTimers.get(id));
-  _lightSaveTimers.set(id, setTimeout(async () => {
-    const { error } = await supabase.from("map_lights").update(patch).eq("id", id);
-    if (error) console.warn("light save", error.message);
-  }, 250));
+  _lightSaveTimers.set(
+    id,
+    setTimeout(async () => {
+      const { error } = await supabase.from("map_lights").update(patch).eq("id", id);
+      if (error) console.warn("light save", error.message);
+    }, 250),
+  );
 }
 
 async function deleteLight(id) {
   if (!confirm("Apagar essa luz?")) return;
   const { error } = await supabase.from("map_lights").delete().eq("id", id);
-  if (error) { alert("Erro: " + error.message); return; }
+  if (error) {
+    alert("Erro: " + error.message);
+    return;
+  }
   const e = customLightsMap.get(id);
-  if (e) { disposeCustomLight(e); customLightsMap.delete(id); }
+  if (e) {
+    disposeCustomLight(e);
+    customLightsMap.delete(id);
+  }
   renderLightsAdminList();
 }
 
@@ -5635,13 +6127,15 @@ function lightControlRow(row) {
       ${slider("Alvo X", "target_x", -30, 30, 0.1, row.target_x ?? 0, (v) => Number(v).toFixed(1))}
       ${slider("Alvo Y", "target_y", -5, 20, 0.1, row.target_y ?? 0, (v) => Number(v).toFixed(1))}
       ${slider("Alvo Z", "target_z", -30, 30, 0.1, row.target_z ?? 0, (v) => Number(v).toFixed(1))}
-      ${isSun
-        ? slider("Tamanho do globo", "radius", 0.2, 15, 0.1, row.radius ?? 1.5, (v) => Number(v).toFixed(1) + "m")
-        : `
+      ${
+        isSun
+          ? slider("Tamanho do globo", "radius", 0.2, 15, 0.1, row.radius ?? 1.5, (v) => Number(v).toFixed(1) + "m")
+          : `
           ${slider("Abertura", "angle_deg", 5, 89, 1, row.angle_deg ?? 35, (v) => v + "°")}
           ${slider("Penumbra", "penumbra", 0, 1, 0.05, row.penumbra ?? 0.4, (v) => Number(v).toFixed(2))}
           ${slider("Alcance", "distance", 1, 100, 0.5, row.distance ?? 30, (v) => Number(v).toFixed(0) + "m")}
-        `}
+        `
+      }
       <label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:11px;cursor:pointer;">
         <input type="checkbox" data-key="cast_shadow" ${row.cast_shadow !== false ? "checked" : ""}>
         Projetar sombras
@@ -5717,7 +6211,7 @@ function renderLightsAdminList() {
   freeBtn?.addEventListener("click", () => setFreeCam(!window.__freeCameraMode));
 
   // --- Focus camera on a world position ---
-  window.focusCameraOn = function(pos, distance = 5) {
+  window.focusCameraOn = function (pos, distance = 5) {
     const target = new THREE.Vector3(pos.x, (pos.y || 0) + 1, pos.z);
     // Manter direção atual da câmera, só recolocar a uma distância confortável
     const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
@@ -5734,21 +6228,25 @@ function renderLightsAdminList() {
   function renderLayersPanel() {
     if (!layersBody) return;
     const assets = (typeof currentAssets !== "undefined" ? currentAssets : []) || [];
-    const lights = [...(customLightsMap?.values() || [])].map(e => e.row);
-    const spots = lights.filter(l => l.kind !== "sun");
-    const suns = lights.filter(l => l.kind === "sun");
+    const lights = [...(customLightsMap?.values() || [])].map((e) => e.row);
+    const spots = lights.filter((l) => l.kind !== "sun");
+    const suns = lights.filter((l) => l.kind === "sun");
 
     const group = (key, icon, title, rows, posOf, headerExtra = "") => {
       const open = layerGroupsOpen[key];
       const arrow = open ? "▾" : "▸";
-      const items = open ? rows.map(r => {
-        const p = posOf(r);
-        return `<div class="layer-item" data-key="${key}" data-id="${r.id}" data-x="${p.x}" data-y="${p.y}" data-z="${p.z}"
+      const items = open
+        ? rows
+            .map((r) => {
+              const p = posOf(r);
+              return `<div class="layer-item" data-key="${key}" data-id="${r.id}" data-x="${p.x}" data-y="${p.y}" data-z="${p.z}"
           style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.04);margin:2px 0;">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${escapeHtml(r.name || "(sem nome)")}</span>
           <button data-del="${r.id}" data-key="${key}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
         </div>`;
-      }).join("") : "";
+            })
+            .join("")
+        : "";
       return `
         <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);">
@@ -5766,29 +6264,31 @@ function renderLightsAdminList() {
       group("spot", "🔦", "Spots", spots, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z })) +
       group("sun", "☀️", "Sóis", suns, (l) => ({ x: l.pos_x, y: l.pos_y, z: l.pos_z }));
 
-    layersBody.querySelectorAll("[data-add='glb']").forEach(b => {
+    layersBody.querySelectorAll("[data-add='glb']").forEach((b) => {
       b.addEventListener("click", (e) => {
         e.stopPropagation();
         document.getElementById("glbInput")?.click();
       });
     });
 
-    layersBody.querySelectorAll("[data-toggle]").forEach(el => {
+    layersBody.querySelectorAll("[data-toggle]").forEach((el) => {
       el.addEventListener("click", () => {
         const k = el.dataset.toggle;
         layerGroupsOpen[k] = !layerGroupsOpen[k];
         renderLayersPanel();
       });
     });
-    layersBody.querySelectorAll(".layer-item").forEach(el => {
+    layersBody.querySelectorAll(".layer-item").forEach((el) => {
       el.addEventListener("click", (e) => {
         if (e.target.closest("[data-del]")) return;
-        const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
+        const x = parseFloat(el.dataset.x),
+          y = parseFloat(el.dataset.y),
+          z = parseFloat(el.dataset.z);
         window.focusCameraOn({ x, y, z }, 5);
         window.attachGizmoForLayer?.(el.dataset.key, el.dataset.id);
       });
     });
-    layersBody.querySelectorAll("[data-del]").forEach(btn => {
+    layersBody.querySelectorAll("[data-del]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const id = btn.dataset.del;
@@ -5806,11 +6306,16 @@ function renderLightsAdminList() {
   window.renderLayersPanel = renderLayersPanel;
 
   layersBtn?.addEventListener("click", () => {
-    if (!isAdmin) { alert("Apenas admin."); return; }
+    if (!isAdmin) {
+      alert("Apenas admin.");
+      return;
+    }
     layersPanel.hidden = !layersPanel.hidden;
     if (!layersPanel.hidden) renderLayersPanel();
   });
-  layersClose?.addEventListener("click", () => { layersPanel.hidden = true; });
+  layersClose?.addEventListener("click", () => {
+    layersPanel.hidden = true;
+  });
 
   // Re-render quando a lista de GLBs ou luzes muda no DOM
   const assetListEl = document.getElementById("assetList");
@@ -5834,12 +6339,15 @@ window.__botTemplates = botTemplates;
 const _animClipCache = new Map(); // url -> Promise<AnimationClip>
 async function loadFbxClip(url) {
   if (!_animClipCache.has(url)) {
-    _animClipCache.set(url, (async () => {
-      const src = await loadFbxFromUrl(url);
-      const clip = src.animations?.[0];
-      if (!clip) throw new Error("FBX sem animações");
-      return clip;
-    })());
+    _animClipCache.set(
+      url,
+      (async () => {
+        const src = await loadFbxFromUrl(url);
+        const clip = src.animations?.[0];
+        if (!clip) throw new Error("FBX sem animações");
+        return clip;
+      })(),
+    );
   }
   return _animClipCache.get(url);
 }
@@ -5855,7 +6363,7 @@ function botCharacterFromRow(row) {
     };
   }
   if (row.template_id) {
-    const tpl = (botTemplates || []).find(t => t.id === row.template_id);
+    const tpl = (botTemplates || []).find((t) => t.id === row.template_id);
     if (tpl) {
       return {
         slug: `__bot_tpl:${tpl.id}`,
@@ -5870,28 +6378,47 @@ function botCharacterFromRow(row) {
 
 async function buildBotEntity(row) {
   const character = botCharacterFromRow(row);
-  if (!character) { console.warn("[bot] sem fonte de modelo:", row); return null; }
+  if (!character) {
+    console.warn("[bot] sem fonte de modelo:", row);
+    return null;
+  }
   const { base, clips } = await loadCharacterAssets(character);
   const cloned = cloneSkeleton(base);
   cloned.traverse((o) => {
-    if (o.isMesh || o.isSkinnedMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+    if (o.isMesh || o.isSkinnedMesh) {
+      o.castShadow = true;
+      o.receiveShadow = true;
+      o.frustumCulled = false;
+    }
   });
   const group = new THREE.Group();
   group.add(cloned);
   const mixer = new THREE.AnimationMixer(cloned);
-  return { row, group, character: cloned, mixer, action: null, animationUrl: null, characterSlug: character.slug, clips };
+  return {
+    row,
+    group,
+    character: cloned,
+    mixer,
+    action: null,
+    animationUrl: null,
+    characterSlug: character.slug,
+    clips,
+  };
 }
-
 
 async function applyBotAnimation(entity, url) {
   if (entity.animationUrl === url) return;
-  if (entity.action) { entity.action.stop(); entity.action = null; }
+  if (entity.action) {
+    entity.action.stop();
+    entity.action = null;
+  }
   entity.animationUrl = url;
   if (!url) {
     const idleClip = entity.clips?.idle;
     if (idleClip && idleClip.tracks?.length) {
       const a = entity.mixer.clipAction(idleClip);
-      a.reset().play(); entity.action = a;
+      a.reset().play();
+      entity.action = a;
     }
     return;
   }
@@ -5900,10 +6427,16 @@ async function applyBotAnimation(entity, url) {
     if (entity.animationUrl !== url) return;
     const bones = collectBoneNames(entity.character);
     const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
-    if (!retarg) { console.warn("[bot] nenhum osso da animação casou com", entity.characterSlug); return; }
+    if (!retarg) {
+      console.warn("[bot] nenhum osso da animação casou com", entity.characterSlug);
+      return;
+    }
     const a = entity.mixer.clipAction(retarg);
-    a.reset().play(); entity.action = a;
-  } catch (e) { console.warn("[bot] anim", e); }
+    a.reset().play();
+    entity.action = a;
+  } catch (e) {
+    console.warn("[bot] anim", e);
+  }
 }
 
 function applyBotTransform(entity, row) {
@@ -5939,9 +6472,10 @@ async function upsertBot(row) {
   entity.row = row;
   applyBotTransform(entity, row);
   await applyBotAnimation(entity, row.animation_url || null);
-  try { window.__mapBots.set(row.id, row); } catch {}
+  try {
+    window.__mapBots.set(row.id, row);
+  } catch {}
 }
-
 
 function removeBot(id) {
   const e = botEntities.get(id);
@@ -5949,7 +6483,9 @@ function removeBot(id) {
   botsGroup.remove(e.group);
   e.mixer?.stopAllAction?.();
   botEntities.delete(id);
-  try { window.__mapBots.delete(id); } catch {}
+  try {
+    window.__mapBots.delete(id);
+  } catch {}
 }
 
 function clearAllBots() {
@@ -5963,7 +6499,10 @@ function clearAllBots() {
 async function reloadMapBots(mapId) {
   clearAllBots();
   const { data, error } = await supabase.from("map_bots").select("*").eq("map_id", mapId);
-  if (error) { console.warn("map_bots load", error); return; }
+  if (error) {
+    console.warn("map_bots load", error);
+    return;
+  }
   for (const row of data || []) await upsertBot(row);
   renderBotsAdminList();
   window.renderLayersPanel?.();
@@ -5971,7 +6510,10 @@ async function reloadMapBots(mapId) {
 
 async function reloadBotAnimations() {
   const { data, error } = await supabase.from("bot_animations").select("*").order("created_at", { ascending: false });
-  if (error) { console.warn(error); return; }
+  if (error) {
+    console.warn(error);
+    return;
+  }
   botAnimations = data || [];
   window.__botAnimations = botAnimations;
   window.dispatchEvent(new CustomEvent("bot-animations:updated"));
@@ -5981,33 +6523,36 @@ async function reloadBotAnimations() {
 
 async function reloadBotTemplates() {
   const { data, error } = await supabase.from("bot_templates").select("*").order("created_at", { ascending: false });
-  if (error) { console.warn("bot_templates load", error); return; }
+  if (error) {
+    console.warn("bot_templates load", error);
+    return;
+  }
   botTemplates = data || [];
   window.__botTemplates = botTemplates;
   renderBotTemplatesList();
   renderBotsAdminList();
 }
 
-
-
-
 // Realtime
-supabase.channel("map-bots")
+supabase
+  .channel("map-bots")
   .on("postgres_changes", { event: "*", schema: "public", table: "map_bots" }, async (payload) => {
     const row = payload.new || payload.old;
     if (!row || row.map_id !== currentMapId) return;
     if (payload.eventType === "DELETE") removeBot(row.id);
     else await upsertBot(payload.new);
-    renderBotsAdminList(); window.renderLayersPanel?.();
+    renderBotsAdminList();
+    window.renderLayersPanel?.();
   })
   .subscribe();
-supabase.channel("bot-anims")
+supabase
+  .channel("bot-anims")
   .on("postgres_changes", { event: "*", schema: "public", table: "bot_animations" }, () => reloadBotAnimations())
   .subscribe();
-supabase.channel("bot-templates")
+supabase
+  .channel("bot-templates")
   .on("postgres_changes", { event: "*", schema: "public", table: "bot_templates" }, () => reloadBotTemplates())
   .subscribe();
-
 
 // Update mixers in animate loop (hook via patch)
 const _origAnimate = animate;
@@ -6038,12 +6583,11 @@ const _origReloadAssets = window._noop;
 // initial load (templates podem existir mesmo sem characters)
 async function _initBots() {
   // espera no máximo 9s pelo charactersCatalog, mas não bloqueia se vazio (bots agora podem usar templates próprios)
-  for (let i = 0; i < 30 && !charactersCatalog.length; i++) await new Promise(r => setTimeout(r, 300));
+  for (let i = 0; i < 30 && !charactersCatalog.length; i++) await new Promise((r) => setTimeout(r, 300));
   await Promise.all([reloadBotAnimations(), reloadBotTemplates()]);
   await reloadMapBots(currentMapId);
 }
 _initBots();
-
 
 // ---------- Bot CRUD UI ----------
 async function createBot() {
@@ -6056,9 +6600,11 @@ async function createBot() {
   const payload = {
     map_id: currentMapId,
     name: tpl ? tpl.name : "Bot",
-    x: c.x, y: 0, z: c.z,
+    x: c.x,
+    y: 0,
+    z: c.z,
     rotation_y: 0,
-    scale: tpl ? (tpl.default_scale || 1) : 1,
+    scale: tpl ? tpl.default_scale || 1 : 1,
     created_by: myId,
   };
   if (tpl) {
@@ -6073,19 +6619,26 @@ async function createBot() {
   const { data, error } = await supabase.from("map_bots").insert(payload).select().single();
   if (error) return alert("Erro: " + error.message);
   if (data) await upsertBot(data);
-  renderBotsAdminList(); window.renderLayersPanel?.();
+  renderBotsAdminList();
+  window.renderLayersPanel?.();
 }
-
 
 const _botSaveTimers = new Map();
 function scheduleBotSave(id, patch) {
   const e = botEntities.get(id);
-  if (e) { e.row = { ...e.row, ...patch }; applyBotTransform(e, e.row); if ("animation_url" in patch) applyBotAnimation(e, patch.animation_url); }
+  if (e) {
+    e.row = { ...e.row, ...patch };
+    applyBotTransform(e, e.row);
+    if ("animation_url" in patch) applyBotAnimation(e, patch.animation_url);
+  }
   clearTimeout(_botSaveTimers.get(id));
-  _botSaveTimers.set(id, setTimeout(async () => {
-    const { error } = await supabase.from("map_bots").update(patch).eq("id", id);
-    if (error) console.warn("bot save", error.message);
-  }, 250));
+  _botSaveTimers.set(
+    id,
+    setTimeout(async () => {
+      const { error } = await supabase.from("map_bots").update(patch).eq("id", id);
+      if (error) console.warn("bot save", error.message);
+    }, 250),
+  );
 }
 
 async function deleteBot(id) {
@@ -6093,7 +6646,8 @@ async function deleteBot(id) {
   const { error } = await supabase.from("map_bots").delete().eq("id", id);
   if (error) return alert("Erro: " + error.message);
   removeBot(id);
-  renderBotsAdminList(); window.renderLayersPanel?.();
+  renderBotsAdminList();
+  window.renderLayersPanel?.();
 }
 
 function botControlRow(row) {
@@ -6105,15 +6659,29 @@ function botControlRow(row) {
       </span>
       <input type="range" data-key="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="width:100%">
     </label>`;
-  const tplOpts = `<option value="">— Personagem do catálogo —</option>` +
-    (botTemplates || []).map(t =>
-      `<option value="${t.id}" ${t.id === row.template_id ? "selected" : ""}>${escapeHtml(t.name)}</option>`
-    ).join("");
-  const charOpts = `<option value="">—</option>` + charactersCatalog.map(c =>
-    `<option value="${escapeHtml(c.slug)}" ${c.slug === row.character_slug ? "selected" : ""}>${escapeHtml(c.name)}</option>`
-  ).join("");
-  const animOpts = `<option value="">— Idle embutido —</option>` +
-    botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === row.animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  const tplOpts =
+    `<option value="">— Personagem do catálogo —</option>` +
+    (botTemplates || [])
+      .map(
+        (t) => `<option value="${t.id}" ${t.id === row.template_id ? "selected" : ""}>${escapeHtml(t.name)}</option>`,
+      )
+      .join("");
+  const charOpts =
+    `<option value="">—</option>` +
+    charactersCatalog
+      .map(
+        (c) =>
+          `<option value="${escapeHtml(c.slug)}" ${c.slug === row.character_slug ? "selected" : ""}>${escapeHtml(c.name)}</option>`,
+      )
+      .join("");
+  const animOpts =
+    `<option value="">— Idle embutido —</option>` +
+    botAnimations
+      .map(
+        (a) =>
+          `<option value="${escapeHtml(a.url)}" ${a.url === row.animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`,
+      )
+      .join("");
   const usingTpl = !!row.template_id || !!row.glb_url;
   return `
     <div data-bot-id="${row.id}" style="border:1px solid #2a3040;border-radius:6px;padding:8px;background:rgba(255,255,255,0.03);">
@@ -6125,10 +6693,14 @@ function botControlRow(row) {
       <label style="display:block;margin:2px 0;font-size:11px;">Template de bot
         <select data-action="set-template" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${tplOpts}</select>
       </label>
-      ${usingTpl ? "" : `
+      ${
+        usingTpl
+          ? ""
+          : `
       <label style="display:block;margin:2px 0;font-size:11px;">Personagem (legado)
         <select data-key="character_slug" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${charOpts}</select>
-      </label>`}
+      </label>`
+      }
       <label style="display:block;margin:2px 0;font-size:11px;">Animação
         <select data-key="animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">${animOpts}</select>
       </label>
@@ -6140,36 +6712,37 @@ function botControlRow(row) {
     </div>`;
 }
 
-
 function renderBotsAdminList() {
   const list = document.getElementById("botsAdminList");
   if (!list) return;
-  const rows = [...botEntities.values()].filter(e => e?.row).map(e => e.row);
+  const rows = [...botEntities.values()].filter((e) => e?.row).map((e) => e.row);
   if (!rows.length) {
     list.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhum bot. Clique em <b>+ Adicionar bot</b>.</div>`;
     return;
   }
   list.innerHTML = rows.map(botControlRow).join("");
-  list.querySelectorAll("[data-bot-id]").forEach(card => {
+  list.querySelectorAll("[data-bot-id]").forEach((card) => {
     const id = card.dataset.botId;
-    card.querySelectorAll("input[type=range]").forEach(inp => {
+    card.querySelectorAll("input[type=range]").forEach((inp) => {
       inp.addEventListener("input", () => {
-        const k = inp.dataset.key; const v = parseFloat(inp.value);
+        const k = inp.dataset.key;
+        const v = parseFloat(inp.value);
         const numEl = card.querySelector(`input[data-numkey="${k}"]`);
         if (numEl && document.activeElement !== numEl) numEl.value = inp.value;
         scheduleBotSave(id, { [k]: v });
       });
     });
-    card.querySelectorAll("input[data-numkey]").forEach(numEl => {
+    card.querySelectorAll("input[data-numkey]").forEach((numEl) => {
       numEl.addEventListener("input", () => {
-        const k = numEl.dataset.numkey; const v = parseFloat(numEl.value);
+        const k = numEl.dataset.numkey;
+        const v = parseFloat(numEl.value);
         if (Number.isNaN(v)) return;
         const range = card.querySelector(`input[type=range][data-key="${k}"]`);
         if (range) range.value = v;
         scheduleBotSave(id, { [k]: v });
       });
     });
-    card.querySelectorAll("select[data-key]").forEach(sel => {
+    card.querySelectorAll("select[data-key]").forEach((sel) => {
       sel.addEventListener("change", () => scheduleBotSave(id, { [sel.dataset.key]: sel.value || null }));
     });
     const tplSel = card.querySelector('select[data-action="set-template"]');
@@ -6180,7 +6753,7 @@ function renderBotsAdminList() {
         await supabase.from("map_bots").update({ template_id: null, glb_url: null }).eq("id", id);
         return;
       }
-      const tpl = botTemplates.find(t => t.id === tplId);
+      const tpl = botTemplates.find((t) => t.id === tplId);
       if (!tpl) return;
       // snapshot do template -> instância (continua independente depois)
       const patch = {
@@ -6208,17 +6781,35 @@ function renderBotsAdminList() {
 
 // Animation library UI
 async function uploadBotAnimation(file, name) {
-  if (!isAdmin) { alert("Apenas admin."); return null; }
+  if (!isAdmin) {
+    alert("Apenas admin.");
+    return null;
+  }
   const status = document.getElementById("botAnimStatus");
   if (status) status.textContent = "Subindo " + file.name + "...";
   const path = `bot-anims/${Date.now()}-${sanitize(file.name)}`;
-  const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
-  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
+  const { error } = await supabase.storage
+    .from("map-assets")
+    .upload(path, file, { contentType: "application/octet-stream", upsert: false });
+  if (error) {
+    if (status) status.textContent = "Erro: " + error.message;
+    return null;
+  }
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
   const animName = name || file.name.replace(/\.fbx$/i, "");
-  const { data: row, error: e2 } = await supabase.from("bot_animations").insert({ name: animName, url: data.publicUrl, created_by: myId }).select().single();
-  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
-  if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
+  const { data: row, error: e2 } = await supabase
+    .from("bot_animations")
+    .insert({ name: animName, url: data.publicUrl, created_by: myId })
+    .select()
+    .single();
+  if (e2) {
+    if (status) status.textContent = "Erro: " + e2.message;
+    return null;
+  }
+  if (status) status.textContent = "OK!";
+  setTimeout(() => {
+    if (status) status.textContent = "";
+  }, 1500);
   await reloadBotAnimations();
   return row || { name: animName, url: data.publicUrl };
 }
@@ -6227,13 +6818,20 @@ window.uploadBotAnimation = uploadBotAnimation;
 function renderBotAnimList() {
   const el = document.getElementById("botAnimList");
   if (!el) return;
-  if (!botAnimations.length) { el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem animações.</div>`; return; }
-  el.innerHTML = botAnimations.map(a => `
+  if (!botAnimations.length) {
+    el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem animações.</div>`;
+    return;
+  }
+  el.innerHTML = botAnimations
+    .map(
+      (a) => `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:4px;">
       <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;font-size:11px;">${escapeHtml(a.name)}</span>
       <button data-del-anim="${a.id}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;">✕</button>
-    </div>`).join("");
-  el.querySelectorAll("[data-del-anim]").forEach(btn => {
+    </div>`,
+    )
+    .join("");
+  el.querySelectorAll("[data-del-anim]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       if (!confirm("Apagar essa animação da biblioteca?")) return;
       const { error } = await supabase.from("bot_animations").delete().eq("id", btn.dataset.delAnim);
@@ -6245,19 +6843,39 @@ function renderBotAnimList() {
 
 // ---------- Bot Templates UI (catálogo reutilizável de GLBs) ----------
 async function uploadBotTemplate(file, name) {
-  if (!isAdmin) { alert("Apenas admin."); return null; }
+  if (!isAdmin) {
+    alert("Apenas admin.");
+    return null;
+  }
   const status = document.getElementById("botTplStatus");
   if (status) status.textContent = "Subindo " + file.name + "...";
   const path = `bot-templates/${Date.now()}-${sanitize(file.name)}`;
-  const { error } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "model/gltf-binary", upsert: false });
-  if (error) { if (status) status.textContent = "Erro: " + error.message; return null; }
+  const { error } = await supabase.storage
+    .from("map-assets")
+    .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+  if (error) {
+    if (status) status.textContent = "Erro: " + error.message;
+    return null;
+  }
   const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
   const tplName = name || file.name.replace(/\.(glb|gltf)$/i, "");
-  const { data: row, error: e2 } = await supabase.from("bot_templates").insert({
-    name: tplName, glb_url: data.publicUrl, created_by: myId,
-  }).select().single();
-  if (e2) { if (status) status.textContent = "Erro: " + e2.message; return null; }
-  if (status) status.textContent = "OK!"; setTimeout(() => { if (status) status.textContent = ""; }, 1500);
+  const { data: row, error: e2 } = await supabase
+    .from("bot_templates")
+    .insert({
+      name: tplName,
+      glb_url: data.publicUrl,
+      created_by: myId,
+    })
+    .select()
+    .single();
+  if (e2) {
+    if (status) status.textContent = "Erro: " + e2.message;
+    return null;
+  }
+  if (status) status.textContent = "OK!";
+  setTimeout(() => {
+    if (status) status.textContent = "";
+  }, 1500);
   await reloadBotTemplates();
   return row;
 }
@@ -6270,7 +6888,9 @@ function renderBotTemplatesList() {
     el.innerHTML = `<div style="color:#7a8290;font-size:11px;text-align:center;">Sem templates. Suba um GLB acima.</div>`;
     return;
   }
-  el.innerHTML = botTemplates.map(t => `
+  el.innerHTML = botTemplates
+    .map(
+      (t) => `
     <div data-tpl-id="${t.id}" style="display:flex;flex-direction:column;gap:4px;padding:6px;background:rgba(255,255,255,0.04);border-radius:4px;">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
         <input data-key="name" type="text" value="${escapeHtml(t.name)}" maxlength="40" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px 6px;font-size:11px;font-weight:600;">
@@ -6282,22 +6902,28 @@ function renderBotTemplatesList() {
       <label style="font-size:10px;color:#9aa;">Animação padrão
         <select data-key="default_animation_url" style="width:100%;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;padding:3px;">
           <option value="">— Idle embutido —</option>
-          ${botAnimations.map(a => `<option value="${escapeHtml(a.url)}" ${a.url === t.default_animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
+          ${botAnimations.map((a) => `<option value="${escapeHtml(a.url)}" ${a.url === t.default_animation_url ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("")}
         </select>
       </label>
-    </div>`).join("");
-  el.querySelectorAll("[data-tpl-id]").forEach(card => {
+    </div>`,
+    )
+    .join("");
+  el.querySelectorAll("[data-tpl-id]").forEach((card) => {
     const id = card.dataset.tplId;
-    card.querySelectorAll("[data-key]").forEach(inp => {
+    card.querySelectorAll("[data-key]").forEach((inp) => {
       inp.addEventListener("change", async () => {
         const k = inp.dataset.key;
-        const v = inp.type === "number" ? parseFloat(inp.value) : (inp.value || null);
-        const { error } = await supabase.from("bot_templates").update({ [k]: v }).eq("id", id);
+        const v = inp.type === "number" ? parseFloat(inp.value) : inp.value || null;
+        const { error } = await supabase
+          .from("bot_templates")
+          .update({ [k]: v })
+          .eq("id", id);
         if (error) alert(error.message);
       });
     });
     card.querySelector('[data-act="del"]')?.addEventListener("click", async () => {
-      if (!confirm("Apagar template? Bots já criados a partir dele continuam funcionando (a config foi snapshot).")) return;
+      if (!confirm("Apagar template? Bots já criados a partir dele continuam funcionando (a config foi snapshot)."))
+        return;
       const { error } = await supabase.from("bot_templates").delete().eq("id", id);
       if (error) return alert(error.message);
       await reloadBotTemplates();
@@ -6307,21 +6933,21 @@ function renderBotTemplatesList() {
 
 document.getElementById("addBotBtn")?.addEventListener("click", createBot);
 document.getElementById("botAnimFile")?.addEventListener("change", (e) => {
-  const f = e.target.files?.[0]; if (!f) return;
+  const f = e.target.files?.[0];
+  if (!f) return;
   const nameInp = document.getElementById("botAnimName");
   uploadBotAnimation(f, nameInp?.value?.trim());
   e.target.value = "";
   if (nameInp) nameInp.value = "";
 });
 document.getElementById("botTplFile")?.addEventListener("change", (e) => {
-  const f = e.target.files?.[0]; if (!f) return;
+  const f = e.target.files?.[0];
+  if (!f) return;
   const nameInp = document.getElementById("botTplName");
   uploadBotTemplate(f, nameInp?.value?.trim());
   e.target.value = "";
   if (nameInp) nameInp.value = "";
 });
-
-
 
 // ============================================================
 // ===== Floating panels: draggable + minimizable + closable ==
@@ -6350,9 +6976,13 @@ document.getElementById("botTplFile")?.addEventListener("change", (e) => {
           const y = ev.clientY - parent.top - offY;
           panel.style.left = Math.max(0, x) + "px";
           panel.style.top = Math.max(0, y) + "px";
-          panel.style.right = "auto"; panel.style.bottom = "auto";
+          panel.style.right = "auto";
+          panel.style.bottom = "auto";
         }
-        function onUp() { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); }
+        function onUp() {
+          document.removeEventListener("mousemove", onMove);
+          document.removeEventListener("mouseup", onUp);
+        }
         document.addEventListener("mousemove", onMove);
         document.addEventListener("mouseup", onUp);
         e.preventDefault();
@@ -6370,7 +7000,9 @@ document.getElementById("botTplFile")?.addEventListener("change", (e) => {
 
     // Close
     if (closeBtn) {
-      closeBtn.addEventListener("click", () => { panel.hidden = true; });
+      closeBtn.addEventListener("click", () => {
+        panel.hidden = true;
+      });
     }
   }
 
@@ -6380,33 +7012,41 @@ document.getElementById("botTplFile")?.addEventListener("change", (e) => {
 
   // Wire existing panels by passing custom selectors
   const mp = document.getElementById("mapAdminPanel");
-  if (mp) makePanel(mp, {
-    head: mp.querySelector("div"),
-    body: document.getElementById("mapAdminBody"),
-    closeBtn: document.getElementById("mapAdminClose"),
-    minBtn: document.getElementById("mapAdminCollapse"),
-  });
+  if (mp)
+    makePanel(mp, {
+      head: mp.querySelector("div"),
+      body: document.getElementById("mapAdminBody"),
+      closeBtn: document.getElementById("mapAdminClose"),
+      minBtn: document.getElementById("mapAdminCollapse"),
+    });
 
   const lp = document.getElementById("lightsAdminPanel");
-  if (lp) makePanel(lp, {
-    head: lp.querySelector("div"),
-    body: document.getElementById("lightsAdminList")?.parentElement,
-    closeBtn: document.getElementById("lightsAdminClose"),
-  });
+  if (lp)
+    makePanel(lp, {
+      head: lp.querySelector("div"),
+      body: document.getElementById("lightsAdminList")?.parentElement,
+      closeBtn: document.getElementById("lightsAdminClose"),
+    });
   // add minimize button to lights panel
   const lpHead = lp?.querySelector("div");
   if (lp && lpHead && !lp.querySelector("[data-panel-min]")) {
     const m = document.createElement("button");
-    m.type = "button"; m.textContent = "−";
-    m.style.cssText = "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
+    m.type = "button";
+    m.textContent = "−";
+    m.style.cssText =
+      "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
     const closeBtn = document.getElementById("lightsAdminClose");
     closeBtn?.parentElement?.insertBefore(m, closeBtn);
     const body = lp.querySelector("#lightsAdminList")?.parentElement;
     m.addEventListener("click", () => {
       // collapse everything except head row
-      const children = [...lp.children]; let skipFirst = true;
+      const children = [...lp.children];
+      let skipFirst = true;
       for (const ch of children) {
-        if (skipFirst) { skipFirst = false; continue; }
+        if (skipFirst) {
+          skipFirst = false;
+          continue;
+        }
         ch.style.display = ch.style.display === "none" ? "" : "none";
       }
       m.textContent = m.textContent === "−" ? "+" : "−";
@@ -6414,17 +7054,20 @@ document.getElementById("botTplFile")?.addEventListener("change", (e) => {
   }
 
   const layp = document.getElementById("layersPanel");
-  if (layp) makePanel(layp, {
-    head: layp.querySelector("div"),
-    body: document.getElementById("layersBody"),
-    closeBtn: document.getElementById("layersClose"),
-  });
+  if (layp)
+    makePanel(layp, {
+      head: layp.querySelector("div"),
+      body: document.getElementById("layersBody"),
+      closeBtn: document.getElementById("layersClose"),
+    });
   // add minimize for layers
   const layHead = layp?.querySelector("div");
   if (layp && layHead && !layp.querySelector("[data-panel-min]")) {
     const m = document.createElement("button");
-    m.type = "button"; m.textContent = "−";
-    m.style.cssText = "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
+    m.type = "button";
+    m.textContent = "−";
+    m.style.cssText =
+      "background:transparent;border:1px solid #555;color:#eee;border-radius:4px;padding:2px 8px;cursor:pointer;margin-right:4px;";
     const closeBtn = document.getElementById("layersClose");
     closeBtn?.parentElement?.insertBefore(m, closeBtn);
     m.addEventListener("click", () => {
@@ -6447,7 +7090,6 @@ document.getElementById("botTplFile")?.addEventListener("change", (e) => {
   makePanel(document.getElementById("speedAdminPanel"));
 
   // Pose debug removido
-
 })();
 
 // Bots panel toggle
@@ -6462,18 +7104,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 (function extendLayersWithBots() {
   const orig = window.renderLayersPanel;
   if (!orig) return;
-  window.renderLayersPanel = function() {
+  window.renderLayersPanel = function () {
     orig();
     const layersBody = document.getElementById("layersBody");
     if (!layersBody) return;
-    const bots = [...botEntities.values()].filter(e => e?.row).map(e => e.row);
+    const bots = [...botEntities.values()].filter((e) => e?.row).map((e) => e.row);
     const open = true;
-    const items = bots.map(r => `
+    const items = bots
+      .map(
+        (r) => `
       <div class="layer-item" data-bot-id="${r.id}" data-x="${r.x}" data-y="${r.y}" data-z="${r.z}"
         style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:rgba(255,255,255,0.04);margin:2px 0;">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">🤖 ${escapeHtml(r.name || "Bot")}</span>
         <button data-del-bot="${r.id}" type="button" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
-      </div>`).join("");
+      </div>`,
+      )
+      .join("");
     const html = `
       <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);user-select:none;">
@@ -6482,23 +7128,31 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <div style="padding:4px 6px;">${bots.length ? items : '<div style="color:#7a8290;font-size:11px;padding:6px;text-align:center;">Vazio</div>'}</div>
       </div>`;
     layersBody.insertAdjacentHTML("beforeend", html);
-    layersBody.querySelectorAll("[data-bot-id]").forEach(el => {
+    layersBody.querySelectorAll("[data-bot-id]").forEach((el) => {
       el.addEventListener("click", (e) => {
         if (e.target.closest("[data-del-bot]")) return;
-        const x = parseFloat(el.dataset.x), y = parseFloat(el.dataset.y), z = parseFloat(el.dataset.z);
+        const x = parseFloat(el.dataset.x),
+          y = parseFloat(el.dataset.y),
+          z = parseFloat(el.dataset.z);
         window.focusCameraOn({ x, y, z }, 4);
         window.attachGizmoForLayer?.("bot", el.dataset.botId);
         // Open bots panel and scroll to row
         const p = document.getElementById("botsAdminPanel");
-        if (p) { p.hidden = false; renderBotsAdminList(); }
+        if (p) {
+          p.hidden = false;
+          renderBotsAdminList();
+        }
         setTimeout(() => {
           const card = document.querySelector(`[data-bot-id="${el.dataset.botId}"]`);
           card?.scrollIntoView({ behavior: "smooth", block: "center" });
         }, 100);
       });
     });
-    layersBody.querySelectorAll("[data-del-bot]").forEach(btn => {
-      btn.addEventListener("click", (e) => { e.stopPropagation(); deleteBot(btn.dataset.delBot); });
+    layersBody.querySelectorAll("[data-del-bot]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteBot(btn.dataset.delBot);
+      });
     });
   };
 })();
@@ -6520,11 +7174,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     try {
       addSystemLine?.(`Enviando novo GLB para "${slug}"…`);
       const path = `maps/${slug}-${Date.now()}.glb`;
-      const { error: upErr } = await supabase.storage.from("map-assets")
+      const { error: upErr } = await supabase.storage
+        .from("map-assets")
         .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
-      const { error: updErr } = await supabase.from("custom_maps")
+      const { error: updErr } = await supabase
+        .from("custom_maps")
         .update({ url: pub.publicUrl, updated_at: new Date().toISOString() })
         .eq("slug", slug);
       if (updErr) throw updErr;
@@ -6540,16 +7196,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   });
 
-  window.renderLayersPanel = function() {
+  window.renderLayersPanel = function () {
     orig();
     const layersBody = document.getElementById("layersBody");
     if (!layersBody) return;
-    const customs = (typeof MAPS !== "undefined" ? MAPS : []).filter(m => m.custom);
+    const customs = (typeof MAPS !== "undefined" ? MAPS : []).filter((m) => m.custom);
     const open = mapsGroupOpen.v;
     const arrow = open ? "▾" : "▸";
-    const items = open ? customs.map(m => {
-      const isCur = m.id === currentMapId;
-      return `
+    const items = open
+      ? customs
+          .map((m) => {
+            const isCur = m.id === currentMapId;
+            return `
         <div class="layer-item map-row" data-map-slug="${escapeHtml(m.id)}"
           style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer;background:${isCur ? "rgba(41,211,189,0.15)" : "rgba(255,255,255,0.04)"};margin:2px 0;border:1px solid ${isCur ? "rgba(41,211,189,0.4)" : "transparent"};">
           <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">
@@ -6558,7 +7216,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button data-replace-map="${escapeHtml(m.id)}" type="button" title="Trocar arquivo GLB fonte" style="background:#1f3a5a;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">↻ GLB</button>
           <button data-del-map="${escapeHtml(m.id)}" type="button" title="Apagar mapa" style="background:#5a1f1f;color:#fff;border:none;border-radius:4px;padding:1px 6px;font-size:10px;cursor:pointer;margin-left:4px;">✕</button>
         </div>`;
-    }).join("") : "";
+          })
+          .join("")
+      : "";
     const html = `
       <div style="margin-bottom:8px;border:1px solid #2a3040;border-radius:6px;overflow:hidden;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:rgba(255,255,255,0.05);user-select:none;">
@@ -6572,30 +7232,36 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       mapsGroupOpen.v = !mapsGroupOpen.v;
       window.renderLayersPanel?.();
     });
-    layersBody.querySelectorAll(".map-row").forEach(el => {
+    layersBody.querySelectorAll(".map-row").forEach((el) => {
       el.addEventListener("click", (e) => {
         if (e.target.closest("[data-replace-map]") || e.target.closest("[data-del-map]")) return;
         const slug = el.dataset.mapSlug;
         if (slug && slug !== currentMapId) {
-          switchRoom(slug).catch(err => addSystemLine?.("Erro: " + (err?.message || err)));
+          switchRoom(slug).catch((err) => addSystemLine?.("Erro: " + (err?.message || err)));
         }
       });
     });
-    layersBody.querySelectorAll("[data-replace-map]").forEach(btn => {
+    layersBody.querySelectorAll("[data-replace-map]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         pendingReplaceSlug = btn.dataset.replaceMap;
         replaceInput?.click();
       });
     });
-    layersBody.querySelectorAll("[data-del-map]").forEach(btn => {
+    layersBody.querySelectorAll("[data-del-map]").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
         const slug = btn.dataset.delMap;
-        if (slug === currentMapId) { alert("Saia desse mapa antes de apagá-lo."); return; }
+        if (slug === currentMapId) {
+          alert("Saia desse mapa antes de apagá-lo.");
+          return;
+        }
         if (!confirm(`Apagar o mapa "${slug}"?`)) return;
         const { error } = await supabase.from("custom_maps").delete().eq("slug", slug);
-        if (error) { alert("Erro: " + error.message); return; }
+        if (error) {
+          alert("Erro: " + error.message);
+          return;
+        }
         await loadCustomMaps();
         window.renderLayersPanel?.();
       });
@@ -6647,7 +7313,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     arr.userData.axis = a.dir.clone();
     arr.userData.axisName = a.name;
     arr.userData.mat = mat;
-    arr.traverse((o) => { o.renderOrder = 9999; });
+    arr.traverse((o) => {
+      o.renderOrder = 9999;
+    });
     group.add(arr);
     arrows.push(arr);
     pickMeshes.push(pick);
@@ -6663,7 +7331,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function detach() {
     target = null;
     group.visible = false;
-    if (dragging) { controls.enabled = true; dragging = null; }
+    if (dragging) {
+      controls.enabled = true;
+      dragging = null;
+    }
   }
   window.attachGizmo = attach;
   window.detachGizmo = detach;
@@ -6673,10 +7344,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     requestAnimationFrame(tick);
     if (!target || !group.visible) return;
     const p = target.getPosition?.();
-    if (!p) { detach(); return; }
+    if (!p) {
+      detach();
+      return;
+    }
     group.position.copy(p);
     const dist = camera.position.distanceTo(group.position);
-    const s = Math.max(0.4, dist * 0.10);
+    const s = Math.max(0.4, dist * 0.1);
     group.scale.setScalar(s);
     for (const arr of arrows) {
       const hi = dragging && dragging.axisName === arr.userData.axisName;
@@ -6693,30 +7367,37 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ndc.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
-  renderer.domElement.addEventListener("pointerdown", (ev) => {
-    if (!target || !group.visible) return;
-    setNdc(ev);
-    ray.setFromCamera(ndc, camera);
-    const hits = ray.intersectObjects(pickMeshes, false);
-    if (!hits.length) return;
-    const axisName = hits[0].object.userData.axisName;
-    const axisDef = AXES.find((a) => a.name === axisName);
-    if (!axisDef) return;
-    ev.stopPropagation();
-    ev.preventDefault();
-    controls.enabled = false;
-    if (pointerDown) pointerDown = null; // evita que o handler de clique do mapa dispare
-    const axisWorld = axisDef.dir.clone();
-    const startPos = target.getPosition().clone();
-    const camDir = new THREE.Vector3().subVectors(camera.position, startPos).normalize();
-    const n = new THREE.Vector3().crossVectors(axisWorld, new THREE.Vector3().crossVectors(camDir, axisWorld));
-    if (n.lengthSq() < 1e-6) n.copy(camDir);
-    n.normalize();
-    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, startPos);
-    const hit0 = new THREE.Vector3();
-    if (!ray.ray.intersectPlane(plane, hit0)) { controls.enabled = true; return; }
-    dragging = { axisName, axis: axisWorld, startPos, plane, hit0 };
-  }, true);
+  renderer.domElement.addEventListener(
+    "pointerdown",
+    (ev) => {
+      if (!target || !group.visible) return;
+      setNdc(ev);
+      ray.setFromCamera(ndc, camera);
+      const hits = ray.intersectObjects(pickMeshes, false);
+      if (!hits.length) return;
+      const axisName = hits[0].object.userData.axisName;
+      const axisDef = AXES.find((a) => a.name === axisName);
+      if (!axisDef) return;
+      ev.stopPropagation();
+      ev.preventDefault();
+      controls.enabled = false;
+      if (pointerDown) pointerDown = null; // evita que o handler de clique do mapa dispare
+      const axisWorld = axisDef.dir.clone();
+      const startPos = target.getPosition().clone();
+      const camDir = new THREE.Vector3().subVectors(camera.position, startPos).normalize();
+      const n = new THREE.Vector3().crossVectors(axisWorld, new THREE.Vector3().crossVectors(camDir, axisWorld));
+      if (n.lengthSq() < 1e-6) n.copy(camDir);
+      n.normalize();
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(n, startPos);
+      const hit0 = new THREE.Vector3();
+      if (!ray.ray.intersectPlane(plane, hit0)) {
+        controls.enabled = true;
+        return;
+      }
+      dragging = { axisName, axis: axisWorld, startPos, plane, hit0 };
+    },
+    true,
+  );
 
   window.addEventListener("pointermove", (ev) => {
     if (!dragging || !target) return;
@@ -6750,7 +7431,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         getPosition: () => obj.position.clone(),
         setPosition: (v, commit) => {
           obj.position.copy(v);
-          a.x = v.x; a.y = v.y; a.z = v.z;
+          a.x = v.x;
+          a.y = v.y;
+          a.z = v.z;
           if (commit) updateAsset(id, { x: v.x, y: v.y, z: v.z });
         },
       });
@@ -6760,8 +7443,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       attach({
         getPosition: () => new THREE.Vector3(e.row.pos_x || 0, e.row.pos_y || 0, e.row.pos_z || 0),
         setPosition: (v, commit) => {
-          e.row.pos_x = v.x; e.row.pos_y = v.y; e.row.pos_z = v.z;
-          try { rebuildCustomLight(e.row); } catch {}
+          e.row.pos_x = v.x;
+          e.row.pos_y = v.y;
+          e.row.pos_z = v.z;
+          try {
+            rebuildCustomLight(e.row);
+          } catch {}
           if (commit) scheduleLightSave(id, { pos_x: v.x, pos_y: v.y, pos_z: v.z });
         },
       });
@@ -6771,8 +7458,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       attach({
         getPosition: () => new THREE.Vector3(e.row.x || 0, e.row.y || 0, e.row.z || 0),
         setPosition: (v, commit) => {
-          e.row.x = v.x; e.row.y = v.y; e.row.z = v.z;
-          try { applyBotTransform(e, e.row); } catch {}
+          e.row.x = v.x;
+          e.row.y = v.y;
+          e.row.z = v.z;
+          try {
+            applyBotTransform(e, e.row);
+          } catch {}
           if (commit) scheduleBotSave(id, { x: v.x, y: v.y, z: v.z });
         },
       });
@@ -6793,11 +7484,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let currentDmPeer = null;
   let dmChannel = null;
 
-  const closeAll = () => { overlay.hidden = true; dmOverlay.hidden = true; inboxOverlay.hidden = true; };
-  $("profileClose").onclick = () => overlay.hidden = true;
-  $("dmClose").onclick = () => { dmOverlay.hidden = true; if (dmChannel) { supabase.removeChannel(dmChannel); dmChannel = null; } };
+  const closeAll = () => {
+    overlay.hidden = true;
+    dmOverlay.hidden = true;
+    inboxOverlay.hidden = true;
+  };
+  $("profileClose").onclick = () => (overlay.hidden = true);
+  $("dmClose").onclick = () => {
+    dmOverlay.hidden = true;
+    if (dmChannel) {
+      supabase.removeChannel(dmChannel);
+      dmChannel = null;
+    }
+  };
   $("dmBack").onclick = () => $("dmClose").click();
-  $("dmInboxClose").onclick = () => inboxOverlay.hidden = true;
+  $("dmInboxClose").onclick = () => (inboxOverlay.hidden = true);
 
   async function openProfile(userId) {
     if (!userId) return;
@@ -6808,7 +7509,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     $("profileName").textContent = p?.nickname || "Usuário";
     $("profileBio").textContent = p?.bio || "Sem descrição.";
     const av = p?.avatar_url || "";
-    $("profileAvatar").src = av || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='100%' height='100%' fill='%232a2750'/></svg>";
+    $("profileAvatar").src =
+      av ||
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='96' height='96'><rect width='100%' height='100%' fill='%232a2750'/></svg>";
     $("profileAvatarEdit").hidden = !isMe;
     $("profileEditBtn").hidden = !isMe;
     $("profileFollowBtn").hidden = isMe;
@@ -6829,7 +7532,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     $("profilePostCount").textContent = (photos || []).length;
 
     if (!isMe && myId) {
-      const { data: rel } = await supabase.from("follows").select("id").eq("follower_id", myId).eq("following_id", userId).maybeSingle();
+      const { data: rel } = await supabase
+        .from("follows")
+        .select("id")
+        .eq("follower_id", myId)
+        .eq("following_id", userId)
+        .maybeSingle();
       const btn = $("profileFollowBtn");
       btn.textContent = rel ? "Deixar de seguir" : "Seguir";
       btn.dataset.following = rel ? "1" : "";
@@ -6880,18 +7588,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const ids = pending.map((r) => r.from_user);
         const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", ids);
         const pm = new Map((profs || []).map((p) => [p.id, p]));
-        requestsList.innerHTML = pending.map((r) => {
-          const p = pm.get(r.from_user) || {};
-          const av = p.avatar_url || `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
-          const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
-          return `
+        requestsList.innerHTML = pending
+          .map((r) => {
+            const p = pm.get(r.from_user) || {};
+            const av =
+              p.avatar_url ||
+              `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
+            const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
+            return `
             <div class="ig-req-item" data-uid="${r.from_user}">
               <img src="${av}" alt="" class="ig-req-avatar" data-act="open-profile" data-uid="${r.from_user}">
               <div class="ig-req-name" data-act="open-profile" data-uid="${r.from_user}">${nm}</div>
               <button class="ig-btn ig-btn-primary" data-act="accept" data-req="${r.id}">Aceitar</button>
               <button class="ig-btn" data-act="reject" data-req="${r.id}">Recusar</button>
             </div>`;
-        }).join("");
+          })
+          .join("");
       }
     } else {
       requestsSection.hidden = true;
@@ -6910,10 +7622,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", friendIds);
-    friendsList.innerHTML = (profs || []).map((p) => {
-      const av = p.avatar_url || `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
-      const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
-      return `
+    friendsList.innerHTML = (profs || [])
+      .map((p) => {
+        const av =
+          p.avatar_url ||
+          `data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect fill='%232a2750' width='100%25' height='100%25'/></svg>`;
+        const nm = (p.nickname || "Usuário").replace(/</g, "&lt;");
+        return `
         <div class="ig-friend-item" data-uid="${p.id}">
           <img src="${av}" alt="" class="ig-friend-avatar" data-act="open-profile" data-uid="${p.id}">
           <div class="ig-friend-name">${nm}</div>
@@ -6922,7 +7637,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <button class="ig-mini-btn" title="Mandar DM" data-act="dm" data-uid="${p.id}">💬</button>
           </div>
         </div>`;
-    }).join("");
+      })
+      .join("");
   }
 
   // Delega cliques nas seções de amigos e pedidos
@@ -6938,7 +7654,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const el = e.target.closest("[data-act]");
     if (!el) return;
     const act = el.dataset.act;
-    if (act === "open-profile" && el.dataset.uid) { openProfile(el.dataset.uid); return; }
+    if (act === "open-profile" && el.dataset.uid) {
+      openProfile(el.dataset.uid);
+      return;
+    }
     const reqId = el.dataset.req;
     if (!reqId) return;
     el.disabled = true;
@@ -6953,9 +7672,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // Abrir DM por evento externo (popup do jogador)
   window.addEventListener("open-dm", (e) => {
     const uid = e?.detail;
-    if (uid) { overlay.hidden = true; openDm(uid); }
+    if (uid) {
+      overlay.hidden = true;
+      openDm(uid);
+    }
   });
-
 
   $("profileFollowBtn").onclick = async () => {
     if (!myId || !currentProfileId) return;
@@ -6973,7 +7694,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     $("profileBioEdit").hidden = false;
     $("profileEditActions").hidden = false;
   };
-  $("profileBioCancel").onclick = () => { $("profileBioEdit").hidden = true; $("profileEditActions").hidden = true; };
+  $("profileBioCancel").onclick = () => {
+    $("profileBioEdit").hidden = true;
+    $("profileEditActions").hidden = true;
+  };
   $("profileBioSave").onclick = async () => {
     const bio = $("profileBioEdit").value.trim().slice(0, 240);
     await supabase.from("profiles").update({ bio }).eq("id", myId);
@@ -6982,8 +7706,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   $("profileAvatarEdit").onclick = () => $("profileAvatarFile").click();
   $("profileAvatarFile").onchange = async (e) => {
-    const f = e.target.files?.[0]; if (!f || !myId) return;
-    const path = `${myId}/avatar-${Date.now()}.${(f.name.split('.').pop()||'png').toLowerCase()}`;
+    const f = e.target.files?.[0];
+    if (!f || !myId) return;
+    const path = `${myId}/avatar-${Date.now()}.${(f.name.split(".").pop() || "png").toLowerCase()}`;
     const { error } = await supabase.storage.from("profile-photos").upload(path, f, { upsert: true });
     if (error) return alert("Falha no upload: " + error.message);
     const { data } = supabase.storage.from("profile-photos").getPublicUrl(path);
@@ -6993,10 +7718,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   };
 
   $("profilePhotoFile").onchange = async (e) => {
-    const f = e.target.files?.[0]; if (!f || !myId) return;
-    const { count } = await supabase.from("profile_photos").select("*", { count: "exact", head: true }).eq("user_id", myId);
+    const f = e.target.files?.[0];
+    if (!f || !myId) return;
+    const { count } = await supabase
+      .from("profile_photos")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", myId);
     if ((count || 0) >= PHOTO_LIMIT) return alert(`Limite de ${PHOTO_LIMIT} fotos atingido.`);
-    const path = `${myId}/photo-${Date.now()}.${(f.name.split('.').pop()||'png').toLowerCase()}`;
+    const path = `${myId}/photo-${Date.now()}.${(f.name.split(".").pop() || "png").toLowerCase()}`;
     const { error } = await supabase.storage.from("profile-photos").upload(path, f);
     if (error) return alert("Falha: " + error.message);
     const { data } = supabase.storage.from("profile-photos").getPublicUrl(path);
@@ -7013,25 +7742,37 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     dmOverlay.hidden = false;
     const { data: peer } = await supabase.from("profiles").select("*").eq("id", peerId).maybeSingle();
     $("dmPeerName").textContent = peer?.nickname || "Usuário";
-    $("dmPeerAvatar").src = peer?.avatar_url || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect fill='%232a2750' width='100%' height='100%'/></svg>";
+    $("dmPeerAvatar").src =
+      peer?.avatar_url ||
+      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect fill='%232a2750' width='100%' height='100%'/></svg>";
     const log = $("dmLog");
     log.innerHTML = "";
-    const { data: msgs } = await supabase.from("direct_messages")
+    const { data: msgs } = await supabase
+      .from("direct_messages")
       .select("*")
       .or(`and(from_user.eq.${myId},to_user.eq.${peerId}),and(from_user.eq.${peerId},to_user.eq.${myId})`)
-      .order("created_at", { ascending: true }).limit(200);
+      .order("created_at", { ascending: true })
+      .limit(200);
     (msgs || []).forEach(renderDm);
     log.scrollTop = log.scrollHeight;
-    await supabase.from("direct_messages").update({ read_at: new Date().toISOString() }).eq("to_user", myId).eq("from_user", peerId).is("read_at", null);
+    await supabase
+      .from("direct_messages")
+      .update({ read_at: new Date().toISOString() })
+      .eq("to_user", myId)
+      .eq("from_user", peerId)
+      .is("read_at", null);
 
     if (dmChannel) await supabase.removeChannel(dmChannel);
-    dmChannel = supabase.channel(`dm:${myId}:${peerId}`)
+    dmChannel = supabase
+      .channel(`dm:${myId}:${peerId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, (p) => {
         const m = p.new;
         if ((m.from_user === myId && m.to_user === peerId) || (m.from_user === peerId && m.to_user === myId)) {
-          renderDm(m); log.scrollTop = log.scrollHeight;
+          renderDm(m);
+          log.scrollTop = log.scrollHeight;
         }
-      }).subscribe();
+      })
+      .subscribe();
   }
   function renderDm(m) {
     const div = document.createElement("div");
@@ -7062,16 +7803,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function openInbox() {
     if (!myId) return;
     inboxOverlay.hidden = false;
-    const { data } = await supabase.from("direct_messages")
-      .select("*").or(`from_user.eq.${myId},to_user.eq.${myId}`).order("created_at", { ascending: false }).limit(200);
+    const { data } = await supabase
+      .from("direct_messages")
+      .select("*")
+      .or(`from_user.eq.${myId},to_user.eq.${myId}`)
+      .order("created_at", { ascending: false })
+      .limit(200);
     const peers = new Map();
     (data || []).forEach((m) => {
       const peer = m.from_user === myId ? m.to_user : m.from_user;
       if (!peers.has(peer)) peers.set(peer, { last: m, unread: 0 });
       if (m.to_user === myId && !m.read_at) peers.get(peer).unread++;
     });
-    const list = $("dmInboxList"); list.innerHTML = "";
-    if (peers.size === 0) { list.innerHTML = '<p style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem;">Sem mensagens ainda.</p>'; return; }
+    const list = $("dmInboxList");
+    list.innerHTML = "";
+    if (peers.size === 0) {
+      list.innerHTML =
+        '<p style="text-align:center;padding:20px;color:var(--muted);font-size:0.85rem;">Sem mensagens ainda.</p>';
+      return;
+    }
     const ids = [...peers.keys()];
     const { data: profs } = await supabase.from("profiles").select("id,nickname,avatar_url").in("id", ids);
     const pm = new Map((profs || []).map((p) => [p.id, p]));
@@ -7080,14 +7830,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const div = document.createElement("div");
       div.className = "dm-inbox-item";
       div.innerHTML = `
-        <img class="dm-avatar" src="${p.avatar_url || ''}" alt="">
+        <img class="dm-avatar" src="${p.avatar_url || ""}" alt="">
         <div style="min-width:0;flex:1;">
-          <div class="name">${(p.nickname || 'Usuário').replace(/</g,'&lt;')}</div>
-          <div class="preview">${(info.last.text || '').slice(0,60).replace(/</g,'&lt;')}</div>
+          <div class="name">${(p.nickname || "Usuário").replace(/</g, "&lt;")}</div>
+          <div class="preview">${(info.last.text || "").slice(0, 60).replace(/</g, "&lt;")}</div>
         </div>
-        ${info.unread ? '<span class="unread"></span>' : ''}
+        ${info.unread ? '<span class="unread"></span>' : ""}
       `;
-      div.onclick = () => { inboxOverlay.hidden = true; openDm(pid); };
+      div.onclick = () => {
+        inboxOverlay.hidden = true;
+        openDm(pid);
+      };
       list.appendChild(div);
     });
   }
@@ -7097,8 +7850,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const openInboxBtn = $("openDmInboxButton");
   if (openProfileBtn) openProfileBtn.onclick = () => myId && openProfile(myId);
   if (openInboxBtn) openInboxBtn.onclick = openInbox;
-  const mpb = $("mobileProfileBtn"); if (mpb) mpb.onclick = () => myId && openProfile(myId);
-  const mdb = $("mobileDmBtn"); if (mdb) mdb.onclick = openInbox;
+  const mpb = $("mobileProfileBtn");
+  if (mpb) mpb.onclick = () => myId && openProfile(myId);
+  const mdb = $("mobileDmBtn");
+  if (mdb) mdb.onclick = openInbox;
 
   // Click avatar / name in chat -> open profile
   document.getElementById("chatLog")?.addEventListener("click", (e) => {
@@ -7110,15 +7865,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const dmBadge = $("mobileDmBadge");
   async function refreshDmBadge() {
     if (!myId) return;
-    const { count } = await supabase.from("direct_messages").select("*", { count: "exact", head: true }).eq("to_user", myId).is("read_at", null);
+    const { count } = await supabase
+      .from("direct_messages")
+      .select("*", { count: "exact", head: true })
+      .eq("to_user", myId)
+      .is("read_at", null);
     if (dmBadge) {
-      if (count > 0) { dmBadge.hidden = false; dmBadge.textContent = count > 9 ? "9+" : String(count); }
-      else { dmBadge.hidden = true; }
+      if (count > 0) {
+        dmBadge.hidden = false;
+        dmBadge.textContent = count > 9 ? "9+" : String(count);
+      } else {
+        dmBadge.hidden = true;
+      }
     }
   }
   setInterval(refreshDmBadge, 8000);
   setTimeout(refreshDmBadge, 2000);
-  supabase.channel("dm-global")
+  supabase
+    .channel("dm-global")
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "direct_messages" }, refreshDmBadge)
     .subscribe();
 })();
@@ -7134,8 +7898,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let counter = 0;
   let hideTimer = null;
   let tickTimer = null;
-  let displayPct = 0;   // o que aparece na UI
-  let realPct = 0;      // o que o LoadingManager reportou
+  let displayPct = 0; // o que aparece na UI
+  let realPct = 0; // o que o LoadingManager reportou
   let visible = false;
 
   function paint() {
@@ -7158,7 +7922,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }, 80);
   }
   function stopTick() {
-    if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
   }
   window.setWorldLoadingProgress = function (loaded, total) {
     if (!total || total <= 0) return;
@@ -7167,7 +7934,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   };
   window.showWorldLoading = function (label) {
     counter++;
-    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    if (hideTimer) {
+      clearTimeout(hideTimer);
+      hideTimer = null;
+    }
     if (label) {
       const t = el.querySelector(".world-loading-text");
       if (t) t.textContent = label;
@@ -7224,15 +7994,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const stopBtn = document.getElementById("radioStopAllBtn");
   if (!audio || !hud) return;
 
-  let stations = [];          // all stations for current map
-  let activeStation = null;   // the one is_playing=true
+  let stations = []; // all stations for current map
+  let activeStation = null; // the one is_playing=true
   let channel = null;
   let subscribedMapId = null;
   let inRoom = false;
 
-  const RADIO_DEFAULT_VOLUME = 0.20; // 20% real (= slider 100 quando MAX = 0.20)
-  const RADIO_MAX_VOLUME = 0.20; // cap absoluto: 20% do volume real
-  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.default20.20260606";
+  const RADIO_DEFAULT_VOLUME = 0.02;
+  const RADIO_MAX_VOLUME = 0.2; // cap absoluto: 20% do volume real
+  const RADIO_VOLUME_REDUCED_KEY = "radio.volume.reduced.20260603";
   // Slider 0-100 -> volume real (0 .. RADIO_MAX_VOLUME), curva quadrática para resolução nos graves.
   const sliderToVol = (s) => {
     const x = Math.min(1, Math.max(0, (Number(s) || 0) / 100));
@@ -7243,36 +8013,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return Math.round(Math.sqrt(x) * 100);
   };
 
-  // ---- WebAudio gain (iOS/Safari ignora audio.volume em <audio> remoto) ----
-  // O gainNode é ligado entre o <audio> e o destino. Algumas URLs com CORS
-  // restrito podem falhar — nesse caso caímos no audio.volume nativo.
-  let _audioCtx = null, _gainNode = null, _webAudioFailed = false;
-  function ensureWebAudio() {
-    if (_gainNode || _webAudioFailed) return _gainNode;
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) { _webAudioFailed = true; return null; }
-      _audioCtx = new Ctx();
-      const src = _audioCtx.createMediaElementSource(audio);
-      _gainNode = _audioCtx.createGain();
-      src.connect(_gainNode);
-      _gainNode.connect(_audioCtx.destination);
-    } catch (e) {
-      console.warn("[radio webaudio]", e);
-      _webAudioFailed = true;
-      _gainNode = null;
-    }
-    return _gainNode;
-  }
-  function resumeAudioCtx() {
-    if (_audioCtx && _audioCtx.state === "suspended") {
-      _audioCtx.resume().catch(() => {});
-    }
-  }
   // Persisted local volume/mute
   const savedVol = parseFloat(localStorage.getItem("radio.volume"));
   const savedMuted = localStorage.getItem("radio.muted") === "1";
-  let initialVolume = Number.isFinite(savedVol) ? Math.min(RADIO_MAX_VOLUME, Math.max(0, savedVol)) : RADIO_DEFAULT_VOLUME;
+  let initialVolume = Number.isFinite(savedVol)
+    ? Math.min(RADIO_MAX_VOLUME, Math.max(0, savedVol))
+    : RADIO_DEFAULT_VOLUME;
   if (localStorage.getItem(RADIO_VOLUME_REDUCED_KEY) !== "1") {
     initialVolume = RADIO_DEFAULT_VOLUME;
     localStorage.setItem("radio.volume", String(initialVolume));
@@ -7290,8 +8036,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   muteBtn?.addEventListener("click", () => {
     audio.muted = !audio.muted;
-    const g = ensureWebAudio();
-    if (g) g.gain.value = audio.muted ? 0 : audio.volume;
     localStorage.setItem("radio.muted", audio.muted ? "1" : "0");
     syncMuteUi();
   });
@@ -7299,17 +8043,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!volSlider) return;
     const v = sliderToVol(volSlider.value);
     audio.volume = v;
-    const g = ensureWebAudio();
-    if (g) g.gain.value = audio.muted ? 0 : v;
-    resumeAudioCtx();
-    if (v > 0 && audio.muted) { audio.muted = false; localStorage.setItem("radio.muted", "0"); }
+    if (v > 0 && audio.muted) {
+      audio.muted = false;
+      localStorage.setItem("radio.muted", "0");
+    }
     localStorage.setItem("radio.volume", String(v));
     syncMuteUi();
   }
   volSlider?.addEventListener("input", applyVolumeFromSlider);
   volSlider?.addEventListener("change", applyVolumeFromSlider);
-  // Garante que o ganho seja inicializado/aplicado assim que o áudio puder rodar
-  audio.addEventListener("play", () => { ensureWebAudio(); resumeAudioCtx(); applyVolumeFromSlider(); });
 
   // Mobile-safe drag: trackeia pointermove/touchmove no documento durante o gesto.
   // Algumas WebViews móveis não disparam pointermove no próprio <input range>
@@ -7355,10 +8097,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     volSlider.addEventListener("touchstart", onStart, { passive: false });
   }
 
-
   function showHud(st) {
     activeStation = st;
-    if (!st) { hud.hidden = true; return; }
+    if (!st) {
+      hud.hidden = true;
+      return;
+    }
     hudName.textContent = st.station_name || "Rádio";
     hudGenre.textContent = st.genre ? "· " + st.genre : "";
     hud.hidden = false;
@@ -7367,18 +8111,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function applyActive() {
     const playing = stations.find((s) => s.is_playing);
     if (!inRoom || !playing || !playing.stream_url) {
-      try { audio.pause(); } catch {}
+      try {
+        audio.pause();
+      } catch {}
       audio.removeAttribute("src");
-      try { audio.load(); } catch {}
+      try {
+        audio.load();
+      } catch {}
       showHud(null);
       return;
     }
     if (audio.src !== playing.stream_url) {
-      try { audio.pause(); } catch {}
+      try {
+        audio.pause();
+      } catch {}
       audio.src = playing.stream_url;
       audio.play().catch((err) => {
         console.warn("Rádio: autoplay bloqueado, aguardando interação.", err);
-        const resume = () => { audio.play().catch(() => {}); document.removeEventListener("click", resume); document.removeEventListener("keydown", resume); };
+        const resume = () => {
+          audio.play().catch(() => {});
+          document.removeEventListener("click", resume);
+          document.removeEventListener("keydown", resume);
+        };
         document.addEventListener("click", resume, { once: true });
         document.addEventListener("keydown", resume, { once: true });
       });
@@ -7389,13 +8143,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   async function loadStations(mapId) {
-    if (!mapId) { stations = []; renderAdminList(); applyActive(); return; }
+    if (!mapId) {
+      stations = [];
+      renderAdminList();
+      applyActive();
+      return;
+    }
     const { data, error } = await supabase
       .from("map_radios")
       .select("*")
       .eq("map_id", mapId)
       .order("station_name", { ascending: true });
-    if (error) { console.warn("Falha ao carregar rádios:", error); return; }
+    if (error) {
+      console.warn("Falha ao carregar rádios:", error);
+      return;
+    }
     stations = data || [];
     renderAdminList();
     applyActive();
@@ -7403,17 +8165,29 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function subscribe(mapId) {
     if (channel && subscribedMapId === mapId) return;
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = mapId;
     if (!mapId) return;
     channel = supabase
       .channel("radio:" + mapId)
-      .on("postgres_changes", { event: "*", schema: "public", table: "map_radios", filter: "map_id=eq." + mapId }, () => loadStations(mapId))
+      .on("postgres_changes", { event: "*", schema: "public", table: "map_radios", filter: "map_id=eq." + mapId }, () =>
+        loadStations(mapId),
+      )
       .subscribe();
   }
 
   async function unsubscribe() {
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = null;
   }
 
@@ -7440,11 +8214,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function renderAdminList() {
     if (!stationsList) return;
-    if (!stations.length) { stationsList.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma estação ainda. Adicione a primeira acima.</div>'; return; }
-    stationsList.innerHTML = stations.map((s) => {
-      const playing = !!s.is_playing;
-      return `
-        <div class="radio-station-row ${playing ? "is-playing" : ""}" data-id="${s.id || s.map_id + '|' + s.station_name}">
+    if (!stations.length) {
+      stationsList.innerHTML =
+        '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma estação ainda. Adicione a primeira acima.</div>';
+      return;
+    }
+    stationsList.innerHTML = stations
+      .map((s) => {
+        const playing = !!s.is_playing;
+        return `
+        <div class="radio-station-row ${playing ? "is-playing" : ""}" data-id="${s.id || s.map_id + "|" + s.station_name}">
           <div class="rs-title">${escapeHtml(s.station_name || "—")} ${playing ? "▶" : ""}</div>
           <div class="rs-meta">${escapeHtml(s.genre || "")}${s.genre ? " · " : ""}${escapeHtml(s.stream_url || "")}</div>
           <div class="rs-actions">
@@ -7452,7 +8231,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <button type="button" class="rs-del" data-act="del" data-name="${encodeURIComponent(s.station_name)}">Excluir</button>
           </div>
         </div>`;
-    }).join("");
+      })
+      .join("");
   }
 
   stationsList?.addEventListener("click", async (e) => {
@@ -7466,12 +8246,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       // Set all to false, target to true (single source for this map_id)
       const others = stations.filter((s) => s.station_name !== name && s.is_playing);
       for (const s of others) {
-        await supabase.from("map_radios").update({ is_playing: false, updated_at: new Date().toISOString() }).match({ map_id: s.map_id, station_name: s.station_name });
+        await supabase
+          .from("map_radios")
+          .update({ is_playing: false, updated_at: new Date().toISOString() })
+          .match({ map_id: s.map_id, station_name: s.station_name });
       }
-      await supabase.from("map_radios").update({ is_playing: true, updated_at: new Date().toISOString() }).match({ map_id: target.map_id, station_name: target.station_name });
+      await supabase
+        .from("map_radios")
+        .update({ is_playing: true, updated_at: new Date().toISOString() })
+        .match({ map_id: target.map_id, station_name: target.station_name });
       await loadStations(currentMapId);
     } else if (act === "del") {
-      if (!confirm("Excluir estação \"" + name + "\"?")) return;
+      if (!confirm('Excluir estação "' + name + '"?')) return;
       await supabase.from("map_radios").delete().match({ map_id: target.map_id, station_name: target.station_name });
       await loadStations(currentMapId);
     }
@@ -7493,7 +8279,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       is_playing: false,
       updated_by: myId || null,
     });
-    if (error) { alert("Erro: " + error.message); return; }
+    if (error) {
+      alert("Erro: " + error.message);
+      return;
+    }
     if (newName) newName.value = "";
     if (newUrl) newUrl.value = "";
     if (newGenre) newGenre.value = "";
@@ -7504,12 +8293,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!isAdmin) return;
     const playing = stations.filter((s) => s.is_playing);
     for (const s of playing) {
-      await supabase.from("map_radios").update({ is_playing: false, updated_at: new Date().toISOString() }).match({ map_id: s.map_id, station_name: s.station_name });
+      await supabase
+        .from("map_radios")
+        .update({ is_playing: false, updated_at: new Date().toISOString() })
+        .match({ map_id: s.map_id, station_name: s.station_name });
     }
     await loadStations(currentMapId);
   });
 
-  function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+  function escapeHtml(s) {
+    return String(s || "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  }
 })();
 
 // ============================================================
@@ -7524,42 +8321,62 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const newBtn = document.getElementById("interactionsNewBtn");
   if (!promptEl) return;
 
-  let interactions = [];       // [{...row}]
+  let interactions = []; // [{...row}]
   let channel = null;
   let subscribedMapId = null;
   let inRoom = false;
-  let activeNearby = null;     // interaction we're currently close to
-  let editingId = null;        // id sendo editado no painel admin (string or "new")
-  let editingDraft = null;     // patch em edição (preview ao vivo)
-  let pickMode = false;        // selecionar asset no mundo
-  let currentSit = null;       // {id, assetId, worldPos, worldRotY, animationUrl, mixerAction, animClipName}
+  let activeNearby = null; // interaction we're currently close to
+  let editingId = null; // id sendo editado no painel admin (string or "new")
+  let editingDraft = null; // patch em edição (preview ao vivo)
+  let pickMode = false; // selecionar asset no mundo
+  let currentSit = null; // {id, assetId, worldPos, worldRotY, animationUrl, mixerAction, animClipName}
 
   const tmpV = new THREE.Vector3();
 
-  function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+  function _esc(s) {
+    return String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  }
 
   // ---------- Data layer ----------
   async function loadInteractions(mapId) {
-    if (!mapId) { interactions = []; renderAdmin(); return; }
+    if (!mapId) {
+      interactions = [];
+      renderAdmin();
+      return;
+    }
     const { data, error } = await supabase
       .from("map_asset_interactions")
       .select("*")
       .eq("map_id", mapId)
       .order("created_at", { ascending: true });
-    if (error) { console.warn("[interactions] load", error); return; }
+    if (error) {
+      console.warn("[interactions] load", error);
+      return;
+    }
     interactions = data || [];
     window.__mapInteractions = interactions;
     // Sync bot lookup for admin UI
-    try { window.__mapBots = new Map(Array.from(botEntities.entries()).filter(([k]) => typeof k === "string" && !k.startsWith("__loading_")).map(([k, e]) => [k, e.row])); } catch {}
+    try {
+      window.__mapBots = new Map(
+        Array.from(botEntities.entries())
+          .filter(([k]) => typeof k === "string" && !k.startsWith("__loading_"))
+          .map(([k, e]) => [k, e.row]),
+      );
+    } catch {}
     window.dispatchEvent(new CustomEvent("interactions:updated"));
     // Pré-carrega clips FBX de todas as interações do mapa para eliminar T-pose no primeiro uso
     try {
-      const urls = Array.from(new Set(interactions.map(i => i.animation_url).filter(Boolean)));
+      const urls = Array.from(new Set(interactions.map((i) => i.animation_url).filter(Boolean)));
       let i = 0;
       const runNext = () => {
         if (i >= urls.length) return;
         const u = urls[i++];
-        loadFbxClip(u).catch(()=>{}).finally(runNext);
+        loadFbxClip(u)
+          .catch(() => {})
+          .finally(runNext);
       };
       for (let k = 0; k < Math.min(4, urls.length); k++) runNext();
     } catch {}
@@ -7568,18 +8385,30 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function subscribe(mapId) {
     if (channel && subscribedMapId === mapId) return;
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = mapId;
     if (!mapId) return;
     channel = supabase
       .channel("interactions:" + mapId)
-      .on("postgres_changes",
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "map_asset_interactions", filter: "map_id=eq." + mapId },
-        () => loadInteractions(mapId))
+        () => loadInteractions(mapId),
+      )
       .subscribe();
   }
   async function unsubscribe() {
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = null;
   }
 
@@ -7588,9 +8417,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ox = (draft?.offset_x ?? inter.offset_x) || 0;
     const oy = (draft?.offset_y ?? inter.offset_y) || 0;
     const oz = (draft?.offset_z ?? inter.offset_z) || 0;
-    const rx = ((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI / 180;
-    const ry = ((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI / 180;
-    const rz = ((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI / 180;
+    const rx = (((draft?.rotation_x ?? inter.rotation_x) || 0) * Math.PI) / 180;
+    const ry = (((draft?.rotation_y ?? inter.rotation_y) || 0) * Math.PI) / 180;
+    const rz = (((draft?.rotation_z ?? inter.rotation_z) || 0) * Math.PI) / 180;
     const assetId = draft?.asset_id ?? inter.asset_id;
     if (!assetId) {
       // Standalone: offsets são coordenadas de mundo, centradas onde o admin escolheu
@@ -7610,17 +8439,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return { worldPos: world, worldRotX: rx, worldRotY: obj.rotation.y + ry, worldRotZ: rz, objectTopY: topY };
   }
 
-
-  function getMyEntity() { return (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null; }
+  function getMyEntity() {
+    return typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
+  }
 
   // ---------- Proximity loop ----------
   setInterval(() => {
-    if (!inRoom) { hidePrompt(); return; }
+    if (!inRoom) {
+      hidePrompt();
+      return;
+    }
     const entity = getMyEntity();
-    if (!entity || !entity.group) { hidePrompt(); return; }
+    if (!entity || !entity.group) {
+      hidePrompt();
+      return;
+    }
 
     // Se sentado, mostra prompt "Levantar" no botão
-    if (currentSit) { activeNearby = null; hidePrompt(); return; }
+    if (currentSit) {
+      activeNearby = null;
+      hidePrompt();
+      return;
+    }
 
     let best = null;
     let bestDist = Infinity;
@@ -7631,7 +8471,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (!pose) continue;
       const d = Math.hypot(pose.worldPos.x - pos.x, pose.worldPos.z - pos.z);
       const r = inter.trigger_radius || 1.5;
-      if (d <= r && d < bestDist) { best = { inter, pose, d }; bestDist = d; }
+      if (d <= r && d < bestDist) {
+        best = { inter, pose, d };
+        bestDist = d;
+      }
     }
     activeNearby = best;
     if (best) showPromptForInteraction(best.inter, best.pose);
@@ -7644,10 +8487,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     let world;
     if (currentSit?.worldPos) {
       world = currentSit.worldPos.clone();
-      world.y = (currentSit.objectTopY ?? (world.y + 1.0)) + 0.35;
+      world.y = (currentSit.objectTopY ?? world.y + 1.0) + 0.35;
     } else if (activeNearby) {
       world = activeNearby.pose.worldPos.clone();
-      world.y = (activeNearby.pose.objectTopY ?? (world.y + 1.0)) + 0.35;
+      world.y = (activeNearby.pose.objectTopY ?? world.y + 1.0) + 0.35;
     } else return;
     const rect = renderer.domElement.getBoundingClientRect();
     tmpV.copy(world).project(camera);
@@ -7658,18 +8501,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     promptEl.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
   }
   // Anexa no rAF global
-  (function loop() { requestAnimationFrame(loop); tickPromptPosition(); })();
+  (function loop() {
+    requestAnimationFrame(loop);
+    tickPromptPosition();
+  })();
 
   function showPromptForInteraction(inter, pose) {
     promptEl.hidden = false;
     promptEl.dataset.kind = "enter";
     const occupied = window.isInteractionOccupied?.(inter.id);
-    const label = occupied ? "Ocupado" : (inter.label || "Interagir");
+    const label = occupied ? "Ocupado" : inter.label || "Interagir";
     promptEl.innerHTML = `<span class="ip-label">${_esc(label)}</span>`;
-    promptEl.onclick = occupied ? null : (() => enterSit(inter));
+    promptEl.onclick = occupied ? null : () => enterSit(inter);
     promptEl.style.filter = occupied ? "grayscale(1) opacity(0.7)" : "";
     // Pré-carrega o clip da interação ativa para evitar T-pose quando o jogador apertar E
-    if (!occupied && inter.animation_url) { try { loadFbxClip(inter.animation_url).catch(()=>{}); } catch {} }
+    if (!occupied && inter.animation_url) {
+      try {
+        loadFbxClip(inter.animation_url).catch(() => {});
+      } catch {}
+    }
   }
   function showPromptForSit() {
     promptEl.hidden = false;
@@ -7677,8 +8527,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     promptEl.innerHTML = `<span class="ip-label">Levantar (E)</span>`;
     promptEl.onclick = () => standUp();
   }
-  function hidePrompt() { promptEl.hidden = true; promptEl.onclick = null; }
-
+  function hidePrompt() {
+    promptEl.hidden = true;
+    promptEl.onclick = null;
+  }
 
   // ---------- Enter / exit sit ----------
   async function enterSit(inter) {
@@ -7728,12 +8580,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       loadToken,
     };
     window.__sittingInteraction = currentSit;
-    try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      presenceChannel?.track(presencePayload());
+    } catch {}
 
     // Atualiza me.x/y para o assento (evita salto ao levantar)
     if (typeof me !== "undefined" && me) {
       const pct = percentFromWorld(pose.worldPos.x, pose.worldPos.z);
-      me.x = pct.x; me.y = pct.y;
+      me.x = pct.x;
+      me.y = pct.y;
     }
     entity.target.copy(pose.worldPos);
     entity.group.position.copy(pose.worldPos);
@@ -7752,7 +8607,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         if (!retarg) {
           console.warn("[interactions] nenhum osso do clip casou com o personagem; usando idle");
           const idle = entity.actions?.idle;
-          if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+          if (idle) {
+            idle.reset().fadeIn(0.2).play();
+            entity.currentAction = "idle";
+          }
         } else {
           // Crossfade da ação atual para a nova no mesmo frame (sem gap de T-pose)
           const prevAction = (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) || null;
@@ -7761,13 +8619,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           action.clampWhenFinished = true;
           action.reset().fadeIn(0.25).play();
           if (prevAction) {
-            try { prevAction.fadeOut(0.25); } catch {}
+            try {
+              prevAction.fadeOut(0.25);
+            } catch {}
           }
           currentSit.mixerAction = action;
           // Resolve a chave de tuning
           let tuningKey = null;
           try {
-            const match = (window.__botAnimations || []).find(a => a.url === inter.animation_url);
+            const match = (window.__botAnimations || []).find((a) => a.url === inter.animation_url);
             if (match) tuningKey = "custom:" + match.id;
           } catch {}
           if (!tuningKey && inter.animation_key && window.__animTunings?.[inter.animation_key]) {
@@ -7782,9 +8642,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         }
       } else {
         const idle = entity.actions?.idle;
-        if (idle) { idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+        if (idle) {
+          idle.reset().fadeIn(0.2).play();
+          entity.currentAction = "idle";
+        }
       }
-    } catch (e) { console.warn("[interactions] sit clip", e); }
+    } catch (e) {
+      console.warn("[interactions] sit clip", e);
+    }
   }
 
   function standUp() {
@@ -7794,7 +8659,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     currentSit.loadToken = Symbol("standUp");
     const dyingAction = currentSit.mixerAction;
     if (entity && dyingAction) {
-      try { dyingAction.fadeOut(0.2); } catch {}
+      try {
+        dyingAction.fadeOut(0.2);
+      } catch {}
       setTimeout(() => {
         try {
           dyingAction.stop();
@@ -7804,7 +8671,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }, 260);
     }
     // Inicia idle imediatamente para evitar peso residual do clip clamped (ex.: deitar)
-    if (entity?.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+    if (entity?.actions?.idle) {
+      entity.actions.idle.reset().fadeIn(0.2).play();
+      entity.currentAction = "idle";
+    }
     if (entity?.group) {
       entity.group.rotation.x = 0;
       entity.group.rotation.z = 0;
@@ -7816,7 +8686,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     currentSit = null;
     window.__sittingInteraction = null;
-    try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      presenceChannel?.track(presencePayload());
+    } catch {}
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
@@ -7840,7 +8712,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   adminBtn?.addEventListener("click", () => {
     if (!isAdmin) return alert("Apenas admin.");
     adminPanel.hidden = !adminPanel.hidden;
-    if (!adminPanel.hidden) { editingId = null; editingDraft = null; renderAdmin(); }
+    if (!adminPanel.hidden) {
+      editingId = null;
+      editingDraft = null;
+      renderAdmin();
+    }
   });
 
   newBtn?.addEventListener("click", () => {
@@ -7853,8 +8729,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       animation_key: "sit",
       animation_url: "",
       loop: true,
-      offset_x: 0, offset_y: 0, offset_z: 0,
-      rotation_x: 0, rotation_y: 0, rotation_z: 0, scale_mul: 1,
+      offset_x: 0,
+      offset_y: 0,
+      offset_z: 0,
+      rotation_x: 0,
+      rotation_y: 0,
+      rotation_z: 0,
+      scale_mul: 1,
 
       trigger_radius: 1.5,
       exit_radius: 2.0,
@@ -7868,11 +8749,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!interactions.length && editingId !== "new") {
       listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhuma interação ainda.</div>';
     } else {
-      listEl.innerHTML = interactions.map((it) => {
-        const obj = it.asset_id ? assetObjects.get(it.asset_id) : null;
-        const assetName = it.asset_id ? (obj?.name || "(asset removido)") : "📍 posição livre";
-        const isEd = editingId === it.id;
-        return `<div class="interact-row ${isEd ? "is-editing" : ""}" data-id="${_esc(it.id)}">
+      listEl.innerHTML = interactions
+        .map((it) => {
+          const obj = it.asset_id ? assetObjects.get(it.asset_id) : null;
+          const assetName = it.asset_id ? obj?.name || "(asset removido)" : "📍 posição livre";
+          const isEd = editingId === it.id;
+          return `<div class="interact-row ${isEd ? "is-editing" : ""}" data-id="${_esc(it.id)}">
           <div class="ir-line"><span class="ir-icon">${_esc(it.icon || "💺")}</span>
             <span class="ir-label">${_esc(it.label || "—")}</span>
             <span class="ir-asset">${_esc(assetName)}</span></div>
@@ -7882,18 +8764,29 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <button type="button" data-act="del" class="danger">×</button>
           </div>
         </div>`;
-      }).join("");
+        })
+        .join("");
     }
     // Editor form
-    if (editingId === null) { editorEl.innerHTML = ""; window.__clearItemEditPreview?.(); return; }
+    if (editingId === null) {
+      editorEl.innerHTML = "";
+      return;
+    }
     const isNew = editingId === "new";
-    const base = isNew ? editingDraft : (interactions.find((i) => i.id === editingId) || null);
-    if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
+    const base = isNew ? editingDraft : interactions.find((i) => i.id === editingId) || null;
+    if (!base) {
+      editingId = null;
+      editorEl.innerHTML = "";
+      return;
+    }
     const draft = editingDraft || { ...base };
     editingDraft = draft;
 
     const assetsOptions = Array.from(assetObjects.entries())
-      .map(([id, o]) => `<option value="${_esc(id)}" ${draft.asset_id === id ? "selected" : ""}>${_esc(o.name || id)}</option>`)
+      .map(
+        ([id, o]) =>
+          `<option value="${_esc(id)}" ${draft.asset_id === id ? "selected" : ""}>${_esc(o.name || id)}</option>`,
+      )
       .join("");
 
     const slider = (label, field, min, max, step) => `
@@ -7961,37 +8854,44 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <div class="ie-row"><label>Animação</label>
           <select data-field="animation_pick" style="flex:1">
             <option value="">— Nenhuma (idle) —</option>
-            ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
-            <option value="__manual__" ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "selected" : ""}>URL manual…</option>
+            ${(window.__botAnimations || []).map((a) => `<option value="${_esc(a.url)}" ${a.url === (draft.animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+            <option value="__manual__" ${draft.animation_url && !(window.__botAnimations || []).some((a) => a.url === draft.animation_url) ? "selected" : ""}>URL manual…</option>
           </select>
           <button type="button" class="ie-upload-anim" title="Enviar novo FBX">＋ FBX</button>
           <input type="file" class="ie-upload-anim-input" accept=".fbx" hidden>
         </div>
-        <div class="ie-row" data-anim-url-row ${draft.animation_url && !(window.__botAnimations || []).some(a => a.url === draft.animation_url) ? "" : "hidden"}><label>URL FBX</label>
+        <div class="ie-row" data-anim-url-row ${draft.animation_url && !(window.__botAnimations || []).some((a) => a.url === draft.animation_url) ? "" : "hidden"}><label>URL FBX</label>
           <input type="url" data-field="animation_url" placeholder="https://… .fbx" value="${_esc(draft.animation_url || "")}">
         </div>
 
         <div class="ie-row"><label>Loop</label>
           <input type="checkbox" data-field="loop" ${draft.loop ? "checked" : ""}>
         </div>
-        ${draft.kind === "bot_service" ? `
+        ${
+          draft.kind === "bot_service"
+            ? `
         <fieldset class="ie-fs"><legend>🤖 Garçom / Item entregue</legend>
           <div class="ie-row"><label>Bot atendente</label>
             <select data-field="bot_id" style="flex:1">
               <option value="">— Nenhum (só spawna item) —</option>
-              ${Array.from((window.__mapBots || new Map()).entries()).map(([id, b]) => `<option value="${_esc(id)}" ${draft.bot_id === id ? "selected" : ""}>${_esc(b.name || id.slice(0,6))}</option>`).join("")}
+              ${Array.from((window.__mapBots || new Map()).entries())
+                .map(
+                  ([id, b]) =>
+                    `<option value="${_esc(id)}" ${draft.bot_id === id ? "selected" : ""}>${_esc(b.name || id.slice(0, 6))}</option>`,
+                )
+                .join("")}
             </select>
           </div>
           <div class="ie-row"><label>Animação do bot ao servir</label>
             <select data-field="bot_animation_url" style="flex:1">
               <option value="">— Nenhuma —</option>
-              ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (draft.bot_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+              ${(window.__botAnimations || []).map((a) => `<option value="${_esc(a.url)}" ${a.url === (draft.bot_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
             </select>
           </div>
           <div class="ie-row"><label>Item entregue</label>
             <select data-field="item_slug" style="flex:1">
               <option value="">— Nenhum —</option>
-              ${(window.__itemCatalog || []).map(it => `<option value="${_esc(it.slug)}" ${it.slug === (draft.item_slug || "") ? "selected" : ""}>${_esc(it.name)}</option>`).join("")}
+              ${(window.__itemCatalog || []).map((it) => `<option value="${_esc(it.slug)}" ${it.slug === (draft.item_slug || "") ? "selected" : ""}>${_esc(it.name)}</option>`).join("")}
             </select>
           </div>
           ${slider("Spawn offset X", "item_spawn_offset_x", -5, 5, 0.05)}
@@ -8000,7 +8900,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ${slider("Tempo de serviço (ms)", "service_duration_ms", 500, 10000, 100)}
           ${slider("Auto-despawn item (ms, 0 = nunca)", "auto_despawn_ms", 0, 600000, 1000)}
         </fieldset>
-        ` : ``}
+        `
+            : ``
+        }
         <fieldset class="ie-fs"><legend>${standalone ? "Posição no mundo" : "Posição relativa ao objeto"}</legend>
           ${slider("X", "offset_x", -posRange, posRange, posStep)}
           ${slider("Altura (Y)", "offset_y", standalone ? -5 : -2, standalone ? 10 : 3, posStep)}
@@ -8018,16 +8920,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <button type="button" class="ie-cancel">Cancelar</button>
         </div>
       </div>`;
-    // Sincroniza preview do item para interações tipo "garçom"
-    try { window.__setItemEditPreview?.(draft); } catch {}
   }
-
 
   // Delegação de eventos
   listEl?.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-act]"); if (!btn) return;
-    const row = btn.closest(".interact-row"); const id = row?.dataset.id;
-    const inter = interactions.find((i) => i.id === id); if (!inter) return;
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const row = btn.closest(".interact-row");
+    const id = row?.dataset.id;
+    const inter = interactions.find((i) => i.id === id);
+    if (!inter) return;
     const act = btn.dataset.act;
     if (act === "edit") {
       editingId = editingId === id ? null : id;
@@ -8038,14 +8940,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     } else if (act === "del") {
       if (!confirm("Excluir esta interação?")) return;
       const { error } = await supabase.from("map_asset_interactions").delete().eq("id", id);
-      if (error) { alert("Erro: " + error.message); return; }
-      if (editingId === id) { editingId = null; editingDraft = null; }
+      if (error) {
+        alert("Erro: " + error.message);
+        return;
+      }
+      if (editingId === id) {
+        editingId = null;
+        editingDraft = null;
+      }
       await loadInteractions(currentMapId);
     }
   });
 
   editorEl?.addEventListener("input", (e) => {
-    const el = e.target.closest("[data-field]"); if (!el || !editingDraft) return;
+    const el = e.target.closest("[data-field]");
+    if (!el || !editingDraft) return;
     const field = el.dataset.field;
     let val;
     if (el.type === "checkbox") val = el.checked;
@@ -8066,7 +8975,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     editingDraft[field] = val;
-    if (field === "asset_id") { renderAdmin(); return; }
+    if (field === "asset_id") {
+      renderAdmin();
+      return;
+    }
     // Trocar o tipo re-renderiza (editor do futebol é diferente)
     if (field === "kind") {
       if (val === "football") {
@@ -8094,7 +9006,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     // Preview ao vivo: se já sentamos para testar, atualiza pose
     if (currentSit && (editingId === currentSit.id || editingId === "new")) {
-      const fake = { ...(interactions.find((i) => i.id === editingId) || {}), ...editingDraft, asset_id: editingDraft.asset_id || currentSit.assetId };
+      const fake = {
+        ...(interactions.find((i) => i.id === editingId) || {}),
+        ...editingDraft,
+        asset_id: editingDraft.asset_id || currentSit.assetId,
+      };
       const pose = computeSeatPose(fake);
       if (pose) {
         currentSit.worldPos.copy(pose.worldPos);
@@ -8108,18 +9024,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           ent.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
         }
       }
-
-    }
-    // Preview ao vivo do item entregue pelo garçom
-    if (editingDraft.kind === "bot_service") {
-      try { window.__setItemEditPreview?.(editingDraft); } catch {}
     }
   });
 
-
   editorEl?.addEventListener("click", async (e) => {
     const t = e.target;
-    if (t.classList.contains("ie-cancel")) { editingId = null; editingDraft = null; try { window.__clearItemEditPreview?.(); } catch {} renderAdmin(); return; }
+    if (t.classList.contains("ie-cancel")) {
+      editingId = null;
+      editingDraft = null;
+      renderAdmin();
+      return;
+    }
     if (t.classList.contains("ie-pick")) {
       pickMode = !pickMode;
       addSystemLine?.(pickMode ? "Clique num objeto do mapa para selecionar." : "Seleção cancelada.");
@@ -8127,7 +9042,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     if (t.classList.contains("ie-ball-here")) {
-      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      const ent = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
       if (!ent?.group) return alert("Seu avatar não está pronto.");
       editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
       editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
@@ -8141,11 +9056,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const inp = editorEl.querySelector(".ie-upload-anim-input");
       if (inp) {
         inp.onchange = async (ev) => {
-          const file = ev.target.files?.[0]; if (!file) return;
-          const name = prompt("Nome desta animação:", file.name.replace(/\.fbx$/i, "")) || file.name.replace(/\.fbx$/i, "");
-          t.disabled = true; t.textContent = "Enviando...";
+          const file = ev.target.files?.[0];
+          if (!file) return;
+          const name =
+            prompt("Nome desta animação:", file.name.replace(/\.fbx$/i, "")) || file.name.replace(/\.fbx$/i, "");
+          t.disabled = true;
+          t.textContent = "Enviando...";
           const row = await window.uploadBotAnimation?.(file, name);
-          t.disabled = false; t.textContent = "＋ FBX";
+          t.disabled = false;
+          t.textContent = "＋ FBX";
           if (row?.url && editingDraft) {
             editingDraft.animation_url = row.url;
             renderAdmin();
@@ -8156,12 +9075,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     if (t.classList.contains("ie-here")) {
-      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      const ent = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
       if (!ent?.group) return alert("Seu avatar não está pronto.");
       editingDraft.offset_x = Number(ent.group.position.x.toFixed(2));
       editingDraft.offset_y = Number(ent.group.position.y.toFixed(2));
       editingDraft.offset_z = Number(ent.group.position.z.toFixed(2));
-      editingDraft.rotation_y = Number((ent.group.rotation.y * 180 / Math.PI).toFixed(1));
+      editingDraft.rotation_y = Number(((ent.group.rotation.y * 180) / Math.PI).toFixed(1));
       renderAdmin();
       addSystemLine?.("Interação posicionada na sua posição atual.");
       return;
@@ -8204,40 +9123,51 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       } else {
         res = await supabase.from("map_asset_interactions").update(payload).eq("id", editingId).select().single();
       }
-      if (res.error) { alert("Erro: " + res.error.message); return; }
-      editingId = null; editingDraft = null;
-      try { window.__clearItemEditPreview?.(); } catch {}
+      if (res.error) {
+        alert("Erro: " + res.error.message);
+        return;
+      }
+      editingId = null;
+      editingDraft = null;
       await loadInteractions(currentMapId);
     }
   });
 
   // Picker: clique no canvas, raycast contra assetObjects
-  renderer?.domElement.addEventListener("click", (event) => {
-    if (!pickMode || !isAdmin) return;
-    const rect = renderer.domElement.getBoundingClientRect();
-    const ndc = new THREE.Vector2(
-      ((event.clientX - rect.left) / rect.width) * 2 - 1,
-      -((event.clientY - rect.top) / rect.height) * 2 + 1,
-    );
-    const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, camera);
-    const targets = Array.from(assetObjects.values());
-    const hits = rc.intersectObjects(targets, true);
-    if (!hits.length) return;
-    // Sobe na hierarquia até achar o root em assetObjects
-    let root = hits[0].object;
-    while (root && !Array.from(assetObjects.values()).includes(root)) root = root.parent;
-    if (!root) return;
-    let foundId = null;
-    for (const [id, obj] of assetObjects) if (obj === root) { foundId = id; break; }
-    if (!foundId) return;
-    if (editingDraft) editingDraft.asset_id = foundId;
-    pickMode = false;
-    addSystemLine?.("Objeto selecionado: " + (root.name || foundId));
-    renderAdmin();
-    event.stopPropagation();
-  }, true);
+  renderer?.domElement.addEventListener(
+    "click",
+    (event) => {
+      if (!pickMode || !isAdmin) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(
+        ((event.clientX - rect.left) / rect.width) * 2 - 1,
+        -((event.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      const rc = new THREE.Raycaster();
+      rc.setFromCamera(ndc, camera);
+      const targets = Array.from(assetObjects.values());
+      const hits = rc.intersectObjects(targets, true);
+      if (!hits.length) return;
+      // Sobe na hierarquia até achar o root em assetObjects
+      let root = hits[0].object;
+      while (root && !Array.from(assetObjects.values()).includes(root)) root = root.parent;
+      if (!root) return;
+      let foundId = null;
+      for (const [id, obj] of assetObjects)
+        if (obj === root) {
+          foundId = id;
+          break;
+        }
+      if (!foundId) return;
+      if (editingDraft) editingDraft.asset_id = foundId;
+      pickMode = false;
+      addSystemLine?.("Objeto selecionado: " + (root.name || foundId));
+      renderAdmin();
+      event.stopPropagation();
+    },
+    true,
+  );
 })();
-
 
 // ============================================================
 // ⚽ Módulo de Futebol (multiplayer, bola compartilhada)
@@ -8246,15 +9176,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const BALL_RADIUS = 0.18;
   const BALL_DIAMETER = BALL_RADIUS * 2;
   const GRAVITY = -14.0;
-  const DRIBBLE_DIST = 0.45;       // bola mais colada ao pé
-  const DRIBBLE_SIDE = 0.08;       // leve deslocamento lateral (pé dominante)
+  const DRIBBLE_DIST = 0.45; // bola mais colada ao pé
+  const DRIBBLE_SIDE = 0.08; // leve deslocamento lateral (pé dominante)
   const PICKUP_RANGE = 0.85;
   const CAPTURE_RANGE = 1.0;
   // velocidades do modo futebol: vêm do painel admin (speedCfg, dinâmico)
   const WALK_SPEED = () => speedCfg.walkFb;
   const RUN_SPEED = () => speedCfg.runFb;
   const CHARGE_TIME = 1.0;
-  const KICK_COOLDOWN = 0.9;       // segundos sem auto-pickup após chutar
+  const KICK_COOLDOWN = 0.9; // segundos sem auto-pickup após chutar
 
   const loader = new GLTFLoader();
 
@@ -8276,43 +9206,61 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let lastBroadcast = 0;
 
   let footballActive = false;
-  let camYaw = 0, camPitch = 0.5, camDist = 4.6;
-  let charging = false, charge = 0;
+  let camYaw = 0,
+    camPitch = 0.5,
+    camDist = 4.6;
+  let charging = false,
+    charge = 0;
 
   const _v1 = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
   const _v3 = new THREE.Vector3();
   const _head = new THREE.Vector3();
 
-  function myEntity() { return (myId && playerEntities.get(myId)) || null; }
+  function myEntity() {
+    return (myId && playerEntities.get(myId)) || null;
+  }
 
-  let ballInner = null;      // malha interna (escala aplicada por scale_mul)
-  let ballScale = 1;         // multiplicador atual de tamanho
-  let stillTime = 0;         // tempo parada (para auto-reset)
-  let pickupCooldown = 0;    // bloqueia auto-pickup logo após chute
-  let dribblePhase = 0;      // fase do "toque" para drible com pequenos avanços
+  let ballInner = null; // malha interna (escala aplicada por scale_mul)
+  let ballScale = 1; // multiplicador atual de tamanho
+  let stillTime = 0; // tempo parada (para auto-reset)
+  let pickupCooldown = 0; // bloqueia auto-pickup logo após chute
+  let dribblePhase = 0; // fase do "toque" para drible com pequenos avanços
 
   function ensureBall() {
     if (ballGroup || loadingBall) return;
     loadingBall = true;
-    loader.load("/assets/ball.glb", (gltf) => {
-      const inner = gltf.scene;
-      const box = new THREE.Box3().setFromObject(inner);
-      const size = box.getSize(new THREE.Vector3());
-      const maxd = Math.max(size.x, size.y, size.z) || 1;
-      inner.scale.setScalar(BALL_DIAMETER / maxd);
-      inner.updateMatrixWorld(true);
-      const box2 = new THREE.Box3().setFromObject(inner);
-      const c = box2.getCenter(new THREE.Vector3());
-      inner.position.sub(c);
-      inner.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } });
-      ballGroup = new THREE.Group();
-      ballGroup.add(inner);
-      ballGroup.scale.setScalar(ballScale);
-      ballGroup.visible = false;
-      ballInner = inner;
-      scene.add(ballGroup);
-    }, undefined, (e) => { loadingBall = false; console.warn("[football] ball load", e); });
+    loader.load(
+      "/assets/ball.glb",
+      (gltf) => {
+        const inner = gltf.scene;
+        const box = new THREE.Box3().setFromObject(inner);
+        const size = box.getSize(new THREE.Vector3());
+        const maxd = Math.max(size.x, size.y, size.z) || 1;
+        inner.scale.setScalar(BALL_DIAMETER / maxd);
+        inner.updateMatrixWorld(true);
+        const box2 = new THREE.Box3().setFromObject(inner);
+        const c = box2.getCenter(new THREE.Vector3());
+        inner.position.sub(c);
+        inner.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = true;
+            o.frustumCulled = false;
+          }
+        });
+        ballGroup = new THREE.Group();
+        ballGroup.add(inner);
+        ballGroup.scale.setScalar(ballScale);
+        ballGroup.visible = false;
+        ballInner = inner;
+        scene.add(ballGroup);
+      },
+      undefined,
+      (e) => {
+        loadingBall = false;
+        console.warn("[football] ball load", e);
+      },
+    );
   }
 
   // Posição de spawn ABSOLUTA no mundo (offset_x/z = mundo, offset_y = altura extra).
@@ -8328,7 +9276,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return p;
   }
 
-  function ballRadius() { return BALL_RADIUS * ballScale; }
+  function ballRadius() {
+    return BALL_RADIUS * ballScale;
+  }
 
   function applyBallScale(mul) {
     ballScale = Math.max(0.2, Number(mul) || 1);
@@ -8344,20 +9294,32 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ballPlaced = true;
   }
 
-
   function setupBallChannel(mapId) {
     if (ballChannelMapId === mapId) return;
-    if (ballChannel) { try { supabase.removeChannel(ballChannel); } catch {} ballChannel = null; }
+    if (ballChannel) {
+      try {
+        supabase.removeChannel(ballChannel);
+      } catch {}
+      ballChannel = null;
+    }
     ballChannelMapId = mapId;
-    ownerId = null; ownerClaimTs = 0; held = false; remoteHeld = false; remoteBall = null;
-    ballPlaced = false; ballVel.set(0, 0, 0);
+    ownerId = null;
+    ownerClaimTs = 0;
+    held = false;
+    remoteHeld = false;
+    remoteBall = null;
+    ballPlaced = false;
+    ballVel.set(0, 0, 0);
     if (!mapId) return;
     ballChannel = supabase
       .channel("ball:" + mapId, { config: { broadcast: { self: false } } })
       .on("broadcast", { event: "state" }, ({ payload }) => {
         if (!payload) return;
         if (payload.owner && payload.owner !== myId) {
-          if ((payload.ts || 0) >= ownerClaimTs) { ownerId = payload.owner; ownerClaimTs = payload.ts || ownerClaimTs; }
+          if ((payload.ts || 0) >= ownerClaimTs) {
+            ownerId = payload.owner;
+            ownerClaimTs = payload.ts || ownerClaimTs;
+          }
           remoteHeld = !!payload.held;
           remoteBall = {
             pos: new THREE.Vector3(payload.x, payload.y, payload.z),
@@ -8369,7 +9331,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .on("broadcast", { event: "claim" }, ({ payload }) => {
         if (!payload || payload.id === myId) return;
         if ((payload.ts || 0) > ownerClaimTs) {
-          ownerId = payload.id; ownerClaimTs = payload.ts; remoteHeld = true;
+          ownerId = payload.id;
+          ownerClaimTs = payload.ts;
+          remoteHeld = true;
         }
       })
       .on("broadcast", { event: "kick" }, ({ payload }) => {
@@ -8385,18 +9349,30 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const now = performance.now();
     if (!force && now - lastBroadcast < 50) return;
     lastBroadcast = now;
-    ballChannel.send({
-      type: "broadcast", event: "state",
-      payload: {
-        owner: ownerId, held, ts: ownerClaimTs,
-        x: ballPos.x, y: ballPos.y, z: ballPos.z,
-        vx: ballVel.x, vy: ballVel.y, vz: ballVel.z,
-      },
-    }).catch(() => {});
+    ballChannel
+      .send({
+        type: "broadcast",
+        event: "state",
+        payload: {
+          owner: ownerId,
+          held,
+          ts: ownerClaimTs,
+          x: ballPos.x,
+          y: ballPos.y,
+          z: ballPos.z,
+          vx: ballVel.x,
+          vy: ballVel.y,
+          vz: ballVel.z,
+        },
+      })
+      .catch(() => {});
   }
 
   function claimBall() {
-    ownerId = myId; ownerClaimTs = Date.now(); held = true; remoteBall = null;
+    ownerId = myId;
+    ownerClaimTs = Date.now();
+    held = true;
+    remoteBall = null;
     ballChannel?.send({ type: "broadcast", event: "claim", payload: { id: myId, ts: ownerClaimTs } }).catch(() => {});
   }
 
@@ -8428,9 +9404,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   };
 
-
-  let savedNormalPos = null;   // posição do modo normal preservada ao entrar no futebol
-  let savedFootballPos = null;  // última posição usada no modo futebol
+  let savedNormalPos = null; // posição do modo normal preservada ao entrar no futebol
+  let savedFootballPos = null; // última posição usada no modo futebol
   function enterFootball() {
     if (footballActive) return;
     footballActive = true;
@@ -8451,7 +9426,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       camYaw = Math.atan2(d.x, d.z);
     }
     const hud = document.getElementById("footballHud");
-    if (hud) { hud.hidden = false; requestAnimationFrame(() => hud.classList.add("is-visible")); }
+    if (hud) {
+      hud.hidden = false;
+      requestAnimationFrame(() => hud.classList.add("is-visible"));
+    }
     const kp = document.getElementById("kickPosePanel");
     if (kp) kp.hidden = !document.body.classList.contains("is-admin");
     document.body.classList.add("football-on");
@@ -8461,8 +9439,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     footballActive = false;
     window.__footballMode = false;
     controls.enabled = true;
-    charging = false; charge = 0;
-    if (held && ownerId === myId) { held = false; broadcastState(true); }
+    charging = false;
+    charge = 0;
+    if (held && ownerId === myId) {
+      held = false;
+      broadcastState(true);
+    }
     updateForceBar();
     const ent = myEntity();
     if (ent) {
@@ -8484,7 +9466,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const hud = document.getElementById("footballHud");
     if (hud) {
       hud.classList.remove("is-visible");
-      setTimeout(() => { hud.hidden = true; }, 280);
+      setTimeout(() => {
+        hud.hidden = true;
+      }, 280);
     }
     const kp = document.getElementById("kickPosePanel");
     if (kp) kp.hidden = true;
@@ -8503,20 +9487,36 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const elFwdV = document.getElementById("kpFwdVal");
     const elRotV = document.getElementById("kpRotVal");
     function sync() {
-      elY.value = kp.offY ?? 0; elFwd.value = kp.offFwd ?? 0; elRot.value = kp.rotX ?? 0;
+      elY.value = kp.offY ?? 0;
+      elFwd.value = kp.offFwd ?? 0;
+      elRot.value = kp.rotX ?? 0;
       elYV.textContent = (kp.offY ?? 0).toFixed(2);
       elFwdV.textContent = (kp.offFwd ?? 0).toFixed(2);
       elRotV.textContent = String(kp.rotX ?? 0);
     }
     sync();
-    elY.addEventListener("input", () => { kp.offY = Number(elY.value); elYV.textContent = kp.offY.toFixed(2); window.__fbApplyKickPoseLive?.(); });
-    elFwd.addEventListener("input", () => { kp.offFwd = Number(elFwd.value); elFwdV.textContent = kp.offFwd.toFixed(2); window.__fbApplyKickPoseLive?.(); });
-    elRot.addEventListener("input", () => { kp.rotX = Number(elRot.value); elRotV.textContent = String(kp.rotX); window.__fbApplyKickPoseLive?.(); });
+    elY.addEventListener("input", () => {
+      kp.offY = Number(elY.value);
+      elYV.textContent = kp.offY.toFixed(2);
+      window.__fbApplyKickPoseLive?.();
+    });
+    elFwd.addEventListener("input", () => {
+      kp.offFwd = Number(elFwd.value);
+      elFwdV.textContent = kp.offFwd.toFixed(2);
+      window.__fbApplyKickPoseLive?.();
+    });
+    elRot.addEventListener("input", () => {
+      kp.rotX = Number(elRot.value);
+      elRotV.textContent = String(kp.rotX);
+      window.__fbApplyKickPoseLive?.();
+    });
     document.getElementById("kpTestWeak")?.addEventListener("click", () => window.__fbTestKick?.(false));
     document.getElementById("kpTestStrong")?.addEventListener("click", () => window.__fbTestKick?.(true));
-    document.getElementById("kpSave")?.addEventListener("click", () => { window.__saveKickPose?.(); addSystemLine?.("Pose do chute salva."); });
+    document.getElementById("kpSave")?.addEventListener("click", () => {
+      window.__saveKickPose?.();
+      addSystemLine?.("Pose do chute salva.");
+    });
   })();
-
 
   const joy = { active: false, x: 0, y: 0, id: null };
   let runHeld = false;
@@ -8529,7 +9529,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (keyState.has("a") || keyState.has("arrowleft")) ix -= 1;
     if (keyState.has("d") || keyState.has("arrowright")) ix += 1;
     const len = Math.hypot(ix, iy);
-    if (len > 1) { ix /= len; iy /= len; }
+    if (len > 1) {
+      ix /= len;
+      iy /= len;
+    }
     return { ix, iy, mag: Math.min(1, len) };
   }
 
@@ -8539,15 +9542,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const act = ent.actions[slot];
     if (!act) return;
     if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.28);
-    if (ent.emoteAction) { try { ent.emoteAction.fadeOut(0.28); } catch {} ent.emoteAction = null; }
+    if (ent.emoteAction) {
+      try {
+        ent.emoteAction.fadeOut(0.28);
+      } catch {}
+      ent.emoteAction = null;
+    }
     ent.currentAction = null;
     act.reset();
     act.setLoop(THREE.LoopOnce, 1);
-    act.clampWhenFinished = false;          // não congela na última pose
+    act.clampWhenFinished = false; // não congela na última pose
     // pula a pré-animação (windup) e começa mais perto do impacto
     const clipDur = act.getClip?.().duration || 0.6;
     const SKIP = Math.min(0.35, clipDur * 0.45);
-    try { act.time = SKIP; } catch {}
+    try {
+      act.time = SKIP;
+    } catch {}
     // janela efetiva (mais curta = chute mais básico)
     const WINDOW = Math.min(0.55, clipDur - SKIP);
     act.fadeIn(0.25).play();
@@ -8556,12 +9566,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     applyKickPose(ent, true);
     clearTimeout(ent.__fbKickT);
     // antes do fim: começa a sair do chute suavemente (fade longo)
-    ent.__fbKickT = setTimeout(() => {
-      try { act.fadeOut(0.45); } catch {}
-      applyKickPose(ent, false);
-      ent.__fbKicking = false;
-      // o próximo frame de handleFootballMovement já vai dar fadeIn em walk/idle
-    }, Math.max(120, WINDOW * 1000 - 250));
+    ent.__fbKickT = setTimeout(
+      () => {
+        try {
+          act.fadeOut(0.45);
+        } catch {}
+        applyKickPose(ent, false);
+        ent.__fbKicking = false;
+        // o próximo frame de handleFootballMovement já vai dar fadeIn em walk/idle
+      },
+      Math.max(120, WINDOW * 1000 - 250),
+    );
   }
 
   // Ajuste fino opcional durante o chute. Por padrão NÃO mexe na posição do
@@ -8596,7 +9611,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) playKickAnim(ent, !!strong);
   };
 
-
   function aimDir(ent) {
     _v1.set(Math.sin(ent.group.rotation.y), 0, Math.cos(ent.group.rotation.y));
     return _v1;
@@ -8608,9 +9622,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // chute só funciona se o jogador estiver com a posse da bola
     if (ownerId !== myId || !held) return;
     const dir = aimDir(ent).clone();
-    const power = strong ? (11 + charge * 14) : (6 + charge * 5);
+    const power = strong ? 11 + charge * 14 : 6 + charge * 5;
     // chutes fortes sobem bem mais alto que os fracos
-    const up = strong ? (6.5 + charge * 7.5) : (2.2 + charge * 2);
+    const up = strong ? 6.5 + charge * 7.5 : 2.2 + charge * 2;
     // posiciona a bola um pouco à frente do pé para sair limpa
     const R = ballRadius();
     ballPos.copy(ent.group.position).addScaledVector(dir, DRIBBLE_DIST + 0.15);
@@ -8624,20 +9638,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     broadcastState(true);
   }
 
-
   let lastFbMoveSent = 0;
   function handleFootballMovement(delta, ent) {
     const { ix, iy, mag } = readInput();
-    _head.copy(ent.group.position); _head.y += 1.4;
-    const camFwd = _v1.copy(_head).sub(camera.position); camFwd.y = 0;
+    _head.copy(ent.group.position);
+    _head.y += 1.4;
+    const camFwd = _v1.copy(_head).sub(camera.position);
+    camFwd.y = 0;
     if (camFwd.lengthSq() < 1e-4) camFwd.set(0, 0, 1);
     camFwd.normalize();
     const camRight = _v2.set(-camFwd.z, 0, camFwd.x);
     let moving = false;
     if (mag > 0.08) {
-      const dir = new THREE.Vector3()
-        .addScaledVector(camFwd, iy)
-        .addScaledVector(camRight, ix);
+      const dir = new THREE.Vector3().addScaledVector(camFwd, iy).addScaledVector(camRight, ix);
       if (dir.lengthSq() > 1e-5) {
         dir.normalize();
         const running = runHeld || mag > 0.92;
@@ -8668,11 +9681,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     if (me && myId) {
       const pct = percentFromWorld(ent.group.position.x, ent.group.position.z);
-      me.x = pct.x; me.y = pct.y;
+      me.x = pct.x;
+      me.y = pct.y;
       const idx = players.findIndex((p) => p.id === myId);
       if (idx >= 0) players[idx] = { ...players[idx], ...me };
       const now = performance.now();
-      if (now - lastFbMoveSent > 90) { lastFbMoveSent = now; trackMe(false).catch(() => {}); }
+      if (now - lastFbMoveSent > 90) {
+        lastFbMoveSent = now;
+        trackMe(false).catch(() => {});
+      }
     }
   }
 
@@ -8685,7 +9702,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (pickupCooldown > 0) pickupCooldown = Math.max(0, pickupCooldown - delta);
 
     // velocidade do jogador (XZ) — usada pra simular toques no drible
-    let playerVx = 0, playerVz = 0, playerSpeed = 0;
+    let playerVx = 0,
+      playerVz = 0,
+      playerSpeed = 0;
     if (_hasPrevPlayerPos) {
       playerVx = (ent.group.position.x - _prevPlayerPos.x) / Math.max(1e-4, delta);
       playerVz = (ent.group.position.z - _prevPlayerPos.z) / Math.max(1e-4, delta);
@@ -8698,7 +9717,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const dir = aimDir(ent).clone();
       // ponto base: bem à frente do pé, com pequeno offset lateral
       const right = _v2.set(dir.z, 0, -dir.x);
-      const target = _v3.copy(ent.group.position)
+      const target = _v3
+        .copy(ent.group.position)
         .addScaledVector(dir, DRIBBLE_DIST)
         .addScaledVector(right, DRIBBLE_SIDE);
       // pequenos "toques": quando corre, a bola adianta um pouco em ciclos
@@ -8726,13 +9746,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const moveX = ballPos.x - _ballPrev.x;
         const moveZ = ballPos.z - _ballPrev.z;
         // tenta separar eixos pra decidir qual refletir
-        const tryX = _ballPrev.clone(); tryX.x = ballPos.x;
-        const tryZ = _ballPrev.clone(); tryZ.z = ballPos.z;
+        const tryX = _ballPrev.clone();
+        tryX.x = ballPos.x;
+        const tryZ = _ballPrev.clone();
+        tryZ.z = ballPos.z;
         const hitX = collidesAt(_ballPrev, tryX);
         const hitZ = collidesAt(_ballPrev, tryZ);
         if (hitX) ballVel.x = -ballVel.x * 0.55;
         if (hitZ) ballVel.z = -ballVel.z * 0.55;
-        if (!hitX && !hitZ) { ballVel.x = -ballVel.x * 0.55; ballVel.z = -ballVel.z * 0.55; }
+        if (!hitX && !hitZ) {
+          ballVel.x = -ballVel.x * 0.55;
+          ballVel.z = -ballVel.z * 0.55;
+        }
         ballPos.copy(_ballPrev);
         ballPos.x += ballVel.x * delta;
         ballPos.z += ballVel.z * delta;
@@ -8747,20 +9772,29 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         // atrito de rolagem (só quando no chão)
         const rolling = ballVel.y === 0;
         const f = Math.pow(rolling ? 0.35 : 0.92, delta);
-        ballVel.x *= f; ballVel.z *= f;
-        if (Math.hypot(ballVel.x, ballVel.z) < 0.12) { ballVel.x = 0; ballVel.z = 0; }
+        ballVel.x *= f;
+        ballVel.z *= f;
+        if (Math.hypot(ballVel.x, ballVel.z) < 0.12) {
+          ballVel.x = 0;
+          ballVel.z = 0;
+        }
       }
       // Auto-pickup: só depois do cooldown e se a bola estiver lenta
-      if (pickupCooldown === 0 && footballActive && ent &&
-          ballVel.lengthSq() < 1.5 &&
-          ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE) {
+      if (
+        pickupCooldown === 0 &&
+        footballActive &&
+        ent &&
+        ballVel.lengthSq() < 1.5 &&
+        ballPos.distanceTo(ent.group.position) <= PICKUP_RANGE
+      ) {
         held = true;
       }
       // Segurança: posição inválida (NaN), bola muito longe ou parada há muito tempo → reseta no spawn.
       const bad = !isFinite(ballPos.x) || !isFinite(ballPos.y) || !isFinite(ballPos.z);
       const sp = spawnWorldPos(activeInter);
-      const farAway = sp ? (Math.hypot(ballPos.x - sp.x, ballPos.z - sp.z) > 60) : false;
-      if (ballVel.lengthSq() < 0.02 && !footballActive) stillTime += delta; else if (footballActive) stillTime = 0;
+      const farAway = sp ? Math.hypot(ballPos.x - sp.x, ballPos.z - sp.z) > 60 : false;
+      if (ballVel.lengthSq() < 0.02 && !footballActive) stillTime += delta;
+      else if (footballActive) stillTime = 0;
       if (bad || farAway || stillTime > 25) {
         resetBallToSpawn();
         stillTime = 0;
@@ -8768,7 +9802,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
     }
   }
-
 
   const spinAxis = new THREE.Vector3(1, 0, 0);
   window.__footballFrame = function (delta) {
@@ -8779,16 +9812,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = myEntity();
     if (!ballPlaced && ownerId == null) {
       const sp = spawnWorldPos(activeInter);
-      if (sp) { ballPos.copy(sp); ballPlaced = true; }
+      if (sp) {
+        ballPos.copy(sp);
+        ballPlaced = true;
+      }
     }
-
 
     const distToBall = ent ? ballPos.distanceTo(ent.group.position) : Infinity;
     const actR = Math.max(activeInter.trigger_radius || 2, 2);
     if (ent && !footballActive && distToBall <= actR) enterFootball();
     if (footballActive && distToBall > actR * 3 + 4 && !charging && ownerId !== myId) exitFootball();
 
-    if (charging) { charge = Math.min(1, charge + delta / CHARGE_TIME); updateForceBar(); }
+    if (charging) {
+      charge = Math.min(1, charge + delta / CHARGE_TIME);
+      updateForceBar();
+    }
 
     if (footballActive && ent) handleFootballMovement(delta, ent);
 
@@ -8796,19 +9834,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (footballActive) {
       const kickBtn = document.getElementById("fbKick");
       if (kickBtn) {
-        const has = (ownerId === myId) && held;
+        const has = ownerId === myId && held;
         kickBtn.classList.toggle("is-disabled", !has);
         kickBtn.style.opacity = has ? "" : "0.4";
         kickBtn.style.pointerEvents = has ? "" : "none";
       }
     }
 
-
     if (ownerId === myId) {
       simulateOwned(delta, ent);
       broadcastState(false);
     } else if (ownerId == null) {
-      if (footballActive && ent && distToBall <= PICKUP_RANGE) { claimBall(); }
+      if (footballActive && ent && distToBall <= PICKUP_RANGE) {
+        claimBall();
+      }
     } else {
       if (remoteBall) {
         ballPos.lerp(remoteBall.pos, Math.min(1, delta * 14));
@@ -8824,13 +9863,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       spinAxis.set(ballVel.z, 0, -ballVel.x).normalize();
       ballGroup.rotateOnWorldAxis(spinAxis, (sp / ballRadius()) * delta);
     }
-
   };
 
   window.__footballCamera = function (delta) {
     const ent = myEntity();
     if (!ent) return;
-    _head.copy(ent.group.position); _head.y += 1.35;
+    _head.copy(ent.group.position);
+    _head.y += 1.35;
     camPitch = Math.max(0.08, Math.min(1.2, camPitch));
     camDist = Math.max(2.4, Math.min(8, camDist));
     const dir = new THREE.Vector3(
@@ -8845,38 +9884,57 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     camera.lookAt(_head);
   };
 
-  let dragId = null, lastDX = 0, lastDY = 0;
+  let dragId = null,
+    lastDX = 0,
+    lastDY = 0;
   renderer.domElement.addEventListener("pointerdown", (e) => {
     if (!footballActive) return;
     if (e.target.closest && e.target.closest("#footballHud")) return;
-    dragId = e.pointerId; lastDX = e.clientX; lastDY = e.clientY;
+    dragId = e.pointerId;
+    lastDX = e.clientX;
+    lastDY = e.clientY;
   });
   window.addEventListener("pointermove", (e) => {
     if (dragId !== e.pointerId || !footballActive) return;
-    const dx = e.clientX - lastDX, dy = e.clientY - lastDY;
-    lastDX = e.clientX; lastDY = e.clientY;
+    const dx = e.clientX - lastDX,
+      dy = e.clientY - lastDY;
+    lastDX = e.clientX;
+    lastDY = e.clientY;
     camYaw -= dx * 0.006;
     camPitch += dy * 0.005;
   });
-  window.addEventListener("pointerup", (e) => { if (dragId === e.pointerId) dragId = null; });
-  renderer.domElement.addEventListener("wheel", (e) => {
-    if (!footballActive) return;
-    e.preventDefault();
-    camDist += e.deltaY * 0.01;
-  }, { passive: false });
+  window.addEventListener("pointerup", (e) => {
+    if (dragId === e.pointerId) dragId = null;
+  });
+  renderer.domElement.addEventListener(
+    "wheel",
+    (e) => {
+      if (!footballActive) return;
+      e.preventDefault();
+      camDist += e.deltaY * 0.01;
+    },
+    { passive: false },
+  );
 
   document.addEventListener("keydown", (e) => {
     if (!footballActive) return;
     if (e.target.matches && e.target.matches("input, textarea")) return;
     const k = (e.key || "").toLowerCase();
-    if (k === " " || k === "spacebar") { e.preventDefault(); if (!charging) { charging = true; charge = 0; } }
-    else if (k === "shift") runHeld = true;
+    if (k === " " || k === "spacebar") {
+      e.preventDefault();
+      if (!charging) {
+        charging = true;
+        charge = 0;
+      }
+    } else if (k === "shift") runHeld = true;
   });
   document.addEventListener("keyup", (e) => {
     if (!footballActive) return;
     const k = (e.key || "").toLowerCase();
-    if (k === " " || k === "spacebar") { e.preventDefault(); releaseKick(); }
-    else if (k === "shift") runHeld = false;
+    if (k === " " || k === "spacebar") {
+      e.preventDefault();
+      releaseKick();
+    } else if (k === "shift") runHeld = false;
   });
 
   function releaseKick() {
@@ -8888,7 +9946,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     charge = 0;
     updateForceBar();
   }
-
 
   function updateForceBar() {
     const fill = document.getElementById("fbForceFill");
@@ -8902,29 +9959,59 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const base = document.getElementById("fbJoy");
     const knob = document.getElementById("fbJoyKnob");
     if (base && knob) {
-      const setKnob = (nx, ny) => { knob.style.transform = `translate(${nx * 34}px, ${ny * 34}px)`; };
+      const setKnob = (nx, ny) => {
+        knob.style.transform = `translate(${nx * 34}px, ${ny * 34}px)`;
+      };
       const moveJoy = (e) => {
         const r = base.getBoundingClientRect();
         let nx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
         let ny = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
         const len = Math.hypot(nx, ny);
         joy.run = len > 1; // arrastar para fora do círculo = correr
-        if (len > 1) { nx /= len; ny /= len; }
-        joy.x = nx; joy.y = -ny;
+        if (len > 1) {
+          nx /= len;
+          ny /= len;
+        }
+        joy.x = nx;
+        joy.y = -ny;
         setKnob(nx, ny);
       };
       base.addEventListener("pointerdown", (e) => {
-        joy.active = true; joy.id = e.pointerId; base.setPointerCapture(e.pointerId); moveJoy(e);
+        joy.active = true;
+        joy.id = e.pointerId;
+        base.setPointerCapture(e.pointerId);
+        moveJoy(e);
       });
-      base.addEventListener("pointermove", (e) => { if (joy.id === e.pointerId) moveJoy(e); });
-      const end = (e) => { if (joy.id === e.pointerId) { joy.active = false; joy.id = null; joy.x = 0; joy.y = 0; joy.run = false; setKnob(0, 0); } };
+      base.addEventListener("pointermove", (e) => {
+        if (joy.id === e.pointerId) moveJoy(e);
+      });
+      const end = (e) => {
+        if (joy.id === e.pointerId) {
+          joy.active = false;
+          joy.id = null;
+          joy.x = 0;
+          joy.y = 0;
+          joy.run = false;
+          setKnob(0, 0);
+        }
+      };
       base.addEventListener("pointerup", end);
       base.addEventListener("pointercancel", end);
     }
     const kick = document.getElementById("fbKick");
     if (kick) {
-      const down = (e) => { e.preventDefault(); if (!charging) { charging = true; charge = 0; } updateForceBar(); };
-      const up = (e) => { e.preventDefault(); releaseKick(); };
+      const down = (e) => {
+        e.preventDefault();
+        if (!charging) {
+          charging = true;
+          charge = 0;
+        }
+        updateForceBar();
+      };
+      const up = (e) => {
+        e.preventDefault();
+        releaseKick();
+      };
       kick.addEventListener("pointerdown", down);
       kick.addEventListener("pointerup", up);
       kick.addEventListener("pointercancel", up);
@@ -8949,12 +10036,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const cfg = window.__speedCfg;
     if (!cfg) return;
     const rows = [
-      { key: "walkN",    el: "spWalkN",   val: "spWalkNVal" },
-      { key: "runN",     el: "spRunN",    val: "spRunNVal"  },
-      { key: "walkFb",   el: "spWalkFb",  val: "spWalkFbVal"},
-      { key: "runFb",    el: "spRunFb",   val: "spRunFbVal" },
-      { key: "walkAnim", el: "spWalkA",   val: "spWalkAVal" },
-      { key: "runAnim",  el: "spRunA",    val: "spRunAVal"  },
+      { key: "walkN", el: "spWalkN", val: "spWalkNVal" },
+      { key: "runN", el: "spRunN", val: "spRunNVal" },
+      { key: "walkFb", el: "spWalkFb", val: "spWalkFbVal" },
+      { key: "runFb", el: "spRunFb", val: "spRunFbVal" },
+      { key: "walkAnim", el: "spWalkA", val: "spWalkAVal" },
+      { key: "runAnim", el: "spRunA", val: "spRunAVal" },
     ];
     function sync() {
       for (const r of rows) {
@@ -8987,8 +10074,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         window.setRenderDistance?.(+rd.value);
       });
     }
-    btn.addEventListener("click", () => { panel.hidden = !panel.hidden; if (!panel.hidden) sync(); });
-    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    btn.addEventListener("click", () => {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) sync();
+    });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => {
+      panel.hidden = true;
+    });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
       const body = panel.querySelector(".panel-body");
       if (body) body.style.display = body.style.display === "none" ? "" : "none";
@@ -9008,7 +10100,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
   else bind();
 })();
-
 
 // ============ Animações: painel admin (posição + ângulo por animação) ============
 (function animAdminPanel() {
@@ -9050,14 +10141,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const customs = window.__botAnimations || [];
       const prev = current;
       sel.innerHTML = "";
-      const g1 = document.createElement("optgroup"); g1.label = "Nativas";
+      const g1 = document.createElement("optgroup");
+      g1.label = "Nativas";
       for (const b of BUILTINS) {
         const o = document.createElement("option");
-        o.value = b.v; o.textContent = b.label; g1.appendChild(o);
+        o.value = b.v;
+        o.textContent = b.label;
+        g1.appendChild(o);
       }
       sel.appendChild(g1);
       if (customs.length) {
-        const g2 = document.createElement("optgroup"); g2.label = "Customizadas";
+        const g2 = document.createElement("optgroup");
+        g2.label = "Customizadas";
         for (const a of customs) {
           const o = document.createElement("option");
           o.value = "custom:" + a.id;
@@ -9067,7 +10162,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         }
         sel.appendChild(g2);
       }
-      sel.value = [...sel.options].some(o => o.value === prev) ? prev : "idle";
+      sel.value = [...sel.options].some((o) => o.value === prev) ? prev : "idle";
       current = sel.value;
       updateDelBtn();
     }
@@ -9094,7 +10189,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       updateDelBtn();
     }
 
-    sel.addEventListener("change", () => { current = sel.value; sync(); });
+    sel.addEventListener("change", () => {
+      current = sel.value;
+      sync();
+    });
     for (const f of fields) {
       const el = document.getElementById(f.el);
       const lbl = document.getElementById(f.val);
@@ -9107,7 +10205,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     document.getElementById("anSave")?.addEventListener("click", () => {
       window.__saveAnimTunings?.(current);
-      if (typeof addSystemLine === "function") addSystemLine(`Ajustes da animação "${sel.options[sel.selectedIndex]?.textContent || current}" salvos.`);
+      if (typeof addSystemLine === "function")
+        addSystemLine(`Ajustes da animação "${sel.options[sel.selectedIndex]?.textContent || current}" salvos.`);
     });
     document.getElementById("anReset")?.addEventListener("click", () => {
       tunings[current] = window.__defaultAnimTuning();
@@ -9115,8 +10214,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       window.__saveAnimTunings?.(current);
     });
     document.getElementById("anTest")?.addEventListener("click", async () => {
-      const ent = (typeof myEntity === "function") ? myEntity() : null;
-      if (!ent || !ent.actions || !ent.mixer) { console.warn("[anim test] sem entidade"); return; }
+      const ent = typeof myEntity === "function" ? myEntity() : null;
+      if (!ent || !ent.actions || !ent.mixer) {
+        console.warn("[anim test] sem entidade");
+        return;
+      }
       if (current === "kickWeak" || current === "kickStrong") {
         window.__fbTestKick?.(current === "kickStrong");
         return;
@@ -9124,18 +10226,27 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const restoreIdle = (ms) => {
         setTimeout(() => {
           const idle = ent.actions?.idle;
-          if (idle) { idle.reset().fadeIn(0.3).play(); ent.currentAction = "idle"; }
+          if (idle) {
+            idle.reset().fadeIn(0.3).play();
+            ent.currentAction = "idle";
+          }
         }, ms);
       };
       if (current.startsWith("custom:")) {
         const opt = sel.options[sel.selectedIndex];
         const url = opt?.dataset?.url;
-        if (!url) { console.warn("[anim test custom] sem url"); return; }
+        if (!url) {
+          console.warn("[anim test custom] sem url");
+          return;
+        }
         try {
           const clip = await loadFbxClip(url);
           const bones = collectBoneNames(ent.character);
           const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
-          if (!retarg) { console.warn("[anim test custom] nenhum osso casou"); return; }
+          if (!retarg) {
+            console.warn("[anim test custom] nenhum osso casou");
+            return;
+          }
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
           const action = ent.mixer.clipAction(retarg);
           action.setLoop(THREE.LoopOnce, 1);
@@ -9143,9 +10254,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           action.reset().fadeIn(0.2).play();
           ent.currentAction = current; // permite que a tuning ao vivo aplique offsets/rotações
           const dur = Math.max(800, (retarg.duration || 1) * 1000);
-          setTimeout(() => { try { action.fadeOut(0.3); } catch {} }, dur);
+          setTimeout(() => {
+            try {
+              action.fadeOut(0.3);
+            } catch {}
+          }, dur);
           restoreIdle(dur + 50);
-        } catch (e) { console.warn("[anim test custom]", e); }
+        } catch (e) {
+          console.warn("[anim test custom]", e);
+        }
       } else if (ent.actions[current]) {
         try {
           if (ent.currentAction && ent.actions[ent.currentAction]) ent.actions[ent.currentAction].fadeOut(0.2);
@@ -9156,10 +10273,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           const clip = action.getClip ? action.getClip() : null;
           const dur = clip?.duration ? clip.duration * 1000 : 1200;
           if (current !== "idle" && current !== "walk" && current !== "run") {
-            setTimeout(() => { try { action.fadeOut(0.3); } catch {} }, dur);
+            setTimeout(() => {
+              try {
+                action.fadeOut(0.3);
+              } catch {}
+            }, dur);
             restoreIdle(dur + 50);
           }
-        } catch (e) { console.warn("[anim test builtin]", e); }
+        } catch (e) {
+          console.warn("[anim test builtin]", e);
+        }
       } else {
         console.warn("[anim test] ação não carregada:", current);
       }
@@ -9167,28 +10290,55 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     // Upload de animação nova
     addBtn?.addEventListener("click", () => {
-      if (!isAdmin) { alert("Apenas admin."); return; }
+      if (!isAdmin) {
+        alert("Apenas admin.");
+        return;
+      }
       upBox.hidden = !upBox.hidden;
-      if (!upBox.hidden) { upName.value = ""; upFile.value = ""; upStatus.textContent = ""; }
+      if (!upBox.hidden) {
+        upName.value = "";
+        upFile.value = "";
+        upStatus.textContent = "";
+      }
     });
-    upCancel?.addEventListener("click", () => { upBox.hidden = true; });
+    upCancel?.addEventListener("click", () => {
+      upBox.hidden = true;
+    });
     upSend?.addEventListener("click", async () => {
       const file = upFile.files?.[0];
       const name = (upName.value || "").trim();
-      if (!file) { upStatus.textContent = "Escolha um arquivo .fbx"; return; }
-      if (!name) { upStatus.textContent = "Dê um nome para a animação"; return; }
+      if (!file) {
+        upStatus.textContent = "Escolha um arquivo .fbx";
+        return;
+      }
+      if (!name) {
+        upStatus.textContent = "Dê um nome para a animação";
+        return;
+      }
       try {
         upStatus.textContent = "Enviando " + file.name + "...";
         const path = `bot-anims/${Date.now()}-${(file.name || "anim.fbx").replace(/[^a-z0-9._-]+/gi, "_")}`;
-        const { error: upErr } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "application/octet-stream", upsert: false });
-        if (upErr) { upStatus.textContent = "Erro: " + upErr.message; return; }
+        const { error: upErr } = await supabase.storage
+          .from("map-assets")
+          .upload(path, file, { contentType: "application/octet-stream", upsert: false });
+        if (upErr) {
+          upStatus.textContent = "Erro: " + upErr.message;
+          return;
+        }
         const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
-        const { error: insErr } = await supabase.from("bot_animations").insert({ name, url: pub.publicUrl, created_by: myId });
-        if (insErr) { upStatus.textContent = "Erro: " + insErr.message; return; }
+        const { error: insErr } = await supabase
+          .from("bot_animations")
+          .insert({ name, url: pub.publicUrl, created_by: myId });
+        if (insErr) {
+          upStatus.textContent = "Erro: " + insErr.message;
+          return;
+        }
         upStatus.textContent = "Animação enviada!";
         upBox.hidden = true;
         // o realtime já recarrega botAnimations; populateSelect será chamado pelo evento
-      } catch (e) { upStatus.textContent = "Erro: " + (e?.message || e); }
+      } catch (e) {
+        upStatus.textContent = "Erro: " + (e?.message || e);
+      }
     });
 
     delBtn?.addEventListener("click", async () => {
@@ -9198,21 +10348,38 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (!confirm(`Excluir a animação "${opt?.textContent || id}"?`)) return;
       const key = current;
       const { error } = await supabase.from("bot_animations").delete().eq("id", id);
-      if (error) { alert("Erro: " + error.message); return; }
+      if (error) {
+        alert("Erro: " + error.message);
+        return;
+      }
       delete tunings[key];
-      try { await window.__deleteAnimTuningRemote?.(key); } catch {}
-      try { localStorage.setItem("neon-tap-room-anim-tunings", JSON.stringify(tunings)); } catch {}
+      try {
+        await window.__deleteAnimTuningRemote?.(key);
+      } catch {}
+      try {
+        localStorage.setItem("neon-tap-room-anim-tunings", JSON.stringify(tunings));
+      } catch {}
       current = "idle";
     });
 
-    window.addEventListener("bot-animations:updated", () => { populateSelect(); sync(); });
-    window.addEventListener("animation-tunings:updated", () => { if (!panel.hidden) sync(); });
+    window.addEventListener("bot-animations:updated", () => {
+      populateSelect();
+      sync();
+    });
+    window.addEventListener("animation-tunings:updated", () => {
+      if (!panel.hidden) sync();
+    });
 
     btn.addEventListener("click", () => {
       panel.hidden = !panel.hidden;
-      if (!panel.hidden) { populateSelect(); sync(); }
+      if (!panel.hidden) {
+        populateSelect();
+        sync();
+      }
     });
-    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => { panel.hidden = true; });
+    panel.querySelector("[data-panel-close]")?.addEventListener("click", () => {
+      panel.hidden = true;
+    });
     panel.querySelector("[data-panel-min]")?.addEventListener("click", () => {
       const body = panel.querySelector(".panel-body");
       if (body) body.style.display = body.style.display === "none" ? "" : "none";
@@ -9226,7 +10393,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (_bound) return;
     const btn = document.getElementById("animAdminToggle");
     const panel = document.getElementById("animAdminPanel");
-    if (!btn || !panel || !window.__animTunings) { setTimeout(_safeBind, 200); return; }
+    if (!btn || !panel || !window.__animTunings) {
+      setTimeout(_safeBind, 200);
+      return;
+    }
     _bound = true;
     bind();
   }
@@ -9234,16 +10404,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   else _safeBind();
 })();
 
-
-
 // ============ CARS MODULE ============
 // Sistema arcade de carros: carros vivem em map_cars (Lovable Cloud).
 // Admin: catálogo + tuning de rodas/velocidade. Usuário: F (ou botão) p/ entrar
 // quando próximo; sai apenas com velocidade = 0.
 (function carsModule() {
   const DEFAULT_WHEEL_OFFSETS = {
-    fl:{x:-0.78,y:0.1,z:1.25}, fr:{x:0.75,y:0.1,z:1.25},
-    rl:{x:-0.78,y:0.1,z:-1.25},  rr:{x:0.75,y:0.1,z:-1.25},
+    fl: { x: -0.78, y: 0.1, z: 1.25 },
+    fr: { x: 0.75, y: 0.1, z: 1.25 },
+    rl: { x: -0.78, y: 0.1, z: -1.25 },
+    rr: { x: 0.75, y: 0.1, z: -1.25 },
     scale: 1,
   };
   const cars = new Map(); // id -> { row, group, chassisGroup, wheels{fl,fr,rl,rr}, state, __netTarget? }
@@ -9251,12 +10421,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let channel = null;
   let currentMap = null;
   let driving = null; // car instance currently driven
-  let riding = null;  // car instance we're passenger of
+  let riding = null; // car instance we're passenger of
   let promptCarId = null;
   let promptCarOccupied = false;
   const carKeys = new Set();
   // botões on-screen
-  const padState = { fwd:false, back:false, left:false, right:false, brake:false };
+  const padState = { fwd: false, back: false, left: false, right: false, brake: false };
 
   const carsGroup = new THREE.Group();
   carsGroup.name = "CarsRoot";
@@ -9264,7 +10434,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // Helpers de colisão (reutiliza groundHeightAt + colliderMeshes globais)
   const _carRay = new THREE.Raycaster();
-  const _carDown = new THREE.Vector3(0,-1,0);
+  const _carDown = new THREE.Vector3(0, -1, 0);
   const _carFwd = new THREE.Vector3();
   const _carTmpA = new THREE.Vector3();
   const _carTmpB = new THREE.Vector3();
@@ -9275,21 +10445,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     c.group.traverse((o) => {
       if (o.isMesh) {
         o.geometry?.dispose?.();
-        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose?.());
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose?.());
       }
     });
   }
 
   async function loadCatalog() {
     const { data, error } = await supabase.from("cars_catalog").select("*").order("name");
-    if (error) { console.warn("[cars] catalog", error); return; }
+    if (error) {
+      console.warn("[cars] catalog", error);
+      return;
+    }
     catalog = data || [];
     renderCatalogPicker();
   }
 
   function makeWheelFallback(radius) {
-    const g = new THREE.CylinderGeometry(radius, radius, radius*0.55, 18);
-    g.rotateZ(Math.PI/2);
+    const g = new THREE.CylinderGeometry(radius, radius, radius * 0.55, 18);
+    g.rotateZ(Math.PI / 2);
     const m = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.65, metalness: 0.2 });
     return new THREE.Mesh(g, m);
   }
@@ -9299,7 +10472,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function tryExtractSingleWheel(scene) {
     if (!scene) return null;
     let meshCount = 0;
-    scene.traverse(o => { if (o.isMesh) meshCount++; });
+    scene.traverse((o) => {
+      if (o.isMesh) meshCount++;
+    });
     if (!meshCount) return null;
     const box = new THREE.Box3().setFromObject(scene);
     const size = box.getSize(new THREE.Vector3());
@@ -9309,7 +10484,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return null;
     }
     const clone = scene.clone(true);
-    clone.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    clone.traverse((o) => {
+      if (o.isMesh) o.castShadow = true;
+    });
     const cb = new THREE.Box3().setFromObject(clone);
     const center = cb.getCenter(new THREE.Vector3());
     clone.position.sub(center);
@@ -9332,14 +10509,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const gltf = await new Promise((res, rej) => loader.load(row.chassis_url, res, undefined, rej));
       const m = gltf.scene || gltf.scenes?.[0];
       if (m) {
-        m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        m.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = true;
+            o.receiveShadow = true;
+          }
+        });
         chassisGroup.add(m);
       }
     } catch (e) {
       console.warn("[cars] chassis load fail", row.chassis_url, e);
       const fallback = new THREE.Mesh(
         new THREE.BoxGeometry(1.8, 0.9, 4),
-        new THREE.MeshStandardMaterial({ color: 0xaa3333 })
+        new THREE.MeshStandardMaterial({ color: 0xaa3333 }),
       );
       fallback.position.y = 0.5;
       chassisGroup.add(fallback);
@@ -9354,12 +10536,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const gltf = await new Promise((res, rej) => loader.load(row.wheel_url, res, undefined, rej));
         const raw = gltf.scene || gltf.scenes?.[0];
         wheelTemplate = tryExtractSingleWheel(raw);
-      } catch (e) { console.warn("[cars] wheel load fail", e); }
+      } catch (e) {
+        console.warn("[cars] wheel load fail", e);
+      }
     }
     const wheels = {};
     const rotY = ((wheelOffsets.rotY ?? 0) * Math.PI) / 180;
     const mirror = wheelOffsets.mirror || "xz"; // "xz" | "x" | "z" | "none"
-    for (const k of ["fl","fr","rl","rr"]) {
+    for (const k of ["fl", "fr", "rl", "rr"]) {
       const off = wheelOffsets[k] || DEFAULT_WHEEL_OFFSETS[k];
       const node = new THREE.Group();
       node.position.set(off.x, off.y, off.z);
@@ -9369,9 +10553,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       let visual;
       if (wheelTemplate) {
         visual = wheelTemplate.clone(true);
-        const isRight = (k === "fr" || k === "rr");
-        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
-        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        const isRight = k === "fr" || k === "rr";
+        const sx = isRight && (mirror === "x" || mirror === "xz") ? -1 : 1;
+        const sz = isRight && (mirror === "z" || mirror === "xz") ? -1 : 1;
         visual.scale.set(sx, 1, sz);
         visual.rotation.y = rotY;
       } else {
@@ -9390,15 +10574,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const scl = wo.scale ?? 1;
     const rotY = ((wo.rotY ?? 0) * Math.PI) / 180;
     const mirror = wo.mirror || "xz";
-    for (const k of ["fl","fr","rl","rr"]) {
+    for (const k of ["fl", "fr", "rl", "rr"]) {
       const off = wo[k] || DEFAULT_WHEEL_OFFSETS[k];
       c.wheels[k].position.set(off.x, off.y, off.z);
       c.wheels[k].userData.spin.scale.setScalar(scl);
       const vis = c.wheels[k].userData.visual;
       if (vis) {
-        const isRight = (k === "fr" || k === "rr");
-        const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
-        const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+        const isRight = k === "fr" || k === "rr";
+        const sx = isRight && (mirror === "x" || mirror === "xz") ? -1 : 1;
+        const sz = isRight && (mirror === "z" || mirror === "xz") ? -1 : 1;
         vis.scale.set(sx, 1, sz);
         vis.rotation.y = rotY;
       }
@@ -9421,9 +10605,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (livePose) Object.assign(existing.row, livePose);
       if (!driving || driving.row.id !== row.id) {
         existing.__netTarget = existing.__netTarget || {};
-        existing.__netTarget.x = row.x||0;
-        existing.__netTarget.y = row.y||0;
-        existing.__netTarget.z = row.z||0;
+        existing.__netTarget.x = row.x || 0;
+        existing.__netTarget.y = row.y || 0;
+        existing.__netTarget.z = row.z || 0;
         existing.__netTarget.yaw = row.rotation_y || 0;
       }
       const wo = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
@@ -9455,12 +10639,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const c of cars.values()) disposeCar(c);
     cars.clear();
     const { data, error } = await supabase.from("map_cars").select("*").eq("map_id", mapId);
-    if (error) { console.warn("[cars] load", error); return; }
+    if (error) {
+      console.warn("[cars] load", error);
+      return;
+    }
     for (const row of data || []) {
       try {
         const c = await upsertCarFromRow(row);
         await clearStaleDriver(c);
-      } catch (e) { console.warn("[cars] spawn", e); }
+      } catch (e) {
+        console.warn("[cars] spawn", e);
+      }
     }
     renderAdminList();
   }
@@ -9469,17 +10658,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     await loadCatalog();
     await loadCarsForMap(mapId);
     if (channel) await supabase.removeChannel(channel);
-    channel = supabase.channel(`cars-${mapId}`, { config: { broadcast: { self: false } } })
-      .on("postgres_changes", { event:"*", schema:"public", table:"map_cars", filter:`map_id=eq.${mapId}` }, async (payload) => {
-        if (payload.eventType === "DELETE") {
-          const c = cars.get(payload.old.id);
-          if (c) { disposeCar(c); cars.delete(payload.old.id); }
-          renderAdminList();
-          return;
-        }
-        const row = payload.new;
-        try { await upsertCarFromRow(row); renderAdminList(); } catch {}
-      })
+    channel = supabase
+      .channel(`cars-${mapId}`, { config: { broadcast: { self: false } } })
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "map_cars", filter: `map_id=eq.${mapId}` },
+        async (payload) => {
+          if (payload.eventType === "DELETE") {
+            const c = cars.get(payload.old.id);
+            if (c) {
+              disposeCar(c);
+              cars.delete(payload.old.id);
+            }
+            renderAdminList();
+            return;
+          }
+          const row = payload.new;
+          try {
+            await upsertCarFromRow(row);
+            renderAdminList();
+          } catch {}
+        },
+      )
       .on("broadcast", { event: "pos" }, ({ payload }) => {
         const c = cars.get(payload.id);
         if (!c) return;
@@ -9489,7 +10689,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       .subscribe();
   }
   async function carsLeaveRoom() {
-    if (channel) { await supabase.removeChannel(channel); channel = null; }
+    if (channel) {
+      await supabase.removeChannel(channel);
+      channel = null;
+    }
     for (const c of cars.values()) disposeCar(c);
     cars.clear();
     if (driving) await exitCar(true);
@@ -9508,7 +10711,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function isDriverFresh(row) {
     if (!row?.driver_user_id) return false;
     const t = Date.parse(row.driver_since || "");
-    return Number.isFinite(t) && (Date.now() - t) < DRIVER_HEARTBEAT_MS;
+    return Number.isFinite(t) && Date.now() - t < DRIVER_HEARTBEAT_MS;
   }
   function isCarOccupied(c) {
     return !!(c?.row?.driver_user_id && isDriverFresh(c.row));
@@ -9527,10 +10730,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function nearestCarAny(maxDist = 3.2) {
     const p = myPos();
     if (!p) return null;
-    let best = null, bestD = Infinity;
+    let best = null,
+      bestD = Infinity;
     for (const c of cars.values()) {
       const d = c.group.position.distanceTo(p);
-      if (d < bestD) { bestD = d; best = c; }
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
     }
     return bestD <= maxDist ? best : null;
   }
@@ -9552,9 +10759,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     Object.assign(c.row, data);
     driving = c;
     window.__drivingCar = c;
-    c.state.vel = 0; c.state.steer = 0; c.state.yaw = c.group.rotation.y;
+    c.state.vel = 0;
+    c.state.steer = 0;
+    c.state.yaw = c.group.rotation.y;
     const ent = playerEntities.get(myId);
-    if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
+    if (ent) {
+      ent.group.visible = false;
+      if (ent.plate) ent.plate.style.opacity = "0";
+    }
     document.body.classList.add("driving-on");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
@@ -9571,11 +10783,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     try {
-      await supabase.from("map_cars").update({
-        x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
-        rotation_y: c.state.yaw,
-        driver_user_id: null, driver_since: null,
-      }).eq("id", c.row.id);
+      await supabase
+        .from("map_cars")
+        .update({
+          x: c.group.position.x,
+          y: c.group.position.y,
+          z: c.group.position.z,
+          rotation_y: c.state.yaw,
+          driver_user_id: null,
+          driver_since: null,
+        })
+        .eq("id", c.row.id);
     } catch {}
     c.row.driver_user_id = null;
     driving = null;
@@ -9634,7 +10852,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.__ridingCar = null;
     document.body.classList.remove("driving-on");
     const hud = document.getElementById("carHud");
-    if (hud) { hud.hidden = true; hud.classList.remove("passenger-mode"); }
+    if (hud) {
+      hud.hidden = true;
+      hud.classList.remove("passenger-mode");
+    }
     const ent = playerEntities.get(myId);
     if (ent) {
       const fwd = new THREE.Vector3(Math.sin(c.state.yaw), 0, Math.cos(c.state.yaw));
@@ -9656,23 +10877,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!riding) return;
     const c = riding;
     // Sai automaticamente se o motorista saiu (carro virou livre)
-    if (!isCarOccupied(c)) { clearStaleDriver(c); exitPassenger(); return; }
+    if (!isCarOccupied(c)) {
+      clearStaleDriver(c);
+      exitPassenger();
+      return;
+    }
     const ent = playerEntities.get(myId);
     if (!ent) return;
     // Posiciona o player no banco do carona (lado direito atrás)
     const yaw = c.state.yaw;
     const fwd = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
     const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
-    const pos = c.group.position.clone()
-      .addScaledVector(side, 0.55)
-      .addScaledVector(fwd, -0.2);
+    const pos = c.group.position.clone().addScaledVector(side, 0.55).addScaledVector(fwd, -0.2);
     pos.y = c.group.position.y + 0.9;
     ent.group.position.copy(pos);
     ent.group.rotation.y = yaw;
     ent.target.copy(pos);
     // Câmera 3a pessoa do carro (segue firme, sem double-smoothing)
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const camWant = c.group.position.clone()
+    const camWant = c.group.position
+      .clone()
       .addScaledVector(fwd, -6.5)
       .add(new THREE.Vector3(0, 3.2, 0));
     const camK = Math.min(1, delta * 12);
@@ -9705,7 +10929,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // Verifica colisão à frente (parede ou objeto alto)
   function hasObstacleAt(from, to) {
     if (!colliderMeshes || !colliderMeshes.length) return false;
-    _carFwd.copy(to).sub(from); _carFwd.y = 0;
+    _carFwd.copy(to).sub(from);
+    _carFwd.y = 0;
     const dist = _carFwd.length();
     if (dist < 1e-4) return false;
     _carFwd.normalize();
@@ -9734,7 +10959,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (Math.abs(c.state.vel) <= decel) c.state.vel = 0;
       else c.state.vel -= Math.sign(c.state.vel) * decel;
     }
-    c.state.vel = Math.max(-maxSpeed*0.5, Math.min(maxSpeed, c.state.vel));
+    c.state.vel = Math.max(-maxSpeed * 0.5, Math.min(maxSpeed, c.state.vel));
     const targetSteer = inp.steer * 0.6;
     c.state.steer += (targetSteer - c.state.steer) * Math.min(1, delta * 8);
     const speedFactor = Math.min(1, Math.abs(c.state.vel) / 4);
@@ -9757,7 +10982,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // rodas
     const wr = r.wheel_radius || 0.35;
     c.state.wheelSpin -= (c.state.vel * delta) / wr;
-    for (const k of ["fl","fr","rl","rr"]) {
+    for (const k of ["fl", "fr", "rl", "rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
       // Front wheels (visually) are rl/rr after the wheel-position swap
@@ -9771,7 +10996,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (exitBtn) exitBtn.disabled = Math.abs(c.state.vel) > 0.05;
     // Câmera
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const camWant = c.group.position.clone()
+    const camWant = c.group.position
+      .clone()
       .addScaledVector(fwd, -6.5)
       .add(new THREE.Vector3(0, 3.2, 0));
     camera.position.lerp(camWant, Math.min(1, delta * 4));
@@ -9783,9 +11009,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) {
       // Posiciona no banco do motorista (lado esquerdo, sentado)
       const side = new THREE.Vector3(-fwd.z, 0, fwd.x);
-      const seat = c.group.position.clone()
-        .addScaledVector(side, -0.55)
-        .addScaledVector(fwd, -0.2);
+      const seat = c.group.position.clone().addScaledVector(side, -0.55).addScaledVector(fwd, -0.2);
       seat.y = c.group.position.y + 0.9;
       ent.group.position.copy(seat);
       ent.group.rotation.y = c.state.yaw;
@@ -9807,12 +11031,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           event: "pos",
           payload: {
             id: c.row.id,
-            x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
-            yaw: c.state.yaw, vel: c.state.vel,
+            x: c.group.position.x,
+            y: c.group.position.y,
+            z: c.group.position.z,
+            yaw: c.state.yaw,
+            vel: c.state.vel,
           },
         });
       } catch {}
-      try { trackMe?.(false); } catch {}
+      try {
+        trackMe?.(false);
+      } catch {}
     }
     // Persiste posição no DB a cada ~3s (assim, se o motorista cair / fechar
     // a aba sem sair pelo botão, o carro fica onde parou pra todos.)
@@ -9822,11 +11051,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       c.row.driver_since = driverSince;
       c.row.driver_user_id = myId;
       try {
-        supabase.from("map_cars").update({
-          x: c.group.position.x, y: c.group.position.y, z: c.group.position.z,
-          rotation_y: c.state.yaw,
-          driver_user_id: myId, driver_since: driverSince,
-        }).eq("id", c.row.id).then(() => {});
+        supabase
+          .from("map_cars")
+          .update({
+            x: c.group.position.x,
+            y: c.group.position.y,
+            z: c.group.position.z,
+            rotation_y: c.state.yaw,
+            driver_user_id: myId,
+            driver_since: driverSince,
+          })
+          .eq("id", c.row.id)
+          .then(() => {});
       } catch {}
     }
   }
@@ -9840,21 +11076,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         // Lerp mais firme quando estamos de carona neste carro (reduz travamento percebido)
         const ridingThis = riding && riding.row.id === c.row.id;
         const kxz = Math.min(1, delta * (ridingThis ? 18 : 10));
-        const ky  = Math.min(1, delta * (ridingThis ? 14 : 8));
-        const kr  = Math.min(1, delta * (ridingThis ? 18 : 10));
+        const ky = Math.min(1, delta * (ridingThis ? 14 : 8));
+        const kr = Math.min(1, delta * (ridingThis ? 18 : 10));
         c.group.position.x += (t.x - c.group.position.x) * kxz;
         c.group.position.y += (t.y - c.group.position.y) * ky;
         c.group.position.z += (t.z - c.group.position.z) * kxz;
         let dy = t.yaw - c.state.yaw;
-        while (dy > Math.PI) dy -= Math.PI*2;
-        while (dy < -Math.PI) dy += Math.PI*2;
+        while (dy > Math.PI) dy -= Math.PI * 2;
+        while (dy < -Math.PI) dy += Math.PI * 2;
         c.state.yaw += dy * kr;
         c.group.rotation.y = c.state.yaw;
         // Roda visual com base na velocidade transmitida
         const wr = c.row.wheel_radius || 0.35;
         c.state.wheelSpin -= ((t.vel || 0) * delta) / wr;
-        for (const k of ["fl","fr","rl","rr"]) {
-          const w = c.wheels[k]; if (!w) continue;
+        for (const k of ["fl", "fr", "rl", "rr"]) {
+          const w = c.wheels[k];
+          if (!w) continue;
           w.userData.spin.rotation.x = c.state.wheelSpin;
         }
       }
@@ -9869,7 +11106,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (c) {
       promptCarId = c.row.id;
       promptCarOccupied = isCarOccupied(c);
-      if (c.row.driver_user_id && !promptCarOccupied) clearStaleDriver(c).then(() => updatePrompt()).catch(() => {});
+      if (c.row.driver_user_id && !promptCarOccupied)
+        clearStaleDriver(c)
+          .then(() => updatePrompt())
+          .catch(() => {});
       const txt = prompt.querySelector(".car-prompt-text");
       const enterBtn = document.getElementById("carEnterBtn");
       const rideBtn = document.getElementById("carRideBtn");
@@ -9934,10 +11174,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     if (driving) {
-      if (["w","a","s","d","arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) {
+      if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) {
         e.preventDefault();
         carKeys.add(k);
-        try { keyState.delete(k); } catch {}
+        try {
+          keyState.delete(k);
+        } catch {}
       }
     }
   });
@@ -9964,16 +11206,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
-      const on = (e) => { e.preventDefault(); padState[key] = true; };
-      const off = (e) => { e.preventDefault(); padState[key] = false; };
+      const on = (e) => {
+        e.preventDefault();
+        padState[key] = true;
+      };
+      const off = (e) => {
+        e.preventDefault();
+        padState[key] = false;
+      };
       el.addEventListener("pointerdown", on);
       el.addEventListener("pointerup", off);
       el.addEventListener("pointercancel", off);
       el.addEventListener("pointerleave", off);
     };
-    bind("carBtnFwd","fwd");
-    bind("carBtnBack","brake"); // pedal esquerdo é freio
-    bind("carBtnL","left"); bind("carBtnR","right"); bind("carBtnBrake","brake");
+    bind("carBtnFwd", "fwd");
+    bind("carBtnBack", "brake"); // pedal esquerdo é freio
+    bind("carBtnL", "left");
+    bind("carBtnR", "right");
+    bind("carBtnBrake", "brake");
   }
 
   // ============ ADMIN PANEL ============
@@ -9981,7 +11231,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const sel = document.getElementById("carCatalogPicker");
     if (sel) {
       sel.innerHTML = catalog.length
-        ? catalog.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
+        ? catalog.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("")
         : `<option value="">— nenhum no catálogo —</option>`;
     }
     const list = document.getElementById("carCatalogList");
@@ -9989,68 +11239,99 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (!catalog.length) {
         list.innerHTML = `<div style="opacity:0.6;font-size:11px;">Nenhum modelo cadastrado.</div>`;
       } else {
-        list.innerHTML = catalog.map(c => `
+        list.innerHTML = catalog
+          .map(
+            (c) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:rgba(255,255,255,0.03);border:1px solid #2a3040;border-radius:4px;">
             <span style="flex:1;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>
             <button data-cat-del="${c.id}" title="Excluir do catálogo" style="background:#3a1020;color:#ff6680;border:1px solid #5a2030;border-radius:4px;padding:2px 8px;cursor:pointer;font-size:11px;">×</button>
           </div>
-        `).join("");
-        list.querySelectorAll("[data-cat-del]").forEach(b =>
-          b.addEventListener("click", () => deleteCatalogCar(b.dataset.catDel))
-        );
+        `,
+          )
+          .join("");
+        list
+          .querySelectorAll("[data-cat-del]")
+          .forEach((b) => b.addEventListener("click", () => deleteCatalogCar(b.dataset.catDel)));
       }
     }
   }
 
   async function deleteCatalogCar(id) {
-    const cat = catalog.find(c => c.id === id);
+    const cat = catalog.find((c) => c.id === id);
     if (!cat) return;
     if (!confirm(`Excluir o modelo "${cat.name}" do catálogo? Carros já no mapa continuam existindo.`)) return;
     const { error } = await supabase.from("cars_catalog").delete().eq("id", id);
-    if (error) { alert("Falha ao excluir: " + error.message); return; }
-    catalog = catalog.filter(c => c.id !== id);
+    if (error) {
+      alert("Falha ao excluir: " + error.message);
+      return;
+    }
+    catalog = catalog.filter((c) => c.id !== id);
     renderCatalogPicker();
     addSystemLine?.("Modelo removido do catálogo.");
   }
 
-
   function renderAdminList() {
     const list = document.getElementById("carsAdminList");
     if (!list) return;
-    const rows = Array.from(cars.values()).map(c => c.row);
-    if (!rows.length) { list.innerHTML = `<div style="opacity:0.6;font-size:12px;">Nenhum carro neste mapa.</div>`; return; }
-    list.innerHTML = rows.map(r => `
+    const rows = Array.from(cars.values()).map((c) => c.row);
+    if (!rows.length) {
+      list.innerHTML = `<div style="opacity:0.6;font-size:12px;">Nenhum carro neste mapa.</div>`;
+      return;
+    }
+    list.innerHTML = rows
+      .map(
+        (r) => `
       <div class="car-row" data-id="${r.id}">
         <div class="car-name">🚗 ${escapeHtml(r.name)}</div>
         <button data-tune="${r.id}">Ajustar</button>
         <button data-here="${r.id}">Trazer</button>
         <button class="danger" data-del="${r.id}">×</button>
       </div>
-    `).join("");
-    list.querySelectorAll("[data-tune]").forEach(b => b.addEventListener("click", () => openTune(b.dataset.tune)));
-    list.querySelectorAll("[data-here]").forEach(b => b.addEventListener("click", () => bringHere(b.dataset.here)));
-    list.querySelectorAll("[data-del]").forEach(b => b.addEventListener("click", () => deleteCar(b.dataset.del)));
+    `,
+      )
+      .join("");
+    list.querySelectorAll("[data-tune]").forEach((b) => b.addEventListener("click", () => openTune(b.dataset.tune)));
+    list.querySelectorAll("[data-here]").forEach((b) => b.addEventListener("click", () => bringHere(b.dataset.here)));
+    list.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", () => deleteCar(b.dataset.del)));
   }
 
   async function bringHere(id) {
-    const c = cars.get(id); if (!c) return;
-    const p = myPos(); if (!p) return;
+    const c = cars.get(id);
+    if (!c) return;
+    const p = myPos();
+    if (!p) return;
     const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+    camera.getWorldDirection(fwd);
+    fwd.y = 0;
+    fwd.normalize();
     const spawn = p.clone().addScaledVector(fwd, 3);
     await supabase.from("map_cars").update({ x: spawn.x, y: 0, z: spawn.z }).eq("id", id);
   }
   async function deleteCar(id) {
     if (!confirm("Excluir este carro do mapa?")) return;
     // Se eu estiver dirigindo/de carona neste carro, sai antes.
-    if (driving && driving.row.id === id) { try { await exitCar(true); } catch {} }
-    if (riding && riding.row.id === id) { try { exitPassenger(); } catch {} }
+    if (driving && driving.row.id === id) {
+      try {
+        await exitCar(true);
+      } catch {}
+    }
+    if (riding && riding.row.id === id) {
+      try {
+        exitPassenger();
+      } catch {}
+    }
     const { error } = await supabase.from("map_cars").delete().eq("id", id);
-    if (error) { alert("Falha ao excluir: " + error.message); return; }
+    if (error) {
+      alert("Falha ao excluir: " + error.message);
+      return;
+    }
     // Remoção local imediata (não depende do evento realtime DELETE,
     // que pode não chegar com filtro em alguns casos).
     const c = cars.get(id);
-    if (c) { disposeCar(c); cars.delete(id); }
+    if (c) {
+      disposeCar(c);
+      cars.delete(id);
+    }
     renderAdminList();
   }
 
@@ -10075,8 +11356,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // valores derivados para controles simétricos
     const trackF = Math.abs((wo.fr?.x ?? 0.75) - (wo.fl?.x ?? -0.75));
     const trackR = Math.abs((wo.rr?.x ?? 0.75) - (wo.rl?.x ?? -0.75));
-    const wheelbase = Math.abs(((wo.rl?.z ?? 1.25) + (wo.rr?.z ?? 1.25))/2 - ((wo.fl?.z ?? -1.25) + (wo.fr?.z ?? -1.25))/2);
-    const axleY = ((wo.fl?.y ?? 0.1)+(wo.fr?.y ?? 0.1)+(wo.rl?.y ?? 0.1)+(wo.rr?.y ?? 0.1))/4;
+    const wheelbase = Math.abs(
+      ((wo.rl?.z ?? 1.25) + (wo.rr?.z ?? 1.25)) / 2 - ((wo.fl?.z ?? -1.25) + (wo.fr?.z ?? -1.25)) / 2,
+    );
+    const axleY = ((wo.fl?.y ?? 0.1) + (wo.fr?.y ?? 0.1) + (wo.rl?.y ?? 0.1) + (wo.rr?.y ?? 0.1)) / 4;
     wrap.innerHTML = `
       <div style="font-weight:600;font-size:12px;">⚙️ Ajustar: ${escapeHtml(r.name)}</div>
       <div class="ct-section"><h5>Performance</h5>
@@ -10088,7 +11371,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       <div class="ct-section"><h5>Chassi</h5>
         ${slider("Escala", "chassis_scale", 0.3, 3, 0.01, r.chassis_scale)}
         ${slider("Offset Y", "chassis_offset_y", -2, 2, 0.01, r.chassis_offset_y)}
-        ${slider("Rotação Y°", "_rot_deg", -180, 180, 1, (r.rotation_y||0)*180/Math.PI)}
+        ${slider("Rotação Y°", "_rot_deg", -180, 180, 1, ((r.rotation_y || 0) * 180) / Math.PI)}
       </div>
       <div class="ct-section"><h5>Rodas (simétrico)</h5>
         ${slider("Tamanho das rodas", "wheel_offsets.scale", 0.3, 3, 0.01, wo.scale ?? 1)}
@@ -10100,10 +11383,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ${slider("Rotação Y° rodas (GLB)", "wheel_offsets.rotY", -180, 180, 1, wo.rotY ?? 0)}
         <div class="ct-row"><label>Espelhar L/R</label>
           <select data-tk="wheel_offsets.mirror" style="background:#0c0c18;color:#fff;border:1px solid #2a3040;border-radius:4px;padding:4px;font:12px system-ui;">
-            <option value="xz" ${(wo.mirror||"xz")==="xz"?"selected":""}>XZ (padrão)</option>
-            <option value="x" ${wo.mirror==="x"?"selected":""}>Só X</option>
-            <option value="z" ${wo.mirror==="z"?"selected":""}>Só Z</option>
-            <option value="none" ${wo.mirror==="none"?"selected":""}>Nenhum</option>
+            <option value="xz" ${(wo.mirror || "xz") === "xz" ? "selected" : ""}>XZ (padrão)</option>
+            <option value="x" ${wo.mirror === "x" ? "selected" : ""}>Só X</option>
+            <option value="z" ${wo.mirror === "z" ? "selected" : ""}>Só Z</option>
+            <option value="none" ${wo.mirror === "none" ? "selected" : ""}>Nenhum</option>
           </select>
         </div>
       </div>
@@ -10134,7 +11417,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
       applyWheelTransforms(c, draft.wheel_offsets);
     };
-    wrap.querySelectorAll("[data-tk]").forEach(inp => {
+    wrap.querySelectorAll("[data-tk]").forEach((inp) => {
       const handler = () => {
         const key = inp.dataset.tk;
         const isSelect = inp.tagName === "SELECT";
@@ -10142,24 +11425,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const val = isSelect ? rawVal : parseFloat(rawVal);
         const lbl = wrap.querySelector(`[data-v="${key}"]`);
         if (lbl && !isSelect) lbl.textContent = Number(val).toFixed(2);
-        if (key === "_rot_deg") draft.rotation_y = val * Math.PI / 180;
+        if (key === "_rot_deg") draft.rotation_y = (val * Math.PI) / 180;
         else if (key === "_trackF") {
-          const h = val/2;
-          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), x: -h };
-          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), x: h };
+          const h = val / 2;
+          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl || {}), x: -h };
+          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr || {}), x: h };
         } else if (key === "_trackR") {
-          const h = val/2;
-          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), x: -h };
-          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), x: h };
+          const h = val / 2;
+          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl || {}), x: -h };
+          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr || {}), x: h };
         } else if (key === "_wheelbase") {
-          const h = val/2;
-          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl||{}), z: h };
-          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr||{}), z: h };
-          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl||{}), z: -h };
-          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr||{}), z: -h };
+          const h = val / 2;
+          draft.wheel_offsets.fl = { ...(draft.wheel_offsets.fl || {}), z: h };
+          draft.wheel_offsets.fr = { ...(draft.wheel_offsets.fr || {}), z: h };
+          draft.wheel_offsets.rl = { ...(draft.wheel_offsets.rl || {}), z: -h };
+          draft.wheel_offsets.rr = { ...(draft.wheel_offsets.rr || {}), z: -h };
         } else if (key === "_axleY") {
-          for (const k of ["fl","fr","rl","rr"]) {
-            draft.wheel_offsets[k] = { ...(draft.wheel_offsets[k]||{}), y: val };
+          for (const k of ["fl", "fr", "rl", "rr"]) {
+            draft.wheel_offsets[k] = { ...(draft.wheel_offsets[k] || {}), y: val };
           }
         } else if (key.startsWith("wheel_offsets.")) {
           const parts = key.split(".");
@@ -10168,7 +11451,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             draft.wheel_offsets[parts[1]] = val;
           } else {
             const [, k, axis] = parts;
-            if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x:0,y:0,z:0 };
+            if (!draft.wheel_offsets[k]) draft.wheel_offsets[k] = { x: 0, y: 0, z: 0 };
             draft.wheel_offsets[k][axis] = val;
           }
         } else draft[key] = val;
@@ -10177,13 +11460,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       inp.addEventListener("input", handler);
       inp.addEventListener("change", handler);
     });
-    wrap.querySelector("#ctClose")?.addEventListener("click", () => { wrap.hidden = true; });
+    wrap.querySelector("#ctClose")?.addEventListener("click", () => {
+      wrap.hidden = true;
+    });
     wrap.querySelector("#ctSave")?.addEventListener("click", async () => {
       const patch = {
-        max_speed: draft.max_speed, acceleration: draft.acceleration,
-        brake_force: draft.brake_force, turn_speed: draft.turn_speed,
-        chassis_scale: draft.chassis_scale, chassis_offset_y: draft.chassis_offset_y,
-        wheel_radius: draft.wheel_radius, wheel_offsets: draft.wheel_offsets,
+        max_speed: draft.max_speed,
+        acceleration: draft.acceleration,
+        brake_force: draft.brake_force,
+        turn_speed: draft.turn_speed,
+        chassis_scale: draft.chassis_scale,
+        chassis_offset_y: draft.chassis_offset_y,
+        wheel_radius: draft.wheel_radius,
+        wheel_offsets: draft.wheel_offsets,
         rotation_y: draft.rotation_y,
       };
       const { error } = await supabase.from("map_cars").update(patch).eq("id", r.id);
@@ -10193,10 +11482,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     wrap.querySelector("#ctSaveCatalog")?.addEventListener("click", async () => {
       if (!r.catalog_id) return;
       const patch = {
-        max_speed: draft.max_speed, acceleration: draft.acceleration,
-        brake_force: draft.brake_force, turn_speed: draft.turn_speed,
-        chassis_scale: draft.chassis_scale, chassis_offset_y: draft.chassis_offset_y,
-        wheel_radius: draft.wheel_radius, wheel_offsets: draft.wheel_offsets,
+        max_speed: draft.max_speed,
+        acceleration: draft.acceleration,
+        brake_force: draft.brake_force,
+        turn_speed: draft.turn_speed,
+        chassis_scale: draft.chassis_scale,
+        chassis_offset_y: draft.chassis_offset_y,
+        wheel_radius: draft.wheel_radius,
+        wheel_offsets: draft.wheel_offsets,
       };
       const { error } = await supabase.from("cars_catalog").update(patch).eq("id", r.catalog_id);
       if (error) addSystemLine?.("Erro: " + error.message);
@@ -10206,9 +11499,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function uploadGlb(file, prefix) {
     const ext = "glb";
-    const path = `cars/${prefix}-${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const path = `cars/${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
     const { error } = await supabase.storage.from("map-assets").upload(path, file, {
-      contentType: "model/gltf-binary", upsert: false,
+      contentType: "model/gltf-binary",
+      upsert: false,
     });
     if (error) throw error;
     const { data } = supabase.storage.from("map-assets").getPublicUrl(path);
@@ -10219,27 +11513,50 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     document.getElementById("carSpawnFromCatalog")?.addEventListener("click", async () => {
       const sel = document.getElementById("carCatalogPicker");
       const id = sel?.value;
-      const cat = catalog.find(c => c.id === id);
-      if (!cat) { addSystemLine?.("Cadastre um modelo primeiro."); return; }
-      const p = myPos() || new THREE.Vector3(0,0,0);
+      const cat = catalog.find((c) => c.id === id);
+      if (!cat) {
+        addSystemLine?.("Cadastre um modelo primeiro.");
+        return;
+      }
+      const p = myPos() || new THREE.Vector3(0, 0, 0);
       const fwd = new THREE.Vector3();
-      camera.getWorldDirection(fwd); fwd.y = 0; fwd.normalize();
+      camera.getWorldDirection(fwd);
+      fwd.y = 0;
+      fwd.normalize();
       const spawn = p.clone().addScaledVector(fwd, 4);
       const row = {
-        map_id: currentMap, catalog_id: cat.id, name: cat.name,
-        chassis_url: cat.chassis_url, wheel_url: cat.wheel_url,
-        x: spawn.x, y: 0, z: spawn.z, rotation_y: 0,
-        max_speed: cat.max_speed, acceleration: cat.acceleration,
-        brake_force: cat.brake_force, turn_speed: cat.turn_speed,
-        wheel_radius: cat.wheel_radius, chassis_scale: cat.chassis_scale,
-        chassis_offset_y: cat.chassis_offset_y, wheel_offsets: cat.wheel_offsets,
+        map_id: currentMap,
+        catalog_id: cat.id,
+        name: cat.name,
+        chassis_url: cat.chassis_url,
+        wheel_url: cat.wheel_url,
+        x: spawn.x,
+        y: 0,
+        z: spawn.z,
+        rotation_y: 0,
+        max_speed: cat.max_speed,
+        acceleration: cat.acceleration,
+        brake_force: cat.brake_force,
+        turn_speed: cat.turn_speed,
+        wheel_radius: cat.wheel_radius,
+        chassis_scale: cat.chassis_scale,
+        chassis_offset_y: cat.chassis_offset_y,
+        wheel_offsets: cat.wheel_offsets,
         created_by: myId,
       };
       const { data: inserted, error } = await supabase.from("map_cars").insert(row).select().single();
-      if (error) { addSystemLine?.("Erro: " + error.message); return; }
+      if (error) {
+        addSystemLine?.("Erro: " + error.message);
+        return;
+      }
       addSystemLine?.("Carro adicionado.");
       if (inserted) {
-        try { await upsertCarFromRow(inserted); renderAdminList(); } catch (e) { console.warn("[cars] spawn local", e); }
+        try {
+          await upsertCarFromRow(inserted);
+          renderAdminList();
+        } catch (e) {
+          console.warn("[cars] spawn local", e);
+        }
       }
     });
 
@@ -10248,8 +11565,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const chassisFile = document.getElementById("carNewChassisFile")?.files?.[0];
       const wheelFile = document.getElementById("carNewWheelFile")?.files?.[0];
       const status = document.getElementById("carNewStatus");
-      if (!name) { status.textContent = "Dê um nome ao modelo."; return; }
-      if (!chassisFile) { status.textContent = "Selecione o GLB do chassi."; return; }
+      if (!name) {
+        status.textContent = "Dê um nome ao modelo.";
+        return;
+      }
+      if (!chassisFile) {
+        status.textContent = "Selecione o GLB do chassi.";
+        return;
+      }
       status.textContent = "Subindo chassi...";
       try {
         const chassisUrl = await uploadGlb(chassisFile, "chassis");
@@ -10258,9 +11581,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           status.textContent = "Subindo roda...";
           wheelUrl = await uploadGlb(wheelFile, "wheel");
         }
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"") + "-" + Date.now().toString(36);
+        const slug =
+          name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/(^-|-$)/g, "") +
+          "-" +
+          Date.now().toString(36);
         const { error } = await supabase.from("cars_catalog").insert({
-          slug, name, chassis_url: chassisUrl, wheel_url: wheelUrl, created_by: myId,
+          slug,
+          name,
+          chassis_url: chassisUrl,
+          wheel_url: wheelUrl,
+          created_by: myId,
         });
         if (error) throw error;
         status.textContent = "Modelo salvo no catálogo.";
@@ -10274,16 +11607,23 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     });
   }
 
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", () => { bindHud(); bindAdminPanel(); });
-  else { bindHud(); bindAdminPanel(); }
+  if (document.readyState === "loading")
+    document.addEventListener("DOMContentLoaded", () => {
+      bindHud();
+      bindAdminPanel();
+    });
+  else {
+    bindHud();
+    bindAdminPanel();
+  }
 })();
 
 // ============ Voz por proximidade (streaming quase real-time) ============
 (function setupProximityVoice() {
   const VOICE_FULL = 3.5;
-  const VOICE_MAX  = 14;
+  const VOICE_MAX = 14;
   const MAX_REC_MS = 30000;
-  const CHUNK_MS   = 280;          // tamanho de cada segmento enviado
+  const CHUNK_MS = 280; // tamanho de cada segmento enviado
   const REMOTE_INDICATOR_FADE_MS = 800;
 
   let btn = null;
@@ -10311,7 +11651,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // Garante que o contexto de áudio esteja "running" — assim quem só escuta
   // (sem habilitar microfone) também ouve os colegas próximos.
   const resumeOnGesture = () => {
-    try { ensureCtx()?.resume?.(); } catch {}
+    try {
+      ensureCtx()?.resume?.();
+    } catch {}
   };
   document.addEventListener("pointerdown", resumeOnGesture, { passive: true });
   document.addEventListener("keydown", resumeOnGesture);
@@ -10321,7 +11663,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const a = playerEntities.get(speakerId)?.group?.position;
     const b = playerEntities.get(myId)?.group?.position;
     if (!a || !b) return 0.6;
-    const dx = a.x - b.x, dz = a.z - b.z;
+    const dx = a.x - b.x,
+      dz = a.z - b.z;
     const d = Math.hypot(dx, dz);
     if (d <= VOICE_FULL) return 1;
     if (d >= VOICE_MAX) return 0;
@@ -10345,7 +11688,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       "audio/ogg;codecs=opus",
     ];
     for (const m of cands) {
-      try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) { chosenMime = m; return m; } } catch {}
+      try {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) {
+          chosenMime = m;
+          return m;
+        }
+      } catch {}
     }
     return "";
   }
@@ -10415,7 +11763,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     currentRecorder = rec;
     const localChunks = [];
-    rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) localChunks.push(e.data); };
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) localChunks.push(e.data);
+    };
     rec.onstop = async () => {
       const type = rec.mimeType || mime || "audio/webm";
       const blob = new Blob(localChunks, { type });
@@ -10433,17 +11783,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         // emenda imediatamente o próximo segmento
         startSegment();
       } else {
-        try { chan?.send({ type: "broadcast", event: "voice-end", payload: { id: myId } }); } catch {}
+        try {
+          chan?.send({ type: "broadcast", event: "voice-end", payload: { id: myId } });
+        } catch {}
       }
     };
     rec.start();
-    setTimeout(() => { try { if (rec.state !== "inactive") rec.stop(); } catch {} }, CHUNK_MS);
+    setTimeout(() => {
+      try {
+        if (rec.state !== "inactive") rec.stop();
+      } catch {}
+    }, CHUNK_MS);
   }
 
   async function startRecording() {
     if (recording) return;
     if (!chan) return;
-    try { ensureCtx()?.resume?.(); } catch {}
+    try {
+      ensureCtx()?.resume?.();
+    } catch {}
     try {
       await getStream();
     } catch (e) {
@@ -10457,7 +11815,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     selfSpeakingUntil = recStartTs + MAX_REC_MS;
     setSpeakingClass(myId, true);
     btn?.classList.add("is-recording");
-    try { chan.send({ type: "broadcast", event: "voice-start", payload: { id: myId } }); } catch {}
+    try {
+      chan.send({ type: "broadcast", event: "voice-start", payload: { id: myId } });
+    } catch {}
     startSegment();
     recTimer = setTimeout(() => stopRecording(), MAX_REC_MS);
   }
@@ -10465,11 +11825,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function stopRecording() {
     if (!recording) return;
     recording = false;
-    if (recTimer) { clearTimeout(recTimer); recTimer = null; }
+    if (recTimer) {
+      clearTimeout(recTimer);
+      recTimer = null;
+    }
     btn?.classList.remove("is-recording");
     selfSpeakingUntil = 0;
     setSpeakingClass(myId, false);
-    try { if (currentRecorder && currentRecorder.state !== "inactive") currentRecorder.stop(); } catch {}
+    try {
+      if (currentRecorder && currentRecorder.state !== "inactive") currentRecorder.stop();
+    } catch {}
   }
 
   function ensureRemote(id) {
@@ -10490,7 +11855,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function onRemoteBlob(id, b64, mime) {
     const ctx = ensureCtx();
     if (!ctx) return;
-    try { await ctx.resume(); } catch {}
+    try {
+      await ctx.resume();
+    } catch {}
     let audioBuf;
     try {
       audioBuf = await ctx.decodeAudioData(base64ToArrayBuffer(b64));
@@ -10522,7 +11889,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }
     };
     r.queue.push(item);
-    try { src.start(startAt); } catch { try { src.start(); } catch {} }
+    try {
+      src.start(startAt);
+    } catch {
+      try {
+        src.start();
+      } catch {}
+    }
     r.nextStartAt = startAt + audioBuf.duration;
     markRemoteSpeaking(id);
   }
@@ -10532,7 +11905,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const [id, r] of remoteSpeakers) {
       for (const item of r.queue) {
         const g = distanceGainFor(id);
-        try { item.gainNode.gain.setTargetAtTime(g, t, 0.08); } catch {}
+        try {
+          item.gainNode.gain.setTargetAtTime(g, t, 0.08);
+        } catch {}
       }
     }
     requestAnimationFrame(tick);
@@ -10552,25 +11927,37 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
     const press = (e) => {
       e.preventDefault();
-      try { btn.setPointerCapture?.(e.pointerId); } catch {}
+      try {
+        btn.setPointerCapture?.(e.pointerId);
+      } catch {}
       startRecording();
     };
     const release = (e) => {
-      try { btn.releasePointerCapture?.(e.pointerId); } catch {}
+      try {
+        btn.releasePointerCapture?.(e.pointerId);
+      } catch {}
       stopRecording();
     };
     btn.addEventListener("pointerdown", press);
     btn.addEventListener("pointerup", release);
     btn.addEventListener("pointercancel", release);
-    btn.addEventListener("pointerleave", (e) => { if (recording) release(e); });
+    btn.addEventListener("pointerleave", (e) => {
+      if (recording) release(e);
+    });
     btn.addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("keydown", (e) => {
       if (e.repeat) return;
       if (e.target?.matches?.("input, textarea")) return;
-      if (e.code === "KeyV") { e.preventDefault(); startRecording(); }
+      if (e.code === "KeyV") {
+        e.preventDefault();
+        startRecording();
+      }
     });
     document.addEventListener("keyup", (e) => {
-      if (e.code === "KeyV") { e.preventDefault(); stopRecording(); }
+      if (e.code === "KeyV") {
+        e.preventDefault();
+        stopRecording();
+      }
     });
     requestAnimationFrame(tick);
   }
@@ -10582,8 +11969,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   window.__voice = {
-    setChannel(c) { chan = c; },
-    onRemoteStart(id) { markRemoteSpeaking(id); },
+    setChannel(c) {
+      chan = c;
+    },
+    onRemoteStart(id) {
+      markRemoteSpeaking(id);
+    },
     onRemoteEnd(id) {
       const r = remoteSpeakers.get(id);
       if (r) r.lastSignalAt = 0;
@@ -10613,37 +12004,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function fmtDate(s) {
     if (!s) return "—";
-    try { return new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }); }
-    catch { return s; }
+    try {
+      return new Date(s).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+    } catch {
+      return s;
+    }
   }
 
   function render(filter = "") {
     const q = filter.trim().toLowerCase();
-    const rows = cache.filter(u =>
-      !q ||
-      (u.email || "").toLowerCase().includes(q) ||
-      (u.nickname || "").toLowerCase().includes(q)
+    const rows = cache.filter(
+      (u) => !q || (u.email || "").toLowerCase().includes(q) || (u.nickname || "").toLowerCase().includes(q),
     );
     if (!rows.length) {
       list.innerHTML = `<div class="users-admin-empty">Nenhum usuário encontrado.</div>`;
       return;
     }
-    list.innerHTML = rows.map(u => {
-      const isAdminRow = (u.roles || []).includes("admin");
-      const avatar = u.avatar_url
-        ? `<img src="${u.avatar_url}" alt="">`
-        : `<span>${(u.nickname || u.email || "?").slice(0,1).toUpperCase()}</span>`;
-      return `
+    list.innerHTML = rows
+      .map((u) => {
+        const isAdminRow = (u.roles || []).includes("admin");
+        const avatar = u.avatar_url
+          ? `<img src="${u.avatar_url}" alt="">`
+          : `<span>${(u.nickname || u.email || "?").slice(0, 1).toUpperCase()}</span>`;
+        return `
         <div class="user-row" data-uid="${u.id}">
           <div class="user-row-avatar">${avatar}</div>
           <div class="user-row-info">
-            <div class="user-row-name">${escapeHtml(u.nickname || "(sem nome)")}${isAdminRow ? '<span class="badge-admin">admin</span>' : ''}</div>
+            <div class="user-row-name">${escapeHtml(u.nickname || "(sem nome)")}${isAdminRow ? '<span class="badge-admin">admin</span>' : ""}</div>
             <div class="user-row-meta">${escapeHtml(u.email || "—")} · Criado ${fmtDate(u.created_at)} · Último login ${fmtDate(u.last_sign_in_at)}</div>
           </div>
           <button type="button" class="user-row-delete" data-act="delete">Excluir</button>
         </div>
       `;
-    }).join("");
+      })
+      .join("");
   }
 
   async function load() {
@@ -10663,9 +12057,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
 
   async function doDelete(uid, btn) {
-    const target = cache.find(u => u.id === uid);
-    const label = target ? (target.nickname || target.email || uid) : uid;
-    const confirm1 = prompt(`Tem certeza que deseja EXCLUIR PERMANENTEMENTE a conta de "${label}"?\n\nEsta ação é IRREVERSÍVEL.\n\nDigite EXCLUIR para confirmar:`);
+    const target = cache.find((u) => u.id === uid);
+    const label = target ? target.nickname || target.email || uid : uid;
+    const confirm1 = prompt(
+      `Tem certeza que deseja EXCLUIR PERMANENTEMENTE a conta de "${label}"?\n\nEsta ação é IRREVERSÍVEL.\n\nDigite EXCLUIR para confirmar:`,
+    );
     if (confirm1 !== "EXCLUIR") return;
     btn.disabled = true;
     btn.textContent = "Excluindo…";
@@ -10682,7 +12078,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         btn.textContent = "Excluir";
         return;
       }
-      cache = cache.filter(u => u.id !== uid);
+      cache = cache.filter((u) => u.id !== uid);
       render(search.value);
     } catch (e) {
       alert(`Erro: ${e}`);
@@ -10701,9 +12097,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     overlay.setAttribute("aria-hidden", "true");
   }
 
-  dockBtn.addEventListener("click", () => { if (typeof isAdmin !== "undefined" && !isAdmin) return alert("Apenas admin."); open(); });
+  dockBtn.addEventListener("click", () => {
+    if (typeof isAdmin !== "undefined" && !isAdmin) return alert("Apenas admin.");
+    open();
+  });
   closeBtn.addEventListener("click", close);
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
   refreshBtn.addEventListener("click", load);
   search.addEventListener("input", () => render(search.value));
   list.addEventListener("click", (e) => {
@@ -10721,13 +12122,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let currentPeerId = null;
 
   function close() {
-    if (popup) { popup.remove(); popup = null; currentPeerId = null; }
+    if (popup) {
+      popup.remove();
+      popup = null;
+      currentPeerId = null;
+    }
   }
 
   document.addEventListener("pointerdown", (e) => {
     if (popup && !popup.contains(e.target) && !e.target.closest?.(".nameplate")) close();
   });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
 
   async function getFriendRel(peerId) {
     if (!myId || !peerId) return { status: "none" };
@@ -10743,7 +12150,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (row.status === "rejected") return { status: "rejected", row, mine: row.from_user === myId };
     return { status: "pending", row, mine: row.from_user === myId };
   }
-
 
   function friendButtonLabel(rel) {
     if (rel.status === "accepted") return { text: "✓ Amigos", disabled: true };
@@ -10770,7 +12176,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     popup.className = "player-popup";
     popup.innerHTML = `
       <div class="player-popup-header">
-        <div class="player-popup-avatar" style="${avatar ? `background-image:url('${avatar.replace(/'/g, "%27")}');` : ''}"></div>
+        <div class="player-popup-avatar" style="${avatar ? `background-image:url('${avatar.replace(/'/g, "%27")}');` : ""}"></div>
         <div class="player-popup-name">${escapeHtml(name)}</div>
       </div>
       <div class="player-popup-actions">
@@ -10802,7 +12208,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             await supabase.from("friend_requests").update({ status: "accepted" }).eq("id", rel.row.id);
             btn.textContent = "✓ Amigos";
           } else {
-            const { error } = await supabase.from("friend_requests").insert({ from_user: myId, to_user: peerId, status: "pending" });
+            const { error } = await supabase
+              .from("friend_requests")
+              .insert({ from_user: myId, to_user: peerId, status: "pending" });
             if (error) throw error;
             btn.textContent = "⏳ Pedido enviado";
           }
@@ -10818,7 +12226,6 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     });
   }
 
-
   function teleportNear(peerId) {
     const target = playerEntities.get(peerId);
     if (!target) return false;
@@ -10826,7 +12233,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const offX = Math.cos(ang) * 1.2;
     const offZ = Math.sin(ang) * 1.2;
     const pos = target.group.position;
-    try { moveToWorld({ x: pos.x + offX, z: pos.z + offZ }); return true; } catch { return false; }
+    try {
+      moveToWorld({ x: pos.x + offX, z: pos.z + offZ });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   function waitForPeerEntity(peerId, timeoutMs = 4000) {
@@ -10885,7 +12297,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const entry = state[peerId]?.[0];
       peerMapId = entry?.map_id || null;
     } catch {}
-    if (!peerMapId) { renderErrorStep("Esse usuário não está online."); return; }
+    if (!peerMapId) {
+      renderErrorStep("Esse usuário não está online.");
+      return;
+    }
     if (peerMapId === currentMapId) {
       // Está na sala mas a entidade ainda não carregou; aguarda um pouco.
       renderLoadingStep("Localizando…");
@@ -10895,35 +12310,51 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     const mapInfo = (Array.isArray(MAPS) ? MAPS : []).find((m) => m.id === peerMapId);
-    if (!mapInfo) { renderErrorStep("Não foi possível entrar nessa sala."); return; }
+    if (!mapInfo) {
+      renderErrorStep("Não foi possível entrar nessa sala.");
+      return;
+    }
 
     renderConfirmStep(mapInfo.name || peerMapId);
-    popup.addEventListener("click", async (ev) => {
-      const b = ev.target.closest("button[data-act]");
-      if (!b) return;
-      const a = b.dataset.act;
-      if (a === "cancel") { close(); return; }
-      if (a === "go") {
-        renderLoadingStep(`Indo para ${mapInfo.name || peerMapId}…`);
-        try {
-          if (typeof switchRoom !== "function") throw new Error("switchRoom indisponível");
-          await switchRoom(peerMapId);
-        } catch (err) {
-          renderErrorStep("Não foi possível entrar nessa sala.");
+    popup.addEventListener(
+      "click",
+      async (ev) => {
+        const b = ev.target.closest("button[data-act]");
+        if (!b) return;
+        const a = b.dataset.act;
+        if (a === "cancel") {
+          close();
           return;
         }
-        const appeared = await waitForPeerEntity(peerId, 4000);
-        if (!appeared) { renderErrorStep("Esse usuário saiu da sala."); return; }
-        if (!teleportNear(peerId)) { renderErrorStep("Não foi possível chegar até ele."); return; }
-        close();
-      }
-    }, { once: false });
+        if (a === "go") {
+          renderLoadingStep(`Indo para ${mapInfo.name || peerMapId}…`);
+          try {
+            if (typeof switchRoom !== "function") throw new Error("switchRoom indisponível");
+            await switchRoom(peerMapId);
+          } catch (err) {
+            renderErrorStep("Não foi possível entrar nessa sala.");
+            return;
+          }
+          const appeared = await waitForPeerEntity(peerId, 4000);
+          if (!appeared) {
+            renderErrorStep("Esse usuário saiu da sala.");
+            return;
+          }
+          if (!teleportNear(peerId)) {
+            renderErrorStep("Não foi possível chegar até ele.");
+            return;
+          }
+          close();
+        }
+      },
+      { once: false },
+    );
   }
 
   function positionPopup(anchorEl) {
     if (!popup || !anchorEl) return;
     const r = anchorEl.getBoundingClientRect();
-    popup.style.left = (r.left + r.width / 2) + "px";
+    popup.style.left = r.left + r.width / 2 + "px";
     popup.style.top = r.top + "px";
   }
 
@@ -10932,7 +12363,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const plate = e.target.closest?.(".nameplate.is-clickable");
     if (!plate) return;
     const uid = plate.dataset.user;
-    if (uid) { e.stopPropagation(); open(uid, plate); }
+    if (uid) {
+      e.stopPropagation();
+      open(uid, plate);
+    }
   });
 
   // Exposto para outros módulos (ex: clique no avatar 3D, botão "Ir até" no perfil)
@@ -10941,21 +12375,34 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     async goToLocation(peerId) {
       if (!peerId || peerId === (typeof myId !== "undefined" ? myId : null)) return;
       close();
-      if (playerEntities.get(peerId)) { teleportNear(peerId); return; }
+      if (playerEntities.get(peerId)) {
+        teleportNear(peerId);
+        return;
+      }
       let peerMapId = null;
       try {
         const state = lobbyChannel?.presenceState?.() || {};
         peerMapId = state[peerId]?.[0]?.map_id || null;
       } catch {}
-      const notify = (m) => { try { (window.toast || console.log)(m); } catch {} };
-      if (!peerMapId) { notify("Esse usuário não está online."); return; }
+      const notify = (m) => {
+        try {
+          (window.toast || console.log)(m);
+        } catch {}
+      };
+      if (!peerMapId) {
+        notify("Esse usuário não está online.");
+        return;
+      }
       if (peerMapId === currentMapId) {
         const ok = await waitForPeerEntity(peerId, 2500);
         if (ok) teleportNear(peerId);
         return;
       }
       const mapInfo = (Array.isArray(MAPS) ? MAPS : []).find((m) => m.id === peerMapId);
-      if (!mapInfo) { notify("Não foi possível entrar nessa sala."); return; }
+      if (!mapInfo) {
+        notify("Não foi possível entrar nessa sala.");
+        return;
+      }
       try {
         if (typeof switchRoom !== "function") throw new Error("switchRoom indisponível");
         await switchRoom(peerMapId);
@@ -10974,19 +12421,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 // ===== Portais (teleporte estilo GTA, rosa) =================
 // ============================================================
 (function setupPortals() {
-  const panel    = document.getElementById("portalsAdminPanel");
-  const dockBtn  = document.getElementById("portalsAdminToggle");
-  const listEl   = document.getElementById("portalsList");
+  const panel = document.getElementById("portalsAdminPanel");
+  const dockBtn = document.getElementById("portalsAdminToggle");
+  const listEl = document.getElementById("portalsList");
   const editorEl = document.getElementById("portalsEditor");
-  const newBtn   = document.getElementById("portalsNewBtn");
+  const newBtn = document.getElementById("portalsNewBtn");
   if (!panel) return;
 
   // 3D group dedicated to portals (added once)
   const portalsGroup = new THREE.Group();
   portalsGroup.name = "__portalsGroup";
-  try { scene.add(portalsGroup); } catch {}
+  try {
+    scene.add(portalsGroup);
+  } catch {}
 
-  let portals = [];           // rows
+  let portals = []; // rows
   const portalMeshes = new Map(); // id -> { group, label }
   let channel = null;
   let subscribedMapId = null;
@@ -11006,15 +12455,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let pendingDropPortalId = null;
 
   function _esc(s) {
-    return String(s ?? "").replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    return String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
   }
 
   function destOptions(selectedId) {
     const list = (Array.isArray(MAPS) ? MAPS : []).slice();
-    return list.map((m) =>
-      `<option value="${_esc(m.id)}" ${m.id === selectedId ? "selected" : ""}>${_esc(m.name || m.id)}</option>`
-    ).join("");
+    return list
+      .map(
+        (m) =>
+          `<option value="${_esc(m.id)}" ${m.id === selectedId ? "selected" : ""}>${_esc(m.name || m.id)}</option>`,
+      )
+      .join("");
   }
 
   // Cache of portals per map id, used to populate the "destination portal" select.
@@ -11022,18 +12476,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function fetchPortalsForMap(mapId) {
     if (!mapId) return [];
     if (portalsByMap.has(mapId)) return portalsByMap.get(mapId);
-    const { data, error } = await supabase
-      .from("map_portals").select("id,label,map_id").eq("map_id", mapId);
-    if (error) { console.warn("[portals] fetchPortalsForMap", error); return []; }
+    const { data, error } = await supabase.from("map_portals").select("id,label,map_id").eq("map_id", mapId);
+    if (error) {
+      console.warn("[portals] fetchPortalsForMap", error);
+      return [];
+    }
     portalsByMap.set(mapId, data || []);
     return data || [];
   }
   function destPortalOptions(mapId, selectedId, excludeId) {
     const list = (portalsByMap.get(mapId) || []).filter((p) => p.id !== excludeId);
     const empty = `<option value="">— (apenas o mapa) —</option>`;
-    return empty + list.map((p) =>
-      `<option value="${_esc(p.id)}" ${p.id === selectedId ? "selected" : ""}>${_esc(p.label || "Portal")}</option>`
-    ).join("");
+    return (
+      empty +
+      list
+        .map(
+          (p) =>
+            `<option value="${_esc(p.id)}" ${p.id === selectedId ? "selected" : ""}>${_esc(p.label || "Portal")}</option>`,
+        )
+        .join("")
+    );
   }
 
   // ---------- Visual portal mesh ----------
@@ -11103,7 +12565,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const existing = portalMeshes.get(p.id);
       if (existing) {
         portalsGroup.remove(existing.group);
-        existing.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+        existing.group.traverse((o) => {
+          o.geometry?.dispose?.();
+          o.material?.dispose?.();
+        });
       }
       const group = buildPortalMesh(p);
       portalsGroup.add(group);
@@ -11112,7 +12577,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const [id, m] of Array.from(portalMeshes)) {
       if (!seen.has(id)) {
         portalsGroup.remove(m.group);
-        m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+        m.group.traverse((o) => {
+          o.geometry?.dispose?.();
+          o.material?.dispose?.();
+        });
         portalMeshes.delete(id);
       }
     }
@@ -11132,15 +12600,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // ---------- Data ----------
   async function load(mapId) {
-    if (!mapId) { portals = []; syncMeshes(); renderAdmin(); return; }
+    if (!mapId) {
+      portals = [];
+      syncMeshes();
+      renderAdmin();
+      return;
+    }
     const { data, error } = await supabase
       .from("map_portals")
       .select("*")
       .eq("map_id", mapId)
       .order("created_at", { ascending: true });
-    if (error) { console.warn("[portals] load", error); return; }
+    if (error) {
+      console.warn("[portals] load", error);
+      return;
+    }
     portals = data || [];
-    portalsByMap.set(mapId, portals.map((p) => ({ id: p.id, label: p.label, map_id: p.map_id })));
+    portalsByMap.set(
+      mapId,
+      portals.map((p) => ({ id: p.id, label: p.label, map_id: p.map_id })),
+    );
     syncMeshes();
     renderAdmin();
     // If we arrived here via a portal-to-portal teleport, drop the player on the
@@ -11166,25 +12645,40 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   async function subscribe(mapId) {
     if (channel && subscribedMapId === mapId) return;
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = mapId;
     if (!mapId) return;
     channel = supabase
       .channel("portals:" + mapId)
-      .on("postgres_changes",
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "map_portals", filter: "map_id=eq." + mapId },
-        () => load(mapId))
+        () => load(mapId),
+      )
       .subscribe();
   }
   async function unsubscribe() {
-    if (channel) { try { await supabase.removeChannel(channel); } catch {} channel = null; }
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch {}
+      channel = null;
+    }
     subscribedMapId = null;
   }
 
   function clearScene() {
     for (const { group } of portalMeshes.values()) {
       portalsGroup.remove(group);
-      group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      group.traverse((o) => {
+        o.geometry?.dispose?.();
+        o.material?.dispose?.();
+      });
     }
     portalMeshes.clear();
     armedPortals.clear();
@@ -11193,7 +12687,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // ---------- Proximity / teleport ----------
   function dropPlayerAt(x, y, z) {
-    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    const entity = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
     if (!entity?.group) return false;
     entity.group.position.set(Number(x) || 0, Number(y) || entity.group.position.y, Number(z) || 0);
     return true;
@@ -11201,16 +12695,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   setInterval(() => {
     if (!inRoom) return;
-    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    const entity = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
     if (!entity?.group) return;
-    const px = entity.group.position.x, pz = entity.group.position.z;
+    const px = entity.group.position.x,
+      pz = entity.group.position.z;
 
     // Update armed/suppressed state per portal based on distance.
     for (const p of portals) {
       const dx = px - (Number(p.pos_x) || 0);
       const dz = pz - (Number(p.pos_z) || 0);
       const r = Math.max(0.3, Number(p.radius) || 1.2);
-      const outsideMargin = (dx * dx + dz * dz) > (r * 1.6) * (r * 1.6);
+      const outsideMargin = dx * dx + dz * dz > r * 1.6 * (r * 1.6);
       if (outsideMargin) {
         // Player is clearly outside → arm it and lift any suppression.
         armedPortals.add(p.id);
@@ -11250,7 +12745,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           Promise.resolve()
             .then(() => (typeof switchRoom === "function" ? switchRoom(destMap) : null))
             .catch((e) => console.warn("[portals] switchRoom", e))
-            .finally(() => { teleporting = false; });
+            .finally(() => {
+              teleporting = false;
+            });
         }
         break;
       }
@@ -11282,8 +12779,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   try {
     const _obs = new MutationObserver(() => {
       if (panel.hidden) return;
-      if (!isAdmin) { panel.hidden = true; alert("Apenas admin."); return; }
-      editingId = null; editingDraft = null;
+      if (!isAdmin) {
+        panel.hidden = true;
+        alert("Apenas admin.");
+        return;
+      }
+      editingId = null;
+      editingDraft = null;
       renderAdmin();
     });
     _obs.observe(panel, { attributes: true, attributeFilter: ["hidden"] });
@@ -11292,21 +12794,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   newBtn?.addEventListener("click", async () => {
     if (!isAdmin) return alert("Apenas admin.");
     if (!currentMapId) return alert("Entre em uma sala primeiro.");
-    const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+    const entity = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
     const pos = entity?.group?.position || { x: 0, y: 0, z: 0 };
-    const dest = (MAPS.find((m) => m.id !== currentMapId)?.id) || currentMapId;
-    const { data, error } = await supabase.from("map_portals").insert({
-      map_id: currentMapId,
-      dest_map_id: dest,
-      label: "Portal",
-      pos_x: Number(pos.x.toFixed(3)),
-      pos_y: 0,
-      pos_z: Number(pos.z.toFixed(3)),
-      radius: 1.2,
-      height: 2.6,
-      color: "#ff3ea5",
-    }).select().single();
-    if (error) { alert("Erro ao criar portal: " + error.message); return; }
+    const dest = MAPS.find((m) => m.id !== currentMapId)?.id || currentMapId;
+    const { data, error } = await supabase
+      .from("map_portals")
+      .insert({
+        map_id: currentMapId,
+        dest_map_id: dest,
+        label: "Portal",
+        pos_x: Number(pos.x.toFixed(3)),
+        pos_y: 0,
+        pos_z: Number(pos.z.toFixed(3)),
+        radius: 1.2,
+        height: 2.6,
+        color: "#ff3ea5",
+      })
+      .select()
+      .single();
+    if (error) {
+      alert("Erro ao criar portal: " + error.message);
+      return;
+    }
     editingId = data.id;
     editingDraft = null;
     await load(currentMapId);
@@ -11315,12 +12824,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function renderAdmin() {
     if (!listEl || !editorEl) return;
     if (!portals.length) {
-      listEl.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhum portal nesta sala. Clique no + para adicionar.</div>';
+      listEl.innerHTML =
+        '<div style="color:#777;font-size:11px;padding:6px;">Nenhum portal nesta sala. Clique no + para adicionar.</div>';
     } else {
-      listEl.innerHTML = portals.map((p) => {
-        const destName = (MAPS.find((m) => m.id === p.dest_map_id)?.name) || p.dest_map_id;
-        const isEd = editingId === p.id;
-        return `<div class="portal-row" data-id="${_esc(p.id)}" style="border:1px solid ${isEd ? "#ff3ea5" : "#2a2a35"};border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,0.02);">
+      listEl.innerHTML = portals
+        .map((p) => {
+          const destName = MAPS.find((m) => m.id === p.dest_map_id)?.name || p.dest_map_id;
+          const isEd = editingId === p.id;
+          return `<div class="portal-row" data-id="${_esc(p.id)}" style="border:1px solid ${isEd ? "#ff3ea5" : "#2a2a35"};border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,0.02);">
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="width:10px;height:10px;border-radius:50%;background:${_esc(p.color || "#ff3ea5")};box-shadow:0 0 6px ${_esc(p.color || "#ff3ea5")};"></span>
             <strong style="flex:1;">${_esc(p.label || "Portal")}</strong>
@@ -11332,12 +12843,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <button type="button" data-act="del" style="background:transparent;border:1px solid #a33;color:#f88;border-radius:4px;padding:4px 8px;cursor:pointer;">×</button>
           </div>
         </div>`;
-      }).join("");
+        })
+        .join("");
     }
 
-    if (!editingId) { editorEl.innerHTML = ""; return; }
+    if (!editingId) {
+      editorEl.innerHTML = "";
+      return;
+    }
     const base = portals.find((p) => p.id === editingId);
-    if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
+    if (!base) {
+      editingId = null;
+      editorEl.innerHTML = "";
+      return;
+    }
     const d = editingDraft || { ...base };
     editingDraft = d;
 
@@ -11394,19 +12913,24 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   // ---------- Panel events ----------
   listEl?.addEventListener("click", async (ev) => {
-    const btn = ev.target.closest("button[data-act]"); if (!btn) return;
-    const row = ev.target.closest(".portal-row"); if (!row) return;
+    const btn = ev.target.closest("button[data-act]");
+    if (!btn) return;
+    const row = ev.target.closest(".portal-row");
+    if (!row) return;
     const id = row.dataset.id;
     const act = btn.dataset.act;
     if (act === "edit") {
-      editingId = (editingId === id) ? null : id;
+      editingId = editingId === id ? null : id;
       editingDraft = null;
       renderAdmin();
     } else if (act === "del") {
       if (!confirm("Remover este portal?")) return;
       const { error } = await supabase.from("map_portals").delete().eq("id", id);
       if (error) alert("Erro: " + error.message);
-      else { editingId = null; await load(currentMapId); }
+      else {
+        editingId = null;
+        await load(currentMapId);
+      }
     } else if (act === "tp") {
       const p = portals.find((x) => x.id === id);
       if (p?.dest_map_id && typeof switchRoom === "function") switchRoom(p.dest_map_id);
@@ -11416,7 +12940,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   editorEl?.addEventListener("input", async (ev) => {
     if (!editingDraft) return;
     const t = ev.target;
-    const field = t.dataset?.field; if (!field) return;
+    const field = t.dataset?.field;
+    if (!field) return;
     let val = t.value;
     if (t.type === "range" || t.type === "number") val = Number(val);
     editingDraft[field] = val;
@@ -11442,21 +12967,28 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const merged = { ...m.row, ...editingDraft };
       const fresh = buildPortalMesh(merged);
       portalsGroup.remove(m.group);
-      m.group.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      m.group.traverse((o) => {
+        o.geometry?.dispose?.();
+        o.material?.dispose?.();
+      });
       portalsGroup.add(fresh);
       portalMeshes.set(editingId, { group: fresh, row: m.row });
     }
   });
 
   editorEl?.addEventListener("click", async (ev) => {
-    const btn = ev.target.closest("button[data-act]"); if (!btn) return;
+    const btn = ev.target.closest("button[data-act]");
+    if (!btn) return;
     const act = btn.dataset.act;
     if (act === "cancel") {
-      editingId = null; editingDraft = null; renderAdmin();
+      editingId = null;
+      editingDraft = null;
+      renderAdmin();
       await load(currentMapId);
     } else if (act === "here") {
-      const entity = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
-      const pos = entity?.group?.position; if (!pos || !editingDraft) return;
+      const entity = typeof myId !== "undefined" && myId ? playerEntities.get(myId) : null;
+      const pos = entity?.group?.position;
+      if (!pos || !editingDraft) return;
       editingDraft.pos_x = Number(pos.x.toFixed(3));
       editingDraft.pos_z = Number(pos.z.toFixed(3));
       renderAdmin();
@@ -11474,11 +13006,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         height: Math.max(0.6, Number(editingDraft.height) || 2.6),
       };
       const { error } = await supabase.from("map_portals").update(patch).eq("id", editingId);
-      if (error) { alert("Erro: " + error.message); return; }
+      if (error) {
+        alert("Erro: " + error.message);
+        return;
+      }
       // Invalidate cached portal lists for the affected maps so the selector refreshes.
       portalsByMap.delete(currentMapId);
       if (patch.dest_map_id) portalsByMap.delete(patch.dest_map_id);
-      editingId = null; editingDraft = null;
+      editingId = null;
+      editingDraft = null;
       await load(currentMapId);
     }
   });
@@ -11496,9 +13032,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   if (typeof THREE === "undefined" || typeof scene === "undefined") return;
 
   // ---------- State ----------
-  let itemCatalog = [];                  // [{ slug, name, glb_url, hold_*, drink_animation_url, ... }]
-  const itemInstances = new Map();       // id -> { row, group, slug }
-  const heldItems = new Map();           // userId -> { instanceRow, mesh, slug, drinkAction }
+  let itemCatalog = []; // [{ slug, name, glb_url, hold_*, drink_animation_url, ... }]
+  const itemInstances = new Map(); // id -> { row, group, slug }
+  const heldItems = new Map(); // userId -> { instanceRow, mesh, slug, drinkAction }
   const itemGroup = new THREE.Group();
   itemGroup.name = "ItemInstances";
   scene.add(itemGroup);
@@ -11506,18 +13042,30 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // GLB cache per slug
   const _itemGlbCache = new Map(); // slug -> Promise<Object3D>
 
-  function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+  function _esc(s) {
+    return String(s ?? "").replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
+  }
 
   async function loadItemGlb(catItem) {
     if (!_itemGlbCache.has(catItem.slug)) {
-      _itemGlbCache.set(catItem.slug, new Promise((resolve, reject) => {
-        loader.load(catItem.glb_url, (gltf) => resolve(gltf.scene), undefined, reject);
-      }));
+      _itemGlbCache.set(
+        catItem.slug,
+        new Promise((resolve, reject) => {
+          loader.load(catItem.glb_url, (gltf) => resolve(gltf.scene), undefined, reject);
+        }),
+      );
     }
     const src = await _itemGlbCache.get(catItem.slug);
     const mesh = src.clone(true);
     mesh.traverse((o) => {
-      if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; o.frustumCulled = false; }
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.receiveShadow = true;
+        o.frustumCulled = false;
+      }
     });
     return mesh;
   }
@@ -11525,7 +13073,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // ---------- Catalog ----------
   async function reloadItemCatalog() {
     const { data, error } = await supabase.from("item_catalog").select("*").order("name");
-    if (error) { console.warn("[items] catalog", error); return; }
+    if (error) {
+      console.warn("[items] catalog", error);
+      return;
+    }
     itemCatalog = data || [];
     window.__itemCatalog = itemCatalog;
     renderItemsAdmin();
@@ -11533,7 +13084,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   window.addEventListener("bot-animations:updated", () => renderItemsAdmin());
 
-  supabase.channel("item-catalog")
+  supabase
+    .channel("item-catalog")
     .on("postgres_changes", { event: "*", schema: "public", table: "item_catalog" }, () => reloadItemCatalog())
     .subscribe();
 
@@ -11546,7 +13098,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     if (!mapId) return;
     const { data, error } = await supabase.from("map_item_instances").select("*").eq("map_id", mapId);
-    if (error) { console.warn("[items] instances", error); return; }
+    if (error) {
+      console.warn("[items] instances", error);
+      return;
+    }
     for (const row of data || []) await spawnInstance(row);
   }
 
@@ -11557,12 +13112,19 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       // Try fetching catalog once if not loaded yet
       await reloadItemCatalog();
       const cat2 = itemCatalog.find((c) => c.slug === row.item_slug);
-      if (!cat2) { console.warn("[items] sem catálogo p/ slug", row.item_slug); return; }
+      if (!cat2) {
+        console.warn("[items] sem catálogo p/ slug", row.item_slug);
+        return;
+      }
       return spawnInstance(row);
     }
     let mesh;
-    try { mesh = await loadItemGlb(cat); }
-    catch (e) { console.warn("[items] GLB load", e); return; }
+    try {
+      mesh = await loadItemGlb(cat);
+    } catch (e) {
+      console.warn("[items] GLB load", e);
+      return;
+    }
     const group = new THREE.Group();
     group.name = "ItemInstance:" + row.id;
     group.userData.itemInstanceId = row.id;
@@ -11584,10 +13146,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   let _itemsChannel = null;
   function subscribeItemsForMap(mapId) {
-    if (_itemsChannel) { try { supabase.removeChannel(_itemsChannel); } catch {} _itemsChannel = null; }
+    if (_itemsChannel) {
+      try {
+        supabase.removeChannel(_itemsChannel);
+      } catch {}
+      _itemsChannel = null;
+    }
     if (!mapId) return;
-    _itemsChannel = supabase.channel("map-items:" + mapId)
-      .on("postgres_changes",
+    _itemsChannel = supabase
+      .channel("map-items:" + mapId)
+      .on(
+        "postgres_changes",
         { event: "*", schema: "public", table: "map_item_instances", filter: "map_id=eq." + mapId },
         async (payload) => {
           if (payload.eventType === "INSERT") await spawnInstance(payload.new);
@@ -11600,7 +13169,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
               e.group.rotation.y = payload.new.rotation_y || 0;
             }
           }
-        })
+        },
+      )
       .subscribe();
   }
 
@@ -11610,7 +13180,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const [id, e] of itemInstances) {
       const exp = e.row.expires_at ? new Date(e.row.expires_at).getTime() : 0;
       if (exp && exp <= now) {
-        try { await supabase.from("map_item_instances").delete().eq("id", id); } catch {}
+        try {
+          await supabase.from("map_item_instances").delete().eq("id", id);
+        } catch {}
       }
     }
   }, 5000);
@@ -11641,15 +13213,23 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const entity = playerEntities.get(userId);
     if (!entity?.character) return null;
     const bone = findBoneByName(entity.character, cat.hold_bone || "RightHand");
-    if (!bone) { console.warn("[items] bone não encontrado:", cat.hold_bone); return null; }
+    if (!bone) {
+      console.warn("[items] bone não encontrado:", cat.hold_bone);
+      return null;
+    }
     let mesh;
-    try { mesh = await loadItemGlb(cat); } catch (e) { console.warn("[items] hold GLB", e); return null; }
+    try {
+      mesh = await loadItemGlb(cat);
+    } catch (e) {
+      console.warn("[items] hold GLB", e);
+      return null;
+    }
     mesh.scale.setScalar((cat.scale || 1) * (cat.hold_scale || 1));
     mesh.position.set(cat.hold_offset_x || 0, cat.hold_offset_y || 0, cat.hold_offset_z || 0);
     mesh.rotation.set(
-      (cat.hold_rot_x || 0) * Math.PI / 180,
-      (cat.hold_rot_y || 0) * Math.PI / 180,
-      (cat.hold_rot_z || 0) * Math.PI / 180
+      ((cat.hold_rot_x || 0) * Math.PI) / 180,
+      ((cat.hold_rot_y || 0) * Math.PI) / 180,
+      ((cat.hold_rot_z || 0) * Math.PI) / 180,
     );
     mesh.userData.heldItem = true;
     bone.add(mesh);
@@ -11671,7 +13251,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             drinkAction.play();
           }
         }
-      } catch (e) { console.warn("[items] drink anim", e); }
+      } catch (e) {
+        console.warn("[items] drink anim", e);
+      }
     }
     heldItems.set(userId, { instanceRow, mesh, slug: cat.slug, drinkAction, bone });
     return mesh;
@@ -11680,11 +13262,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function detachItemFromUser(userId) {
     const held = heldItems.get(userId);
     if (!held) return null;
-    try { held.bone?.remove(held.mesh); } catch {}
+    try {
+      held.bone?.remove(held.mesh);
+    } catch {}
     try {
       if (held.drinkAction) {
         held.drinkAction.fadeOut(0.2);
-        setTimeout(() => { try { held.drinkAction.stop(); } catch {} }, 220);
+        setTimeout(() => {
+          try {
+            held.drinkAction.stop();
+          } catch {}
+        }, 220);
       }
     } catch {}
     heldItems.delete(userId);
@@ -11707,19 +13295,32 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const a = botEntity.mixer.clipAction(retarg);
       a.setLoop(THREE.LoopRepeat, Infinity);
       a.reset().fadeIn(0.2).play();
-      if (prev) { try { prev.fadeOut(0.2); } catch {} }
+      if (prev) {
+        try {
+          prev.fadeOut(0.2);
+        } catch {}
+      }
       botEntity.action = a;
       // After durationMs, restore idle animation
-      setTimeout(() => {
-        try { a.fadeOut(0.25); } catch {}
-        setTimeout(() => {
-          try { a.stop(); } catch {}
-          // Re-apply original animation_url (or idle if null)
-          botEntity.animationUrl = null;
-          applyBotAnimation(botEntity, botEntity.row?.animation_url || null);
-        }, 260);
-      }, Math.max(200, durationMs - 250));
-    } catch (e) { console.warn("[bot-service] play", e); }
+      setTimeout(
+        () => {
+          try {
+            a.fadeOut(0.25);
+          } catch {}
+          setTimeout(() => {
+            try {
+              a.stop();
+            } catch {}
+            // Re-apply original animation_url (or idle if null)
+            botEntity.animationUrl = null;
+            applyBotAnimation(botEntity, botEntity.row?.animation_url || null);
+          }, 260);
+        },
+        Math.max(200, durationMs - 250),
+      );
+    } catch (e) {
+      console.warn("[bot-service] play", e);
+    }
   }
 
   window.__runBotService = async function (inter) {
@@ -11758,13 +13359,20 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         // release occupancy
         if (window.__sittingInteraction?._service) {
           window.__sittingInteraction = null;
-          try { presenceChannel?.track(presencePayload()); } catch {}
+          try {
+            presenceChannel?.track(presencePayload());
+          } catch {}
         }
-        if (!inter.item_slug) { addSystemLine?.("Nenhum item configurado."); return; }
+        if (!inter.item_slug) {
+          addSystemLine?.("Nenhum item configurado.");
+          return;
+        }
         // Compute world position via existing seat pose helper
         const baseWorld = (function () {
           // Reuse computeSeatPose from interactions module isn't exposed; replicate minimal logic
-          const ox = inter.offset_x || 0, oy = inter.offset_y || 0, oz = inter.offset_z || 0;
+          const ox = inter.offset_x || 0,
+            oy = inter.offset_y || 0,
+            oz = inter.offset_z || 0;
           if (!inter.asset_id) return new THREE.Vector3(ox, oy, oz);
           const obj = assetObjects.get(inter.asset_id);
           if (!obj) return new THREE.Vector3(ox, oy, oz);
@@ -11776,20 +13384,23 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           y: baseWorld.y + (inter.item_spawn_offset_y || 0),
           z: baseWorld.z + (inter.item_spawn_offset_z || 0),
         };
-        const expiresAt = inter.auto_despawn_ms > 0
-          ? new Date(Date.now() + inter.auto_despawn_ms).toISOString()
-          : null;
+        const expiresAt = inter.auto_despawn_ms > 0 ? new Date(Date.now() + inter.auto_despawn_ms).toISOString() : null;
         const { error } = await supabase.from("map_item_instances").insert({
           map_id: currentMapId,
           item_slug: inter.item_slug,
-          x: spawn.x, y: spawn.y, z: spawn.z, rotation_y: 0,
+          x: spawn.x,
+          y: spawn.y,
+          z: spawn.z,
+          rotation_y: 0,
           spawned_by: myId || null,
           source_interaction_id: inter.id,
           expires_at: expiresAt,
         });
         if (error) console.warn("[items] insert", error);
         else addSystemLine?.("Pronto! Pegue sua bebida.");
-      } catch (e) { console.warn("[bot-service] spawn", e); }
+      } catch (e) {
+        console.warn("[bot-service] spawn", e);
+      }
     }, duration);
   };
 
@@ -11797,7 +13408,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let nearbyItemId = null;
   const pickupPrompt = document.createElement("div");
   pickupPrompt.id = "itemPickupPrompt";
-  pickupPrompt.style.cssText = "position:fixed;pointer-events:auto;cursor:pointer;background:linear-gradient(135deg,#ffd27a,#ff7a59);color:#1a0e00;padding:6px 14px;border-radius:999px;font:600 13px system-ui;box-shadow:0 4px 20px rgba(0,0,0,.5);z-index:50;transition:opacity .15s;user-select:none;";
+  pickupPrompt.style.cssText =
+    "position:fixed;pointer-events:auto;cursor:pointer;background:linear-gradient(135deg,#ffd27a,#ff7a59);color:#1a0e00;padding:6px 14px;border-radius:999px;font:600 13px system-ui;box-shadow:0 4px 20px rgba(0,0,0,.5);z-index:50;transition:opacity .15s;user-select:none;";
   pickupPrompt.hidden = true;
   document.body.appendChild(pickupPrompt);
   pickupPrompt.addEventListener("click", () => tryPickupOrDrop());
@@ -11805,37 +13417,52 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const _tmpV3 = new THREE.Vector3();
   setInterval(() => {
     const myEnt = playerEntities.get(myId);
-    if (!myEnt?.group) { pickupPrompt.hidden = true; nearbyItemId = null; return; }
+    if (!myEnt?.group) {
+      pickupPrompt.hidden = true;
+      nearbyItemId = null;
+      return;
+    }
     // If holding, show "Soltar"
     if (heldItems.has(myId)) {
       pickupPrompt.hidden = false;
       pickupPrompt.textContent = "Soltar (E)";
       // anchor near player
-      const world = myEnt.group.position.clone(); world.y += 2.2;
+      const world = myEnt.group.position.clone();
+      world.y += 2.2;
       const rect = renderer.domElement.getBoundingClientRect();
       _tmpV3.copy(world).project(camera);
-      pickupPrompt.style.left = ((_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left) + "px";
-      pickupPrompt.style.top  = ((-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top) + "px";
+      pickupPrompt.style.left = (_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left + "px";
+      pickupPrompt.style.top = (-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top + "px";
       pickupPrompt.style.transform = "translate(-50%,-100%)";
       nearbyItemId = "__drop__";
       return;
     }
     // Find nearest item within 1.5m
-    let best = null, bestD = Infinity;
-    const px = myEnt.group.position.x, pz = myEnt.group.position.z;
+    let best = null,
+      bestD = Infinity;
+    const px = myEnt.group.position.x,
+      pz = myEnt.group.position.z;
     for (const [id, e] of itemInstances) {
       const d = Math.hypot(e.group.position.x - px, e.group.position.z - pz);
-      if (d < 1.5 && d < bestD) { best = { id, e, d }; bestD = d; }
+      if (d < 1.5 && d < bestD) {
+        best = { id, e, d };
+        bestD = d;
+      }
     }
-    if (!best) { pickupPrompt.hidden = true; nearbyItemId = null; return; }
+    if (!best) {
+      pickupPrompt.hidden = true;
+      nearbyItemId = null;
+      return;
+    }
     nearbyItemId = best.id;
     pickupPrompt.hidden = false;
     pickupPrompt.textContent = "Pegar (E)";
-    const world = best.e.group.position.clone(); world.y += 0.6;
+    const world = best.e.group.position.clone();
+    world.y += 0.6;
     const rect = renderer.domElement.getBoundingClientRect();
     _tmpV3.copy(world).project(camera);
-    pickupPrompt.style.left = ((_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left) + "px";
-    pickupPrompt.style.top  = ((-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top) + "px";
+    pickupPrompt.style.left = (_tmpV3.x * 0.5 + 0.5) * rect.width + rect.left + "px";
+    pickupPrompt.style.top = (-_tmpV3.y * 0.5 + 0.5) * rect.height + rect.top + "px";
     pickupPrompt.style.transform = "translate(-50%,-100%)";
   }, 180);
 
@@ -11857,11 +13484,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         await supabase.from("map_item_instances").insert({
           map_id: currentMapId,
           item_slug: held.slug,
-          x: px, y: py, z: pz, rotation_y: 0,
+          x: px,
+          y: py,
+          z: pz,
+          rotation_y: 0,
           spawned_by: myId || null,
           expires_at: expiresAt,
         });
-      } catch (e) { console.warn("[items] drop", e); }
+      } catch (e) {
+        console.warn("[items] drop", e);
+      }
       return;
     }
     // Pickup (race-safe DELETE + RETURNING)
@@ -11870,10 +13502,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (!e) return;
     const cat = itemCatalog.find((c) => c.slug === e.slug);
     if (!cat) return;
-    const { data: deleted, error } = await supabase
-      .from("map_item_instances").delete().eq("id", targetId).select();
-    if (error) { console.warn("[items] pickup", error); return; }
-    if (!deleted || !deleted.length) { addSystemLine?.("Alguém pegou primeiro."); return; }
+    const { data: deleted, error } = await supabase.from("map_item_instances").delete().eq("id", targetId).select();
+    if (error) {
+      console.warn("[items] pickup", error);
+      return;
+    }
+    if (!deleted || !deleted.length) {
+      addSystemLine?.("Alguém pegou primeiro.");
+      return;
+    }
     // Local remove (realtime DELETE will also remove)
     removeInstance(targetId);
     await attachItemToUser(myId, deleted[0], cat);
@@ -11891,7 +13528,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // ---------- Items admin panel ----------
   const itemsListEl = () => document.getElementById("itemsList");
   function renderItemsAdmin() {
-    const el = itemsListEl(); if (!el) return;
+    const el = itemsListEl();
+    if (!el) return;
     if (!itemCatalog.length) {
       el.innerHTML = '<div style="color:#777;font-size:11px;padding:6px;">Nenhum item cadastrado ainda.</div>';
       return;
@@ -11902,7 +13540,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         <input type="range" data-itemfield="${key}" min="${min}" max="${max}" step="${step}" value="${val}" style="flex:1">
         <input type="number" data-itemfield="${key}" min="${min}" max="${max}" step="${step}" value="${Number(val).toFixed(2)}" style="width:60px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px;">
       </label>`;
-    el.innerHTML = itemCatalog.map((it) => `
+    el.innerHTML = itemCatalog
+      .map(
+        (it) => `
       <details data-item-id="${_esc(it.id)}" style="border:1px solid #2a3040;border-radius:6px;">
         <summary style="cursor:pointer;padding:6px 8px;display:flex;justify-content:space-between;align-items:center;background:rgba(255,255,255,0.04);">
           <span><strong>${_esc(it.name)}</strong> <span style="color:#888;font-size:10px;">(${_esc(it.slug)})</span></span>
@@ -11915,7 +13555,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <div style="font-weight:600;font-size:11px;color:#9aa;margin:8px 0 4px;">Ao carregar (mão)</div>
           <label style="display:flex;align-items:center;gap:6px;font-size:11px;margin:2px 0;">
             <span style="flex:0 0 110px;color:#9aa;">Bone da mão</span>
-            <input type="text" data-itemfield="hold_bone" value="${_esc(it.hold_bone || 'RightHand')}" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px 4px;">
+            <input type="text" data-itemfield="hold_bone" value="${_esc(it.hold_bone || "RightHand")}" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px 4px;">
           </label>
           ${slider("Hold escala", "hold_scale", it.hold_scale, 0.1, 5, 0.05)}
           ${slider("Hold offset X", "hold_offset_x", it.hold_offset_x, -0.5, 0.5, 0.005)}
@@ -11929,13 +13569,15 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
             <span style="flex:0 0 110px;color:#9aa;">Animação</span>
             <select data-itemfield="drink_animation_url" style="flex:1;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:3px;padding:2px;">
               <option value="">— Nenhuma —</option>
-              ${(window.__botAnimations || []).map(a => `<option value="${_esc(a.url)}" ${a.url === (it.drink_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
+              ${(window.__botAnimations || []).map((a) => `<option value="${_esc(a.url)}" ${a.url === (it.drink_animation_url || "") ? "selected" : ""}>${_esc(a.name)}</option>`).join("")}
             </select>
           </label>
           <button type="button" data-act="save-item" class="primary" style="margin-top:6px;width:100%;background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:6px;cursor:pointer;font-weight:600;">Salvar</button>
         </div>
       </details>
-    `).join("");
+    `,
+      )
+      .join("");
   }
 
   const itemsPanel = () => document.getElementById("itemsAdminPanel");
@@ -11955,7 +13597,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // save
     if (t.dataset && t.dataset.act === "save-item") {
       ev.preventDefault();
-      const det = t.closest("[data-item-id]"); if (!det) return;
+      const det = t.closest("[data-item-id]");
+      if (!det) return;
       const id = det.dataset.itemId;
       const patch = {};
       det.querySelectorAll("[data-itemfield]").forEach((inp) => {
@@ -11973,12 +13616,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   document.addEventListener("input", (ev) => {
     const el = ev.target;
     if (!el?.dataset || !el.dataset.itemfield) return;
-    const wrap = el.closest("label"); if (!wrap) return;
+    const wrap = el.closest("label");
+    if (!wrap) return;
     if (el.type === "range") {
-      const num = wrap.querySelector('input[type=number][data-itemfield]');
+      const num = wrap.querySelector("input[type=number][data-itemfield]");
       if (num && document.activeElement !== num) num.value = Number(el.value).toFixed(2);
     } else if (el.type === "number") {
-      const range = wrap.querySelector('input[type=range][data-itemfield]');
+      const range = wrap.querySelector("input[type=range][data-itemfield]");
       if (range) range.value = el.value;
     }
   });
@@ -11987,21 +13631,33 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   document.addEventListener("change", async (ev) => {
     const t = ev.target;
     if (!t || t.id !== "newItemGlbFile") return;
-    const file = t.files?.[0]; if (!file) return;
+    const file = t.files?.[0];
+    if (!file) return;
     const nameEl = document.getElementById("newItemName");
     const slugEl = document.getElementById("newItemSlug");
     const status = document.getElementById("newItemStatus");
     const name = nameEl?.value?.trim() || file.name.replace(/\.glb$/i, "");
-    let slug = (slugEl?.value?.trim() || name).toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-    if (!slug) { alert("Informe um slug válido."); return; }
+    let slug = (slugEl?.value?.trim() || name)
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!slug) {
+      alert("Informe um slug válido.");
+      return;
+    }
     status.textContent = "Enviando…";
     try {
       const path = "items/" + slug + "-" + Date.now() + ".glb";
-      const { error: upErr } = await supabase.storage.from("map-assets").upload(path, file, { contentType: "model/gltf-binary", upsert: false });
+      const { error: upErr } = await supabase.storage
+        .from("map-assets")
+        .upload(path, file, { contentType: "model/gltf-binary", upsert: false });
       if (upErr) throw upErr;
       const { data: pub } = supabase.storage.from("map-assets").getPublicUrl(path);
       const { error: insErr } = await supabase.from("item_catalog").insert({
-        slug, name, glb_url: pub.publicUrl, created_by: myId || null,
+        slug,
+        name,
+        glb_url: pub.publicUrl,
+        created_by: myId || null,
       });
       if (insErr) throw insErr;
       status.textContent = "✔ Cadastrado.";
@@ -12028,127 +13684,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   // initial
   (async () => {
     await reloadItemCatalog();
-    setTimeout(() => { reloadMapItems(currentMapId); subscribeItemsForMap(currentMapId); }, 800);
+    setTimeout(() => {
+      reloadMapItems(currentMapId);
+      subscribeItemsForMap(currentMapId);
+    }, 800);
   })();
-
-})();
-
-
-// ============================================================
-// ===== ITEM EDIT PREVIEW (admin: arrastar item com setinhas) =
-// ============================================================
-(function itemEditPreview() {
-  if (typeof THREE === "undefined" || typeof scene === "undefined") return;
-
-  let previewGroup = null;
-  let previewSlug = null;
-  let activeDraft = null;
-  let pendingLoadSlug = null;
-
-  function _baseWorld(draft) {
-    const ox = Number(draft.offset_x) || 0, oy = Number(draft.offset_y) || 0, oz = Number(draft.offset_z) || 0;
-    if (!draft.asset_id) return new THREE.Vector3(ox, oy, oz);
-    const obj = assetObjects.get(draft.asset_id);
-    if (!obj) return new THREE.Vector3(ox, oy, oz);
-    obj.updateMatrixWorld(true);
-    return new THREE.Vector3(ox, oy, oz).applyMatrix4(obj.matrixWorld);
-  }
-  function _spawnWorld(draft) {
-    const b = _baseWorld(draft);
-    b.x += Number(draft.item_spawn_offset_x) || 0;
-    b.y += Number(draft.item_spawn_offset_y) || 0;
-    b.z += Number(draft.item_spawn_offset_z) || 0;
-    return b;
-  }
-
-  function clearPreview() {
-    const wasActive = !!previewGroup;
-    if (previewGroup) {
-      try { scene.remove(previewGroup); } catch {}
-      previewGroup.traverse?.((o) => {
-        if (o.isMesh) {
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m) => { try { m.dispose?.(); } catch {} });
-        }
-      });
-      previewGroup = null;
-    }
-    previewSlug = null;
-    activeDraft = null;
-    pendingLoadSlug = null;
-    if (wasActive) { try { window.detachGizmo?.(); } catch {} }
-  }
-
-  function _attachGizmo() {
-    if (!previewGroup) return;
-    try {
-      window.attachGizmo?.({
-        getPosition: () => previewGroup.position.clone(),
-        setPosition: (v) => {
-          if (!previewGroup || !activeDraft) return;
-          previewGroup.position.copy(v);
-          const base = _baseWorld(activeDraft);
-          activeDraft.item_spawn_offset_x = +(v.x - base.x).toFixed(3);
-          activeDraft.item_spawn_offset_y = +(v.y - base.y).toFixed(3);
-          activeDraft.item_spawn_offset_z = +(v.z - base.z).toFixed(3);
-          // Reflete os valores nos sliders/inputs do editor
-          const ed = document.getElementById("interactionsEditor");
-          if (ed) {
-            for (const k of ["item_spawn_offset_x", "item_spawn_offset_y", "item_spawn_offset_z"]) {
-              ed.querySelectorAll(`[data-field="${k}"]`).forEach((el) => {
-                if (el.type === "number") el.value = Number(activeDraft[k]).toFixed(2);
-                else el.value = String(activeDraft[k]);
-              });
-            }
-          }
-        },
-      });
-    } catch {}
-  }
-
-  function _loadGlb(cat) {
-    return new Promise((res, rej) => {
-      try { loader.load(cat.glb_url, (g) => res(g.scene.clone(true)), undefined, rej); }
-      catch (e) { rej(e); }
-    });
-  }
-
-  async function _ensurePreview(draft) {
-    const cat = (window.__itemCatalog || []).find((c) => c.slug === draft.item_slug);
-    if (!cat) { clearPreview(); return; }
-    if (previewSlug !== draft.item_slug) {
-      clearPreview();
-      previewSlug = draft.item_slug;
-      pendingLoadSlug = draft.item_slug;
-      let mesh = null;
-      try { mesh = await _loadGlb(cat); }
-      catch (e) { console.warn("[item preview]", e); pendingLoadSlug = null; return; }
-      if (pendingLoadSlug !== draft.item_slug) return; // mudou enquanto carregava
-      pendingLoadSlug = null;
-      mesh.scale.setScalar(cat.scale || 1);
-      mesh.traverse((o) => {
-        if (o.isMesh) {
-          const mats = Array.isArray(o.material) ? o.material : [o.material];
-          o.material = mats.map((m) => {
-            const cl = m.clone();
-            cl.transparent = true; cl.opacity = 0.7; cl.depthWrite = false;
-            return cl;
-          });
-        }
-      });
-      previewGroup = new THREE.Group();
-      previewGroup.name = "ItemEditPreview";
-      previewGroup.add(mesh);
-      scene.add(previewGroup);
-      _attachGizmo();
-    }
-    if (previewGroup) previewGroup.position.copy(_spawnWorld(draft));
-  }
-
-  window.__setItemEditPreview = function (draft) {
-    if (!draft || draft.kind !== "bot_service" || !draft.item_slug) { clearPreview(); return; }
-    activeDraft = draft;
-    _ensurePreview(draft);
-  };
-  window.__clearItemEditPreview = clearPreview;
 })();
