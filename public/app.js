@@ -7885,7 +7885,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       }).join("");
     }
     // Editor form
-    if (editingId === null) { editorEl.innerHTML = ""; return; }
+    if (editingId === null) { editorEl.innerHTML = ""; window.__clearItemEditPreview?.(); return; }
     const isNew = editingId === "new";
     const base = isNew ? editingDraft : (interactions.find((i) => i.id === editingId) || null);
     if (!base) { editingId = null; editorEl.innerHTML = ""; return; }
