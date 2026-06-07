@@ -258,7 +258,11 @@ const _legacyKickPose = loadLegacyKickPose();
 const ANIM_NAMES = ["idle", "walk", "run", "dance", "wave", "kickWeak", "kickStrong"];
 const ANIM_TUNINGS_KEY = "neon-tap-room-anim-tunings";
 const ANIM_TUNINGS_VERSION_KEY = "neon-tap-room-anim-tunings-version";
-const ANIM_TUNINGS_VERSION = "1";
+// Bump para "3": invalida caches de versões antigas que herdaram rotX=-90 do
+// legado kickPose em animações não-chute (bug que deixava o avatar deitado
+// para qualquer dispositivo novo até o admin ter salvado tuning explícito).
+const ANIM_TUNINGS_VERSION = "3";
+const NON_KICK_ANIMS = new Set(["idle", "walk", "run", "dance", "wave"]);
 function defaultAnimTuning() { return { offX: 0, offY: 0, offZ: 0, rotX: 0, rotY: 0, rotZ: 0 }; }
 function loadAnimTunings() {
   const out = {};
@@ -276,21 +280,38 @@ function loadAnimTunings() {
             out[k] = Object.assign(defaultAnimTuning(), parsed[k]);
           }
         }
-        return out;
       }
     } else {
+      // Versão antiga detectada: tenta preservar valores razoáveis, mas
+      // descarta o lixo de rotX=-90 em animações não-chute (causa do avatar
+      // deitado em dispositivos que nunca tiveram tuning explícito).
+      try {
+        const raw = localStorage.getItem(ANIM_TUNINGS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          for (const n of ANIM_NAMES) {
+            if (parsed[n]) Object.assign(out[n], parsed[n]);
+            if (NON_KICK_ANIMS.has(n) && Math.abs(out[n].rotX || 0) >= 89) {
+              out[n].rotX = 0;
+            }
+          }
+          for (const k of Object.keys(parsed)) {
+            if (k.startsWith("custom:")) {
+              out[k] = Object.assign(defaultAnimTuning(), parsed[k]);
+              if (Math.abs(out[k].rotX || 0) >= 89) out[k].rotX = 0;
+            }
+          }
+        }
+      } catch {}
       localStorage.setItem(ANIM_TUNINGS_VERSION_KEY, ANIM_TUNINGS_VERSION);
+      try { localStorage.setItem(ANIM_TUNINGS_KEY, JSON.stringify(out)); } catch {}
     }
   } catch {}
-  // Migração: usa o antigo kickPose como ponto de partida.
-  const kp = _legacyKickPose;
-  for (const n of ["idle", "walk", "run", "dance", "wave"]) {
-    out[n].offY = kp.offY || 0;
-    out[n].offZ = kp.offFwd || 0;
-    out[n].rotX = kp.rotX || 0;
-  }
-  for (const n of ["kickWeak", "kickStrong"]) {
-    out[n].rotX = kp.rotX || -90;
+  // Auto-reparo final: nunca deixe animações não-chute saírem com rotX absurdo.
+  for (const n of ANIM_NAMES) {
+    if (NON_KICK_ANIMS.has(n) && Math.abs(out[n].rotX || 0) >= 89) {
+      out[n].rotX = 0;
+    }
   }
   return out;
 }
