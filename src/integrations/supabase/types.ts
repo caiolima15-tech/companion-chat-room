@@ -1144,6 +1144,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _send_push_event: {
+        Args: {
+          _body: string
+          _tag: string
+          _title: string
+          _url: string
+          _user_ids: string[]
+        }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
