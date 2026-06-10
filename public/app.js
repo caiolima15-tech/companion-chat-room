@@ -7547,6 +7547,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const newBtn = document.getElementById("interactionsNewBtn");
   if (!promptEl) return;
 
+  // Barra de modelos (templates) — injetada uma vez logo abaixo do botão "+ Nova"
+  if (newBtn && !document.getElementById("interactionsTemplatesBar")) {
+    const bar = document.createElement("div");
+    bar.id = "interactionsTemplatesBar";
+    bar.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;border:1px dashed #2d2d3d;border-radius:8px;background:rgba(255,255,255,0.02);";
+    bar.innerHTML = `
+      <div style="font-size:11px;color:#aaa;font-weight:600;">📦 Modelos salvos</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="interactionsTplSelect" style="flex:1;background:#11131a;color:#eee;border:1px solid #333;border-radius:6px;padding:6px;font:12px system-ui;"><option value="">— Selecione um modelo —</option></select>
+        <button id="interactionsTplDel" type="button" title="Excluir modelo selecionado" style="background:#2a1416;color:#f88;border:1px solid #5a2024;border-radius:6px;padding:4px 8px;cursor:pointer;">×</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button id="interactionsTplLoadHere" type="button" style="flex:1;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-weight:600;font-size:12px;">📍 Usar aqui (minha posição)</button>
+        <button id="interactionsTplLoadRaw" type="button" style="background:#1f2937;color:#eee;border:1px solid #374151;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px;" title="Carregar com os offsets originais">⤓</button>
+      </div>`;
+    newBtn.insertAdjacentElement("afterend", bar);
+  }
+
+  let templates = [];          // [{...row}]
   let interactions = [];       // [{...row}]
   let channel = null;
   let subscribedMapId = null;
@@ -7556,6 +7575,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let editingDraft = null;     // patch em edição (preview ao vivo)
   let pickMode = false;        // selecionar asset no mundo
   let currentSit = null;       // {id, assetId, worldPos, worldRotY, animationUrl, mixerAction, animClipName}
+
 
   const tmpV = new THREE.Vector3();
 
