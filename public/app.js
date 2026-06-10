@@ -12173,3 +12173,100 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   };
   window.__clearItemEditPreview = clearPreview;
 })();
+
+// ============================================================
+// WEB PUSH NOTIFICATIONS (PWA instalado / iOS 16.4+ standalone)
+// ============================================================
+(function setupWebPush() {
+  const VAPID_PUBLIC_KEY = "BJDMd4x3FV-pgiH6mk2Sy93qw3vdGXMkZd0Q89yeKS_zvXXlobv3aZ_Tzd0v9jwvoBiiOn27fBMb7zlo080Rp1M";
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function bufToB64(buf) {
+    return btoa(String.fromCharCode.apply(null, new Uint8Array(buf)))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  // Só dispara em PWA instalado (standalone) — alinhado com requisitos do iOS 16.4+
+  function isStandalone() {
+    try {
+      return (
+        window.matchMedia?.("(display-mode: standalone)").matches ||
+        window.navigator.standalone === true
+      );
+    } catch { return false; }
+  }
+  async function registerAndSubscribe() {
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+      if (!isStandalone()) return;
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      if (Notification.permission === "denied") return;
+      if (Notification.permission !== "granted") {
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") return;
+      }
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const { data: { user } } = await window.supabase.auth.getUser();
+      if (!user) return;
+      const json = sub.toJSON();
+      await window.supabase
+        .from("push_subscriptions")
+        .upsert(
+          {
+            user_id: user.id,
+            endpoint: sub.endpoint,
+            p256dh: json.keys.p256dh,
+            auth: json.keys.auth,
+            user_agent: navigator.userAgent.slice(0, 256),
+          },
+          { onConflict: "endpoint" }
+        );
+    } catch (e) {
+      console.warn("[push] subscribe failed", e);
+    }
+  }
+  // Tenta logo após login e em qualquer gesto inicial do usuário
+  function trigger() { registerAndSubscribe(); }
+  window.addEventListener("auth-ready", trigger);
+  document.addEventListener("click", trigger, { once: true, capture: true });
+  document.addEventListener("touchstart", trigger, { once: true, capture: true });
+
+  // Helper: enviar push (chamado quando o jogador entra no lobby)
+  window.__notifyFriendsOnline = async function () {
+    try {
+      const { data: { user } } = await window.supabase.auth.getUser();
+      if (!user) return;
+      const { data: rels } = await window.supabase
+        .from("friend_requests")
+        .select("from_user,to_user")
+        .or(`from_user.eq.${user.id},to_user.eq.${user.id}`)
+        .eq("status", "accepted");
+      const friendIds = (rels || []).map((r) => (r.from_user === user.id ? r.to_user : r.from_user));
+      if (friendIds.length === 0) return;
+      const { data: prof } = await window.supabase
+        .from("profiles").select("nickname").eq("id", user.id).maybeSingle();
+      const nick = prof?.nickname || "Um amigo";
+      await window.supabase.functions.invoke("send-push", {
+        body: {
+          user_ids: friendIds,
+          title: "Virtualife",
+          body: `${nick} ficou online`,
+          url: "/",
+          tag: `online:${user.id}`,
+        },
+      });
+    } catch (e) { console.warn("[push] notifyFriendsOnline", e); }
+  };
+})();
