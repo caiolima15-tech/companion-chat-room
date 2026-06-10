@@ -7547,6 +7547,25 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const newBtn = document.getElementById("interactionsNewBtn");
   if (!promptEl) return;
 
+  // Barra de modelos (templates) — injetada uma vez logo abaixo do botão "+ Nova"
+  if (newBtn && !document.getElementById("interactionsTemplatesBar")) {
+    const bar = document.createElement("div");
+    bar.id = "interactionsTemplatesBar";
+    bar.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px;border:1px dashed #2d2d3d;border-radius:8px;background:rgba(255,255,255,0.02);";
+    bar.innerHTML = `
+      <div style="font-size:11px;color:#aaa;font-weight:600;">📦 Modelos salvos</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="interactionsTplSelect" style="flex:1;background:#11131a;color:#eee;border:1px solid #333;border-radius:6px;padding:6px;font:12px system-ui;"><option value="">— Selecione um modelo —</option></select>
+        <button id="interactionsTplDel" type="button" title="Excluir modelo selecionado" style="background:#2a1416;color:#f88;border:1px solid #5a2024;border-radius:6px;padding:4px 8px;cursor:pointer;">×</button>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button id="interactionsTplLoadHere" type="button" style="flex:1;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:6px;padding:6px;cursor:pointer;font-weight:600;font-size:12px;">📍 Usar aqui (minha posição)</button>
+        <button id="interactionsTplLoadRaw" type="button" style="background:#1f2937;color:#eee;border:1px solid #374151;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px;" title="Carregar com os offsets originais">⤓</button>
+      </div>`;
+    newBtn.insertAdjacentElement("afterend", bar);
+  }
+
+  let templates = [];          // [{...row}]
   let interactions = [];       // [{...row}]
   let channel = null;
   let subscribedMapId = null;
@@ -7557,9 +7576,90 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   let pickMode = false;        // selecionar asset no mundo
   let currentSit = null;       // {id, assetId, worldPos, worldRotY, animationUrl, mixerAction, animClipName}
 
+
   const tmpV = new THREE.Vector3();
 
   function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+
+  // ---------- Templates ----------
+  const TEMPLATE_FIELDS = [
+    "label","icon","kind","animation_key","animation_url","loop",
+    "offset_x","offset_y","offset_z","rotation_x","rotation_y","rotation_z",
+    "scale_mul","trigger_radius","exit_radius","occupancy",
+    "bot_animation_url","item_slug","item_spawn_offset_x","item_spawn_offset_y","item_spawn_offset_z",
+    "service_duration_ms","auto_despawn_ms",
+  ];
+  async function loadTemplates() {
+    const { data, error } = await supabase
+      .from("interaction_templates").select("*").order("name", { ascending: true });
+    if (error) { console.warn("[interactions] templates load", error); return; }
+    templates = data || [];
+    renderTemplatesBar();
+  }
+  function renderTemplatesBar() {
+    const sel = document.getElementById("interactionsTplSelect");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Selecione um modelo —</option>' +
+      templates.map(t => `<option value="${_esc(t.id)}">${_esc(t.icon || "•")} ${_esc(t.name)}</option>`).join("");
+    if (prev) sel.value = prev;
+  }
+  function templateToDraft(tpl, { useHere = false } = {}) {
+    const draft = { asset_id: "" };
+    for (const k of TEMPLATE_FIELDS) draft[k] = tpl[k];
+    if (useHere) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (ent?.group) {
+        draft.offset_x = Number(ent.group.position.x.toFixed(2));
+        draft.offset_y = Number(ent.group.position.y.toFixed(2));
+        draft.offset_z = Number(ent.group.position.z.toFixed(2));
+        draft.rotation_y = Number((ent.group.rotation.y * 180 / Math.PI).toFixed(1));
+      }
+    }
+    return draft;
+  }
+  async function saveAsTemplate(inter) {
+    const name = prompt("Nome do modelo:", inter.label || "Interação");
+    if (!name) return;
+    const payload = { name, created_by: (typeof myId !== "undefined" ? myId : null) || null };
+    for (const k of TEMPLATE_FIELDS) if (inter[k] !== undefined && inter[k] !== null) payload[k] = inter[k];
+    const { error } = await supabase.from("interaction_templates").insert(payload);
+    if (error) { alert("Erro ao salvar modelo: " + error.message); return; }
+    addSystemLine?.("Modelo salvo: " + name);
+    await loadTemplates();
+  }
+
+  document.getElementById("interactionsTplLoadHere")?.addEventListener("click", () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return alert("Escolha um modelo primeiro.");
+    editingId = "new"; editingDraft = templateToDraft(tpl, { useHere: true });
+    renderAdmin();
+    addSystemLine?.("Modelo carregado na sua posição. Ajuste e salve.");
+  });
+  document.getElementById("interactionsTplLoadRaw")?.addEventListener("click", () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return alert("Escolha um modelo primeiro.");
+    editingId = "new"; editingDraft = templateToDraft(tpl, { useHere: false });
+    renderAdmin();
+  });
+  document.getElementById("interactionsTplDel")?.addEventListener("click", async () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return;
+    if (!confirm("Excluir modelo \"" + tpl.name + "\"?")) return;
+    const { error } = await supabase.from("interaction_templates").delete().eq("id", tpl.id);
+    if (error) { alert("Erro: " + error.message); return; }
+    await loadTemplates();
+  });
+  loadTemplates();
+  try {
+    supabase.channel("interaction_templates")
+      .on("postgres_changes", { event: "*", schema: "public", table: "interaction_templates" }, () => loadTemplates())
+      .subscribe();
+  } catch {}
+
 
   // ---------- Data layer ----------
   async function loadInteractions(mapId) {
@@ -7902,8 +8002,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <div class="ir-actions">
             <button type="button" data-act="edit">${isEd ? "Cancelar" : "Editar"}</button>
             <button type="button" data-act="test">Testar</button>
+            <button type="button" data-act="tpl" title="Salvar como modelo reutilizável">💾</button>
             <button type="button" data-act="del" class="danger">×</button>
           </div>
+
         </div>`;
       }).join("");
     }
@@ -8058,6 +8160,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
     } else if (act === "test") {
       enterSit(inter);
+    } else if (act === "tpl") {
+      await saveAsTemplate(inter);
+
     } else if (act === "del") {
       if (!confirm("Excluir esta interação?")) return;
       const { error } = await supabase.from("map_asset_interactions").delete().eq("id", id);
