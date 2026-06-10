@@ -2663,6 +2663,8 @@ async function setupLobbyChannel() {
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED") {
         await lobbyChannel.track({ map_id: currentMapId });
+        // Notifica amigos via push que entrei online
+        try { window.__notifyFriendsOnline?.(); } catch {}
       }
     });
 }
