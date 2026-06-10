@@ -8002,8 +8002,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           <div class="ir-actions">
             <button type="button" data-act="edit">${isEd ? "Cancelar" : "Editar"}</button>
             <button type="button" data-act="test">Testar</button>
+            <button type="button" data-act="tpl" title="Salvar como modelo reutilizável">💾</button>
             <button type="button" data-act="del" class="danger">×</button>
           </div>
+
         </div>`;
       }).join("");
     }
