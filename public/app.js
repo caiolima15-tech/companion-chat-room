@@ -7581,6 +7581,86 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
 
   function _esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+  // ---------- Templates ----------
+  const TEMPLATE_FIELDS = [
+    "label","icon","kind","animation_key","animation_url","loop",
+    "offset_x","offset_y","offset_z","rotation_x","rotation_y","rotation_z",
+    "scale_mul","trigger_radius","exit_radius","occupancy",
+    "bot_animation_url","item_slug","item_spawn_offset_x","item_spawn_offset_y","item_spawn_offset_z",
+    "service_duration_ms","auto_despawn_ms",
+  ];
+  async function loadTemplates() {
+    const { data, error } = await supabase
+      .from("interaction_templates").select("*").order("name", { ascending: true });
+    if (error) { console.warn("[interactions] templates load", error); return; }
+    templates = data || [];
+    renderTemplatesBar();
+  }
+  function renderTemplatesBar() {
+    const sel = document.getElementById("interactionsTplSelect");
+    if (!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">— Selecione um modelo —</option>' +
+      templates.map(t => `<option value="${_esc(t.id)}">${_esc(t.icon || "•")} ${_esc(t.name)}</option>`).join("");
+    if (prev) sel.value = prev;
+  }
+  function templateToDraft(tpl, { useHere = false } = {}) {
+    const draft = { asset_id: "" };
+    for (const k of TEMPLATE_FIELDS) draft[k] = tpl[k];
+    if (useHere) {
+      const ent = (typeof myId !== "undefined" && myId) ? playerEntities.get(myId) : null;
+      if (ent?.group) {
+        draft.offset_x = Number(ent.group.position.x.toFixed(2));
+        draft.offset_y = Number(ent.group.position.y.toFixed(2));
+        draft.offset_z = Number(ent.group.position.z.toFixed(2));
+        draft.rotation_y = Number((ent.group.rotation.y * 180 / Math.PI).toFixed(1));
+      }
+    }
+    return draft;
+  }
+  async function saveAsTemplate(inter) {
+    const name = prompt("Nome do modelo:", inter.label || "Interação");
+    if (!name) return;
+    const payload = { name, created_by: (typeof myId !== "undefined" ? myId : null) || null };
+    for (const k of TEMPLATE_FIELDS) if (inter[k] !== undefined && inter[k] !== null) payload[k] = inter[k];
+    const { error } = await supabase.from("interaction_templates").insert(payload);
+    if (error) { alert("Erro ao salvar modelo: " + error.message); return; }
+    addSystemLine?.("Modelo salvo: " + name);
+    await loadTemplates();
+  }
+
+  document.getElementById("interactionsTplLoadHere")?.addEventListener("click", () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return alert("Escolha um modelo primeiro.");
+    editingId = "new"; editingDraft = templateToDraft(tpl, { useHere: true });
+    renderAdmin();
+    addSystemLine?.("Modelo carregado na sua posição. Ajuste e salve.");
+  });
+  document.getElementById("interactionsTplLoadRaw")?.addEventListener("click", () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return alert("Escolha um modelo primeiro.");
+    editingId = "new"; editingDraft = templateToDraft(tpl, { useHere: false });
+    renderAdmin();
+  });
+  document.getElementById("interactionsTplDel")?.addEventListener("click", async () => {
+    const sel = document.getElementById("interactionsTplSelect");
+    const tpl = templates.find(t => t.id === sel?.value);
+    if (!tpl) return;
+    if (!confirm("Excluir modelo \"" + tpl.name + "\"?")) return;
+    const { error } = await supabase.from("interaction_templates").delete().eq("id", tpl.id);
+    if (error) { alert("Erro: " + error.message); return; }
+    await loadTemplates();
+  });
+  loadTemplates();
+  try {
+    supabase.channel("interaction_templates")
+      .on("postgres_changes", { event: "*", schema: "public", table: "interaction_templates" }, () => loadTemplates())
+      .subscribe();
+  } catch {}
+
+
   // ---------- Data layer ----------
   async function loadInteractions(mapId) {
     if (!mapId) { interactions = []; renderAdmin(); return; }
