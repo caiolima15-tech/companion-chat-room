@@ -371,6 +371,99 @@ export type Database = {
         }
         Relationships: []
       }
+      interaction_templates: {
+        Row: {
+          animation_key: string
+          animation_url: string | null
+          auto_despawn_ms: number
+          bot_animation_url: string | null
+          created_at: string
+          created_by: string | null
+          exit_radius: number
+          icon: string
+          id: string
+          item_slug: string | null
+          item_spawn_offset_x: number
+          item_spawn_offset_y: number
+          item_spawn_offset_z: number
+          kind: string
+          label: string
+          loop: boolean
+          name: string
+          occupancy: string
+          offset_x: number
+          offset_y: number
+          offset_z: number
+          rotation_x: number
+          rotation_y: number
+          rotation_z: number
+          scale_mul: number
+          service_duration_ms: number
+          trigger_radius: number
+          updated_at: string
+        }
+        Insert: {
+          animation_key?: string
+          animation_url?: string | null
+          auto_despawn_ms?: number
+          bot_animation_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          exit_radius?: number
+          icon?: string
+          id?: string
+          item_slug?: string | null
+          item_spawn_offset_x?: number
+          item_spawn_offset_y?: number
+          item_spawn_offset_z?: number
+          kind?: string
+          label?: string
+          loop?: boolean
+          name: string
+          occupancy?: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_x?: number
+          rotation_y?: number
+          rotation_z?: number
+          scale_mul?: number
+          service_duration_ms?: number
+          trigger_radius?: number
+          updated_at?: string
+        }
+        Update: {
+          animation_key?: string
+          animation_url?: string | null
+          auto_despawn_ms?: number
+          bot_animation_url?: string | null
+          created_at?: string
+          created_by?: string | null
+          exit_radius?: number
+          icon?: string
+          id?: string
+          item_slug?: string | null
+          item_spawn_offset_x?: number
+          item_spawn_offset_y?: number
+          item_spawn_offset_z?: number
+          kind?: string
+          label?: string
+          loop?: boolean
+          name?: string
+          occupancy?: string
+          offset_x?: number
+          offset_y?: number
+          offset_z?: number
+          rotation_x?: number
+          rotation_y?: number
+          rotation_z?: number
+          scale_mul?: number
+          service_duration_ms?: number
+          trigger_radius?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       item_catalog: {
         Row: {
           created_at: string
