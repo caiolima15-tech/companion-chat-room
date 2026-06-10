@@ -8160,6 +8160,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       renderAdmin();
     } else if (act === "test") {
       enterSit(inter);
+    } else if (act === "tpl") {
+      await saveAsTemplate(inter);
+
     } else if (act === "del") {
       if (!confirm("Excluir esta interação?")) return;
       const { error } = await supabase.from("map_asset_interactions").delete().eq("id", id);
