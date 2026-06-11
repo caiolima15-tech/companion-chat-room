@@ -1252,8 +1252,12 @@ charDots?.addEventListener("click", (e) => {
   previewIndex = Number(b.dataset.i);
   updateCarouselUI();
 });
-charCreateBtn?.addEventListener("click", () => openAvatarCreator());
+charCreateBtn?.addEventListener("click", () => {
+  if (!isAdmin) { alert("Apenas admin pode anexar avatares customizados."); return; }
+  openAvatarCreator();
+});
 charEditBtn?.addEventListener("click", () => {
+  if (!isAdmin) return;
   const c = currentPreviewChar();
   if (!c?.isUserAvatar) return;
   openAvatarCreator({ editId: c.userAvatarId, name: c.name });
