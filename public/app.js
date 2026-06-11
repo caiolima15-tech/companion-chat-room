@@ -1228,8 +1228,10 @@ function updateCarouselUI() {
   const c = currentPreviewChar();
   selectedCharacterSlug = c?.slug || null;
   if (charStageName) charStageName.textContent = c?.name || "";
-  if (charEditBtn) charEditBtn.hidden = !c?.isUserAvatar;
-  if (charDeleteBtn) charDeleteBtn.hidden = !c?.isUserAvatar;
+  // Apenas admin pode anexar/editar/excluir avatares customizados.
+  if (charCreateBtn) charCreateBtn.hidden = !isAdmin;
+  if (charEditBtn) charEditBtn.hidden = !isAdmin || !c?.isUserAvatar;
+  if (charDeleteBtn) charDeleteBtn.hidden = !isAdmin || !c?.isUserAvatar;
   renderDots();
   updateEnterButtonState();
   if (c) loadPreviewCharacter(c);
@@ -1250,8 +1252,12 @@ charDots?.addEventListener("click", (e) => {
   previewIndex = Number(b.dataset.i);
   updateCarouselUI();
 });
-charCreateBtn?.addEventListener("click", () => openAvatarCreator());
+charCreateBtn?.addEventListener("click", () => {
+  if (!isAdmin) { alert("Apenas admin pode anexar avatares customizados."); return; }
+  openAvatarCreator();
+});
 charEditBtn?.addEventListener("click", () => {
+  if (!isAdmin) return;
   const c = currentPreviewChar();
   if (!c?.isUserAvatar) return;
   openAvatarCreator({ editId: c.userAvatarId, name: c.name });
@@ -3810,6 +3816,11 @@ function renderPlayers(nextPlayers) {
       playerEntities.set(player.id, entity);
     }
     entity.player = player;
+    // Replica em tempo real interações (sit/lay/etc.) de jogadores remotos
+    // para que TODOS vejam a mesma animação, não só quem disparou.
+    if (player.id !== myId) {
+      try { window.__applyRemoteSit?.(entity, player.sitting_id || null); } catch {}
+    }
     // Para o próprio jogador, a fonte da verdade é `me.character_slug`,
     // não o presence (que pode chegar atrasado e reverter a troca).
     const desiredSlug = player.id === myId ? (me.character_slug || player.character_slug) : player.character_slug;
@@ -4252,6 +4263,11 @@ function updatePlayerAnimation(delta) {
       continue;
     }
     const isRemote = entity.player?.id !== myId;
+    // Remoto sentado: trava na pose do assento e não roda a lógica de andar/idle.
+    if (isRemote && entity.__remoteSit?.id) {
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     const culled = isRemote && entity.group.visible === false;
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
@@ -7943,6 +7959,70 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
+
+  // ---------- Remote sit replication ----------
+  // Mantém o estado das interações que jogadores remotos estão executando,
+  // para que TODOS vejam a mesma animação em tempo real (não apenas o dono).
+  // entity.__remoteSit = { id, action } | null
+  async function applyRemoteSit(entity, sittingId) {
+    if (!entity || !entity.mixer || !entity.character) return;
+    const cur = entity.__remoteSit || null;
+    if ((cur?.id || null) === (sittingId || null)) return;
+    // Para a ação anterior, se houver.
+    if (cur?.action) {
+      try { cur.action.fadeOut(0.2); } catch {}
+      const dying = cur.action;
+      setTimeout(() => {
+        try {
+          dying.stop();
+          const cc = dying.getClip?.();
+          if (cc) entity.mixer.uncacheAction(cc);
+        } catch {}
+      }, 260);
+    }
+    if (!sittingId) {
+      entity.__remoteSit = null;
+      // Volta a um estado neutro: idle e remove rotação aplicada pelo sit.
+      try {
+        if (entity.group) { entity.group.rotation.x = 0; entity.group.rotation.z = 0; }
+        if (entity.character) {
+          entity.character.position.set(0, poseDebug?.offY || 0, 0);
+          entity.character.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
+        }
+        if (entity.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+      } catch {}
+      return;
+    }
+    const inter = (window.__mapInteractions || []).find((i) => i.id === sittingId);
+    if (!inter) { entity.__remoteSit = { id: sittingId, action: null }; return; }
+    if (inter.kind === "football") return;
+    const pose = computeSeatPose(inter);
+    if (pose && entity.group) {
+      entity.target.copy(pose.worldPos);
+      entity.group.position.copy(pose.worldPos);
+      entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+    }
+    entity.__remoteSit = { id: sittingId, action: null };
+    if (!inter.animation_url) return;
+    const token = entity.__remoteSit;
+    try {
+      const clip = await loadFbxClip(inter.animation_url);
+      if (entity.__remoteSit !== token) return; // mudou de assento enquanto carregava
+      const bones = collectBoneNames(entity.character);
+      const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+      if (!retarg) return;
+      const prevAction = (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) || null;
+      const action = entity.mixer.clipAction(retarg);
+      action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = true;
+      action.reset().fadeIn(0.25).play();
+      if (prevAction) { try { prevAction.fadeOut(0.25); } catch {} }
+      entity.currentAction = null;
+      token.action = action;
+    } catch (e) { console.warn("[interactions] remote sit clip", e); }
+  }
+  window.__applyRemoteSit = applyRemoteSit;
+
 
   // ---------- Lifecycle ----------
   window.interactionsEnterRoom = async function (mapId) {
@@ -11789,11 +11869,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         const bones = collectBoneNames(entity.character);
         const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
         if (retarg) {
-          // Mask: keep only upper-body tracks (arms, hands, head, neck, spine upper)
-          const keep = /right(arm|forearm|hand)|head|neck/i;
+          // Mask: keep only the right-arm chain so the cup-to-mouth motion
+          // is the ONLY thing the drink clip drives. Idle/walk continue to
+          // control the rest of the body normally.
+          const keep = /right(arm|forearm|hand|shoulder)/i;
           retarg.tracks = retarg.tracks.filter((t) => keep.test(t.name.replace(/^mixamorig\d*:?/i, "")));
           if (retarg.tracks.length) {
+            // Make the clip ADDITIVE relative to its first frame, so it
+            // applies as a delta on top of idle/walk instead of blending
+            // with them (which caused the arm to "merge" half-way).
+            try { THREE.AnimationUtils.makeClipAdditive(retarg); } catch {}
             drinkAction = entity.mixer.clipAction(retarg);
+            drinkAction.blendMode = THREE.AdditiveAnimationBlendMode;
             drinkAction.setLoop(THREE.LoopRepeat, Infinity);
             drinkAction.weight = 1;
             drinkAction.play();
