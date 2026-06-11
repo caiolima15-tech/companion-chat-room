@@ -1228,8 +1228,10 @@ function updateCarouselUI() {
   const c = currentPreviewChar();
   selectedCharacterSlug = c?.slug || null;
   if (charStageName) charStageName.textContent = c?.name || "";
-  if (charEditBtn) charEditBtn.hidden = !c?.isUserAvatar;
-  if (charDeleteBtn) charDeleteBtn.hidden = !c?.isUserAvatar;
+  // Apenas admin pode anexar/editar/excluir avatares customizados.
+  if (charCreateBtn) charCreateBtn.hidden = !isAdmin;
+  if (charEditBtn) charEditBtn.hidden = !isAdmin || !c?.isUserAvatar;
+  if (charDeleteBtn) charDeleteBtn.hidden = !isAdmin || !c?.isUserAvatar;
   renderDots();
   updateEnterButtonState();
   if (c) loadPreviewCharacter(c);
