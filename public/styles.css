@@ -2165,6 +2165,20 @@ body.world-ready #speedAdminPanel:not([hidden]) {
 #interactionsAdminPanel .ie-actions button { flex:1; padding:7px; border-radius:4px; border:1px solid #333; background:#1a1f2a; color:#eee; cursor:pointer; font-weight:600; }
 #interactionsAdminPanel .ie-actions button.primary { background:linear-gradient(135deg,#8b5cf6,#a78bfa); border:none; }
 
+/* Scrollbar SEMPRE visível no painel de interações para garantir acesso ao "Salvar"
+   ao final de editores longos (mobile inclusive). */
+#interactionsAdminPanel .panel-body { scrollbar-gutter: stable; }
+#interactionsAdminPanel .panel-body::-webkit-scrollbar { width: 10px; }
+#interactionsAdminPanel .panel-body::-webkit-scrollbar-track { background: #11131a; border-radius: 8px; }
+#interactionsAdminPanel .panel-body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg,#8b5cf6,#a78bfa);
+  border-radius: 8px;
+  border: 2px solid #11131a;
+  min-height: 40px;
+}
+#interactionsAdminPanel .panel-body::-webkit-scrollbar-thumb:hover { background: #c4b5fd; }
+
+
 /* ============================================================
    Ajustes finais — chat preto, bolhas padronizadas, topbar limpo,
    barra inferior preenchida, fix do chevron fantasma do chat
