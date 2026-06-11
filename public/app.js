@@ -4263,6 +4263,11 @@ function updatePlayerAnimation(delta) {
       continue;
     }
     const isRemote = entity.player?.id !== myId;
+    // Remoto sentado: trava na pose do assento e não roda a lógica de andar/idle.
+    if (isRemote && entity.__remoteSit?.id) {
+      if (entity.mixer) entity.mixer.update(delta);
+      continue;
+    }
     const culled = isRemote && entity.group.visible === false;
     const dxArr = entity.target.x - entity.group.position.x;
     const dzArr = entity.target.z - entity.group.position.z;
