@@ -7950,6 +7950,70 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   }
   window.standUpFromInteraction = standUp;
 
+  // ---------- Remote sit replication ----------
+  // Mantém o estado das interações que jogadores remotos estão executando,
+  // para que TODOS vejam a mesma animação em tempo real (não apenas o dono).
+  // entity.__remoteSit = { id, action } | null
+  async function applyRemoteSit(entity, sittingId) {
+    if (!entity || !entity.mixer || !entity.character) return;
+    const cur = entity.__remoteSit || null;
+    if ((cur?.id || null) === (sittingId || null)) return;
+    // Para a ação anterior, se houver.
+    if (cur?.action) {
+      try { cur.action.fadeOut(0.2); } catch {}
+      const dying = cur.action;
+      setTimeout(() => {
+        try {
+          dying.stop();
+          const cc = dying.getClip?.();
+          if (cc) entity.mixer.uncacheAction(cc);
+        } catch {}
+      }, 260);
+    }
+    if (!sittingId) {
+      entity.__remoteSit = null;
+      // Volta a um estado neutro: idle e remove rotação aplicada pelo sit.
+      try {
+        if (entity.group) { entity.group.rotation.x = 0; entity.group.rotation.z = 0; }
+        if (entity.character) {
+          entity.character.position.set(0, poseDebug?.offY || 0, 0);
+          entity.character.rotation.set(CHARACTER_DEFAULT_ROT_X, 0, 0);
+        }
+        if (entity.actions?.idle) { entity.actions.idle.reset().fadeIn(0.2).play(); entity.currentAction = "idle"; }
+      } catch {}
+      return;
+    }
+    const inter = (window.__mapInteractions || []).find((i) => i.id === sittingId);
+    if (!inter) { entity.__remoteSit = { id: sittingId, action: null }; return; }
+    if (inter.kind === "football") return;
+    const pose = computeSeatPose(inter);
+    if (pose && entity.group) {
+      entity.target.copy(pose.worldPos);
+      entity.group.position.copy(pose.worldPos);
+      entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
+    }
+    entity.__remoteSit = { id: sittingId, action: null };
+    if (!inter.animation_url) return;
+    const token = entity.__remoteSit;
+    try {
+      const clip = await loadFbxClip(inter.animation_url);
+      if (entity.__remoteSit !== token) return; // mudou de assento enquanto carregava
+      const bones = collectBoneNames(entity.character);
+      const retarg = retargetClipToBones(clip, bones, { stripRootPosition: true });
+      if (!retarg) return;
+      const prevAction = (entity.actions && entity.currentAction && entity.actions[entity.currentAction]) || null;
+      const action = entity.mixer.clipAction(retarg);
+      action.setLoop(inter.loop === false ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+      action.clampWhenFinished = true;
+      action.reset().fadeIn(0.25).play();
+      if (prevAction) { try { prevAction.fadeOut(0.25); } catch {} }
+      entity.currentAction = null;
+      token.action = action;
+    } catch (e) { console.warn("[interactions] remote sit clip", e); }
+  }
+  window.__applyRemoteSit = applyRemoteSit;
+
+
   // ---------- Lifecycle ----------
   window.interactionsEnterRoom = async function (mapId) {
     inRoom = true;
