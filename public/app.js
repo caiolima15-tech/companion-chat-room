@@ -3816,6 +3816,11 @@ function renderPlayers(nextPlayers) {
       playerEntities.set(player.id, entity);
     }
     entity.player = player;
+    // Replica em tempo real interações (sit/lay/etc.) de jogadores remotos
+    // para que TODOS vejam a mesma animação, não só quem disparou.
+    if (player.id !== myId) {
+      try { window.__applyRemoteSit?.(entity, player.sitting_id || null); } catch {}
+    }
     // Para o próprio jogador, a fonte da verdade é `me.character_slug`,
     // não o presence (que pode chegar atrasado e reverter a troca).
     const desiredSlug = player.id === myId ? (me.character_slug || player.character_slug) : player.character_slug;
