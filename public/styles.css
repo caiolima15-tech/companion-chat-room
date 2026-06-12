@@ -2167,7 +2167,21 @@ body.world-ready #speedAdminPanel:not([hidden]) {
 
 /* Scrollbar SEMPRE visível no painel de interações para garantir acesso ao "Salvar"
    ao final de editores longos (mobile inclusive). */
-#interactionsAdminPanel .panel-body { scrollbar-gutter: stable; }
+#interactionsAdminPanel {
+  height: min(80vh, 720px) !important;
+  max-height: min(80vh, 720px) !important;
+  min-height: 260px;
+}
+#interactionsAdminPanel .panel-body {
+  overflow-y: scroll !important;
+  overflow-x: hidden !important;
+  min-height: 0 !important;
+  flex: 1 1 auto !important;
+  padding-bottom: 90px !important;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: #a78bfa #11131a;
+}
 #interactionsAdminPanel .panel-body::-webkit-scrollbar { width: 10px; }
 #interactionsAdminPanel .panel-body::-webkit-scrollbar-track { background: #11131a; border-radius: 8px; }
 #interactionsAdminPanel .panel-body::-webkit-scrollbar-thumb {
