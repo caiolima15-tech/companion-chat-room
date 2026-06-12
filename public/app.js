@@ -2677,16 +2677,6 @@ async function setupGlobalSecondaryChannels() {
       .subscribe();
   }
 
-  if (!catalogChannel) {
-    catalogChannel = supabase
-      .channel("room-characters")
-      .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
-        await loadCharactersCatalog();
-        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
-      })
-      .subscribe();
-  }
-
   // Perfis — quando outro jogador troca nome / cor / personagem
   if (!profilesChannel) {
     profilesChannel = supabase
