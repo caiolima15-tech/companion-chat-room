@@ -42,6 +42,12 @@ const SUPABASE_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
+// Expose to npc.js / delivery.js modules
+window.supabase = supabase;
+window.__supabase = supabase;
+window.__THREE = THREE;
+window.__GLTFLoader = GLTFLoader;
+window.__FBXLoader = FBXLoader;
 const LOGIN_DISABLED_FOR_TEST = false;
 
 function getGuestUser() {
