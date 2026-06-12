@@ -296,6 +296,179 @@ export type Database = {
         }
         Relationships: []
       }
+      delivery_destinations: {
+        Row: {
+          created_at: string
+          hub_id: string
+          id: string
+          label: string
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          created_at?: string
+          hub_id: string
+          id?: string
+          label?: string
+          x: number
+          y?: number
+          z: number
+        }
+        Update: {
+          created_at?: string
+          hub_id?: string
+          id?: string
+          label?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_destinations_hub_id_fkey"
+            columns: ["hub_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_hubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_hubs: {
+        Row: {
+          active: boolean
+          base_pay_cents: number
+          base_time_ms: number
+          bonus_pay_cents: number
+          created_at: string
+          id: string
+          map_id: string | null
+          min_level: number
+          name: string
+          pay_per_km_cents: number
+          pickup_x: number
+          pickup_y: number
+          pickup_z: number
+          time_per_100m_ms: number
+        }
+        Insert: {
+          active?: boolean
+          base_pay_cents?: number
+          base_time_ms?: number
+          bonus_pay_cents?: number
+          created_at?: string
+          id?: string
+          map_id?: string | null
+          min_level?: number
+          name?: string
+          pay_per_km_cents?: number
+          pickup_x: number
+          pickup_y?: number
+          pickup_z: number
+          time_per_100m_ms?: number
+        }
+        Update: {
+          active?: boolean
+          base_pay_cents?: number
+          base_time_ms?: number
+          bonus_pay_cents?: number
+          created_at?: string
+          id?: string
+          map_id?: string | null
+          min_level?: number
+          name?: string
+          pay_per_km_cents?: number
+          pickup_x?: number
+          pickup_y?: number
+          pickup_z?: number
+          time_per_100m_ms?: number
+        }
+        Relationships: []
+      }
+      delivery_jobs: {
+        Row: {
+          completed_at: string | null
+          destination_id: string
+          distance_m: number
+          hub_id: string
+          id: string
+          payout_cents: number | null
+          started_at: string
+          status: string
+          time_limit_ms: number
+          user_id: string
+          xp_gained: number | null
+        }
+        Insert: {
+          completed_at?: string | null
+          destination_id: string
+          distance_m: number
+          hub_id: string
+          id?: string
+          payout_cents?: number | null
+          started_at?: string
+          status?: string
+          time_limit_ms: number
+          user_id: string
+          xp_gained?: number | null
+        }
+        Update: {
+          completed_at?: string | null
+          destination_id?: string
+          distance_m?: number
+          hub_id?: string
+          id?: string
+          payout_cents?: number | null
+          started_at?: string
+          status?: string
+          time_limit_ms?: number
+          user_id?: string
+          xp_gained?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delivery_jobs_destination_id_fkey"
+            columns: ["destination_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_destinations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "delivery_jobs_hub_id_fkey"
+            columns: ["hub_id"]
+            isOneToOne: false
+            referencedRelation: "delivery_hubs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      delivery_stats: {
+        Row: {
+          best_time_ms: number | null
+          deliveries_completed: number
+          level: number
+          updated_at: string
+          user_id: string
+          xp: number
+        }
+        Insert: {
+          best_time_ms?: number | null
+          deliveries_completed?: number
+          level?: number
+          updated_at?: string
+          user_id: string
+          xp?: number
+        }
+        Update: {
+          best_time_ms?: number | null
+          deliveries_completed?: number
+          level?: number
+          updated_at?: string
+          user_id?: string
+          xp?: number
+        }
+        Relationships: []
+      }
       direct_messages: {
         Row: {
           created_at: string
@@ -1091,6 +1264,258 @@ export type Database = {
         }
         Relationships: []
       }
+      npc_conversations: {
+        Row: {
+          created_at: string
+          id: string
+          npc_id: string
+          role: string
+          text: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          npc_id: string
+          role: string
+          text: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          npc_id?: string
+          role?: string
+          text?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_conversations_npc_id_fkey"
+            columns: ["npc_id"]
+            isOneToOne: false
+            referencedRelation: "npc_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      npc_instances: {
+        Row: {
+          active: boolean
+          created_at: string
+          display_name: string
+          id: string
+          map_id: string | null
+          model_id: string
+          persona: Json
+          route_id: string | null
+          voice_id: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          display_name?: string
+          id?: string
+          map_id?: string | null
+          model_id: string
+          persona?: Json
+          route_id?: string | null
+          voice_id?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          display_name?: string
+          id?: string
+          map_id?: string | null
+          model_id?: string
+          persona?: Json
+          route_id?: string | null
+          voice_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_instances_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "npc_models"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "npc_instances_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "npc_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      npc_models: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_persona: Json
+          id: string
+          model_url: string
+          name: string
+          scale_mul: number
+          slug: string
+          thumbnail_url: string | null
+          updated_at: string
+          voice_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_persona?: Json
+          id?: string
+          model_url: string
+          name: string
+          scale_mul?: number
+          slug: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          voice_id?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_persona?: Json
+          id?: string
+          model_url?: string
+          name?: string
+          scale_mul?: number
+          slug?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          voice_id?: string
+        }
+        Relationships: []
+      }
+      npc_routes: {
+        Row: {
+          created_at: string
+          id: string
+          loop_back: boolean
+          map_id: string | null
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          loop_back?: boolean
+          map_id?: string | null
+          name?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          loop_back?: boolean
+          map_id?: string | null
+          name?: string
+        }
+        Relationships: []
+      }
+      npc_state: {
+        Row: {
+          anim: string
+          next_decision_at: string
+          npc_id: string
+          rot_y: number
+          status: string
+          target_wp_seq: number
+          updated_at: string
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          anim?: string
+          next_decision_at?: string
+          npc_id: string
+          rot_y?: number
+          status?: string
+          target_wp_seq?: number
+          updated_at?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Update: {
+          anim?: string
+          next_decision_at?: string
+          npc_id?: string
+          rot_y?: number
+          status?: string
+          target_wp_seq?: number
+          updated_at?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_state_npc_id_fkey"
+            columns: ["npc_id"]
+            isOneToOne: true
+            referencedRelation: "npc_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      npc_waypoints: {
+        Row: {
+          created_at: string
+          id: string
+          is_crosswalk: boolean
+          is_sit_spot: boolean
+          is_talk_spot: boolean
+          pause_ms: number
+          route_id: string
+          seq: number
+          sit_template_id: string | null
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_crosswalk?: boolean
+          is_sit_spot?: boolean
+          is_talk_spot?: boolean
+          pause_ms?: number
+          route_id: string
+          seq: number
+          sit_template_id?: string | null
+          x: number
+          y?: number
+          z: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_crosswalk?: boolean
+          is_sit_spot?: boolean
+          is_talk_spot?: boolean
+          pause_ms?: number
+          route_id?: string
+          seq?: number
+          sit_template_id?: string | null
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "npc_waypoints_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "npc_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profile_photos: {
         Row: {
           created_at: string
@@ -1118,6 +1543,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          balance_cents: number
           bio: string | null
           character_slug: string | null
           color: string
@@ -1128,6 +1554,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          balance_cents?: number
           bio?: string | null
           character_slug?: string | null
           color?: string
@@ -1138,6 +1565,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          balance_cents?: number
           bio?: string | null
           character_slug?: string | null
           color?: string
@@ -1232,6 +1660,33 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_transactions: {
+        Row: {
+          amount_cents: number
+          created_at: string
+          id: string
+          reason: string
+          ref_id: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_cents: number
+          created_at?: string
+          id?: string
+          reason: string
+          ref_id?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          created_at?: string
+          id?: string
+          reason?: string
+          ref_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1246,6 +1701,10 @@ export type Database = {
           _user_ids: string[]
         }
         Returns: undefined
+      }
+      complete_delivery: {
+        Args: { _job_id: string; _player_x: number; _player_z: number }
+        Returns: Json
       }
       has_role: {
         Args: {

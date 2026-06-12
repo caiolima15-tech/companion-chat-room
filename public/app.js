@@ -42,6 +42,12 @@ const SUPABASE_KEY =
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
+// Expose to npc.js / delivery.js modules
+window.supabase = supabase;
+window.__supabase = supabase;
+window.__THREE = THREE;
+window.__GLTFLoader = GLTFLoader;
+window.__FBXLoader = FBXLoader;
 const LOGIN_DISABLED_FOR_TEST = false;
 
 function getGuestUser() {
@@ -501,6 +507,7 @@ let selectedMapId = currentMapId;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
 scene.fog = null;
+window.__scene = scene;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 camera.position.set(4.6, 4.2, 5.0);
@@ -2922,6 +2929,13 @@ document.addEventListener("visibilitychange", () => {
 // ============ HUD permissions ============
 function renderPermissions() {
   document.body.classList.toggle("is-admin", isAdmin);
+  window.__isAdmin = isAdmin;
+  // Expose local player position to NPC / delivery modules
+  try {
+    const myId = me?.id;
+    const myEnt = myId ? playerEntities.get(myId) : null;
+    if (myEnt?.group) window.__player = myEnt.group;
+  } catch {}
   if (roleBadge) roleBadge.textContent = isAdmin ? "admin" : "visitante";
   if (glbInput) glbInput.disabled = !isAdmin;
   if (exportButton) exportButton.disabled = !isAdmin;
@@ -3895,6 +3909,7 @@ function renderPlayers(nextPlayers) {
       entity = createPlayerEntity(player);
       playerEntities.set(player.id, entity);
     }
+    if (player.id === myId && entity.group) window.__player = entity.group;
     entity.player = player;
     // Replica em tempo real interações (sit/lay/etc.) de jogadores remotos
     // para que TODOS vejam a mesma animação, não só quem disparou.
