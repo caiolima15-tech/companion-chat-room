@@ -1252,9 +1252,75 @@ charDots?.addEventListener("click", (e) => {
   previewIndex = Number(b.dataset.i);
   updateCarouselUI();
 });
+function slugifyCharacterName(name) {
+  return String(name || "personagem")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 34) || "personagem";
+}
+
+async function uploadAdminCharacterGlb(file) {
+  if (!isAdmin) { alert("Apenas admin pode anexar personagens."); return; }
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".glb")) {
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Escolha um arquivo .glb.";
+    }
+    return;
+  }
+  const name = (prompt("Nome do personagem:", file.name.replace(/\.glb$/i, "")) || "").trim();
+  if (!name) return;
+  const baseSlug = slugifyCharacterName(name);
+  const slug = `${baseSlug}-${Date.now().toString(36).slice(-5)}`;
+  if (characterSelectError) {
+    characterSelectError.hidden = false;
+    characterSelectError.textContent = "Enviando personagem…";
+  }
+  try {
+    const path = `admin-characters/${slug}/base.glb`;
+    const { error: upErr } = await supabase.storage.from("characters").upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: "model/gltf-binary",
+    });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
+    const nextPos = (charactersCatalog.reduce((m, c) => Math.max(m, c.position || 0), 0) || 0) + 1;
+    const { error: dbErr } = await supabase.from("characters").insert({
+      slug,
+      name,
+      base_url: `${pub.publicUrl}?v=${Date.now()}`,
+      position: nextPos,
+    });
+    if (dbErr) throw dbErr;
+    await loadCharactersCatalog();
+    selectedCharacterSlug = slug;
+    refreshCharacterCarousel();
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Personagem anexado. Já está disponível para todos.";
+    }
+  } catch (err) {
+    console.error("Falha ao anexar personagem", err);
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = `Erro ao anexar: ${err.message || err}`;
+    }
+  }
+}
+
 charCreateBtn?.addEventListener("click", () => {
-  if (!isAdmin) { alert("Apenas admin pode anexar avatares customizados."); return; }
-  openAvatarCreator();
+  if (!isAdmin) { alert("Apenas admin pode anexar personagens."); return; }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".glb,model/gltf-binary";
+  input.addEventListener("change", () => uploadAdminCharacterGlb(input.files?.[0]));
+  input.click();
 });
 charEditBtn?.addEventListener("click", () => {
   if (!isAdmin) return;
