@@ -1230,6 +1230,7 @@ function updateCarouselUI() {
   if (charStageName) charStageName.textContent = c?.name || "";
   // Apenas admin pode anexar/editar/excluir avatares customizados.
   if (charCreateBtn) charCreateBtn.hidden = !isAdmin;
+    if (charCreateBtn) charCreateBtn.textContent = isAdmin ? "＋ Anexar GLB" : "＋ Criar meu avatar";
   if (charEditBtn) charEditBtn.hidden = !isAdmin || !c?.isUserAvatar;
   if (charDeleteBtn) charDeleteBtn.hidden = !isAdmin || !c?.isUserAvatar;
   renderDots();
@@ -2671,6 +2672,16 @@ async function setupGlobalSecondaryChannels() {
       .channel("room-user-avatars")
       .on("postgres_changes", { event: "*", schema: "public", table: "user_avatars" }, async () => {
         await loadUserAvatars();
+        if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
+      })
+      .subscribe();
+  }
+
+  if (!catalogChannel) {
+    catalogChannel = supabase
+      .channel("room-characters")
+      .on("postgres_changes", { event: "*", schema: "public", table: "characters" }, async () => {
+        await loadCharactersCatalog();
         if (characterSelectOverlay && !characterSelectOverlay.hidden) refreshCharacterCarousel();
       })
       .subscribe();
