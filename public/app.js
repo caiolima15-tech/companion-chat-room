@@ -507,6 +507,7 @@ let selectedMapId = currentMapId;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#0e1117");
 scene.fog = null;
+window.__scene = scene;
 
 const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 camera.position.set(4.6, 4.2, 5.0);
