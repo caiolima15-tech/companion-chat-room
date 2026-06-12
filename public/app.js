@@ -2929,6 +2929,13 @@ document.addEventListener("visibilitychange", () => {
 // ============ HUD permissions ============
 function renderPermissions() {
   document.body.classList.toggle("is-admin", isAdmin);
+  window.__isAdmin = isAdmin;
+  // Expose local player position to NPC / delivery modules
+  try {
+    const myId = me?.id;
+    const myEnt = myId ? playerEntities.get(myId) : null;
+    if (myEnt?.group) window.__player = myEnt.group;
+  } catch {}
   if (roleBadge) roleBadge.textContent = isAdmin ? "admin" : "visitante";
   if (glbInput) glbInput.disabled = !isAdmin;
   if (exportButton) exportButton.disabled = !isAdmin;
