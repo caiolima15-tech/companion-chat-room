@@ -7948,6 +7948,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     };
     window.__sittingInteraction = currentSit;
     try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      movementChannel?.send({
+        type: "broadcast",
+        event: "interaction",
+        payload: { id: myId, sitting_id: inter.id },
+      });
+    } catch {}
 
     // Atualiza me.x/y para o assento (evita salto ao levantar)
     if (typeof me !== "undefined" && me) {
@@ -8036,6 +8043,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     currentSit = null;
     window.__sittingInteraction = null;
     try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      movementChannel?.send({
+        type: "broadcast",
+        event: "interaction",
+        payload: { id: myId, sitting_id: null },
+      });
+    } catch {}
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
