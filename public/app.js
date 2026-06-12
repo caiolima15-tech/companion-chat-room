@@ -3909,6 +3909,7 @@ function renderPlayers(nextPlayers) {
       entity = createPlayerEntity(player);
       playerEntities.set(player.id, entity);
     }
+    if (player.id === myId && entity.group) window.__player = entity.group;
     entity.player = player;
     // Replica em tempo real interações (sit/lay/etc.) de jogadores remotos
     // para que TODOS vejam a mesma animação, não só quem disparou.
