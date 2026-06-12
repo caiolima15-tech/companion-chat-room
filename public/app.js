@@ -1230,6 +1230,7 @@ function updateCarouselUI() {
   if (charStageName) charStageName.textContent = c?.name || "";
   // Apenas admin pode anexar/editar/excluir avatares customizados.
   if (charCreateBtn) charCreateBtn.hidden = !isAdmin;
+    if (charCreateBtn) charCreateBtn.textContent = isAdmin ? "＋ Anexar GLB" : "＋ Criar meu avatar";
   if (charEditBtn) charEditBtn.hidden = !isAdmin || !c?.isUserAvatar;
   if (charDeleteBtn) charDeleteBtn.hidden = !isAdmin || !c?.isUserAvatar;
   renderDots();
@@ -1252,9 +1253,75 @@ charDots?.addEventListener("click", (e) => {
   previewIndex = Number(b.dataset.i);
   updateCarouselUI();
 });
+function slugifyCharacterName(name) {
+  return String(name || "personagem")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 34) || "personagem";
+}
+
+async function uploadAdminCharacterGlb(file) {
+  if (!isAdmin) { alert("Apenas admin pode anexar personagens."); return; }
+  if (!file) return;
+  if (!file.name.toLowerCase().endsWith(".glb")) {
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Escolha um arquivo .glb.";
+    }
+    return;
+  }
+  const name = (prompt("Nome do personagem:", file.name.replace(/\.glb$/i, "")) || "").trim();
+  if (!name) return;
+  const baseSlug = slugifyCharacterName(name);
+  const slug = `${baseSlug}-${Date.now().toString(36).slice(-5)}`;
+  if (characterSelectError) {
+    characterSelectError.hidden = false;
+    characterSelectError.textContent = "Enviando personagem…";
+  }
+  try {
+    const path = `admin-characters/${slug}/base.glb`;
+    const { error: upErr } = await supabase.storage.from("characters").upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: "model/gltf-binary",
+    });
+    if (upErr) throw upErr;
+    const { data: pub } = supabase.storage.from("characters").getPublicUrl(path);
+    const nextPos = (charactersCatalog.reduce((m, c) => Math.max(m, c.position || 0), 0) || 0) + 1;
+    const { error: dbErr } = await supabase.from("characters").insert({
+      slug,
+      name,
+      base_url: `${pub.publicUrl}?v=${Date.now()}`,
+      position: nextPos,
+    });
+    if (dbErr) throw dbErr;
+    await loadCharactersCatalog();
+    selectedCharacterSlug = slug;
+    refreshCharacterCarousel();
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = "Personagem anexado. Já está disponível para todos.";
+    }
+  } catch (err) {
+    console.error("Falha ao anexar personagem", err);
+    if (characterSelectError) {
+      characterSelectError.hidden = false;
+      characterSelectError.textContent = `Erro ao anexar: ${err.message || err}`;
+    }
+  }
+}
+
 charCreateBtn?.addEventListener("click", () => {
-  if (!isAdmin) { alert("Apenas admin pode anexar avatares customizados."); return; }
-  openAvatarCreator();
+  if (!isAdmin) { alert("Apenas admin pode anexar personagens."); return; }
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".glb,model/gltf-binary";
+  input.addEventListener("change", () => uploadAdminCharacterGlb(input.files?.[0]));
+  input.click();
 });
 charEditBtn?.addEventListener("click", () => {
   if (!isAdmin) return;
@@ -2304,6 +2371,9 @@ async function applyCharacter(entity, slug) {
       }
     });
     setPlayerAction(entity, "idle");
+    if (entity.player?.id && entity.player.id !== myId && entity.player.sitting_id) {
+      setTimeout(() => { try { window.__applyRemoteSit?.(entity, entity.player.sitting_id); } catch {} }, 0);
+    }
     console.log(`[applyCharacter] aplicado "${slug}" com clips:`, Object.keys(clips));
   } catch (err) {
     console.warn("Falha ao aplicar personagem", slug, err);
@@ -2498,6 +2568,16 @@ async function setupRoomChannels(mapId) {
       if (!payload || payload.id === myId) return;
       const entity = playerEntities.get(payload.id);
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
+    })
+    .on("broadcast", { event: "interaction" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const idx = players.findIndex((p) => p.id === payload.id);
+      if (idx >= 0) players[idx] = { ...players[idx], sitting_id: payload.sitting_id || null };
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        entity.player = { ...(entity.player || {}), sitting_id: payload.sitting_id || null };
+        try { window.__applyRemoteSit?.(entity, payload.sitting_id || null); } catch {}
+      }
     })
     .on("broadcast", { event: "character" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
@@ -7688,6 +7768,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (error) { console.warn("[interactions] load", error); return; }
     interactions = data || [];
     window.__mapInteractions = interactions;
+    try {
+      for (const p of players) {
+        if (!p?.sitting_id || p.id === myId) continue;
+        const ent = playerEntities.get(p.id);
+        if (ent) window.__applyRemoteSit?.(ent, p.sitting_id);
+      }
+    } catch {}
     // Sync bot lookup for admin UI
     try { window.__mapBots = new Map(Array.from(botEntities.entries()).filter(([k]) => typeof k === "string" && !k.startsWith("__loading_")).map(([k, e]) => [k, e.row])); } catch {}
     window.dispatchEvent(new CustomEvent("interactions:updated"));
@@ -7868,6 +7955,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     };
     window.__sittingInteraction = currentSit;
     try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      movementChannel?.send({
+        type: "broadcast",
+        event: "interaction",
+        payload: { id: myId, sitting_id: inter.id },
+      });
+    } catch {}
 
     // Atualiza me.x/y para o assento (evita salto ao levantar)
     if (typeof me !== "undefined" && me) {
@@ -7956,6 +8050,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     currentSit = null;
     window.__sittingInteraction = null;
     try { presenceChannel?.track(presencePayload()); } catch {}
+    try {
+      movementChannel?.send({
+        type: "broadcast",
+        event: "interaction",
+        payload: { id: myId, sitting_id: null },
+      });
+    } catch {}
     hidePrompt();
   }
   window.standUpFromInteraction = standUp;
@@ -7967,7 +8068,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function applyRemoteSit(entity, sittingId) {
     if (!entity || !entity.mixer || !entity.character) return;
     const cur = entity.__remoteSit || null;
-    if ((cur?.id || null) === (sittingId || null)) return;
+    if ((cur?.id || null) === (sittingId || null) && (cur?.action || cur?.loading || !sittingId)) return;
     // Para a ação anterior, se houver.
     if (cur?.action) {
       try { cur.action.fadeOut(0.2); } catch {}
@@ -7994,7 +8095,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     const inter = (window.__mapInteractions || []).find((i) => i.id === sittingId);
-    if (!inter) { entity.__remoteSit = { id: sittingId, action: null }; return; }
+    if (!inter) { entity.__remoteSit = { id: sittingId, action: null, loading: false }; return; }
     if (inter.kind === "football") return;
     const pose = computeSeatPose(inter);
     if (pose && entity.group) {
@@ -8002,7 +8103,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       entity.group.position.copy(pose.worldPos);
       entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
     }
-    entity.__remoteSit = { id: sittingId, action: null };
+    entity.__remoteSit = { id: sittingId, action: null, loading: !!inter.animation_url };
     if (!inter.animation_url) return;
     const token = entity.__remoteSit;
     try {
@@ -8018,6 +8119,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       action.reset().fadeIn(0.25).play();
       if (prevAction) { try { prevAction.fadeOut(0.25); } catch {} }
       entity.currentAction = null;
+      token.loading = false;
       token.action = action;
     } catch (e) { console.warn("[interactions] remote sit clip", e); }
   }
@@ -11872,18 +11974,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           // Mask: keep only the right-arm chain so the cup-to-mouth motion
           // is the ONLY thing the drink clip drives. Idle/walk continue to
           // control the rest of the body normally.
-          const keep = /right(arm|forearm|hand|shoulder)/i;
+          const keep = /right(arm|forearm|hand|shoulder)|rightshoulder|rightuparm|rightforearm|righthand/i;
           retarg.tracks = retarg.tracks.filter((t) => keep.test(t.name.replace(/^mixamorig\d*:?/i, "")));
           if (retarg.tracks.length) {
-            // Make the clip ADDITIVE relative to its first frame, so it
-            // applies as a delta on top of idle/walk instead of blending
-            // with them (which caused the arm to "merge" half-way).
-            try { THREE.AnimationUtils.makeClipAdditive(retarg); } catch {}
+            retarg.name = `drink-${cat.slug}-${Date.now()}`;
+            // Make the clip ADDITIVE relative to its first frame, so it applies
+            // only the cup-to-mouth delta on top of idle/walk instead of
+            // crossfading the whole body or fighting the base arm swing.
+            try { THREE.AnimationUtils.makeClipAdditive(retarg, 0, retarg, 30); } catch {}
             drinkAction = entity.mixer.clipAction(retarg);
             drinkAction.blendMode = THREE.AdditiveAnimationBlendMode;
-            drinkAction.setLoop(THREE.LoopRepeat, Infinity);
-            drinkAction.weight = 1;
-            drinkAction.play();
+            drinkAction.setLoop(THREE.LoopOnce, 1);
+            drinkAction.clampWhenFinished = false;
+            drinkAction.enabled = true;
+            drinkAction.weight = 0.85;
+            drinkAction.reset().fadeIn(0.12).play();
           }
         }
       } catch (e) { console.warn("[items] drink anim", e); }
