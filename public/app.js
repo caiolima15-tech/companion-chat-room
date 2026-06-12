@@ -7768,6 +7768,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (error) { console.warn("[interactions] load", error); return; }
     interactions = data || [];
     window.__mapInteractions = interactions;
+    try {
+      for (const p of players) {
+        if (!p?.sitting_id || p.id === myId) continue;
+        const ent = playerEntities.get(p.id);
+        if (ent) window.__applyRemoteSit?.(ent, p.sitting_id);
+      }
+    } catch {}
     // Sync bot lookup for admin UI
     try { window.__mapBots = new Map(Array.from(botEntities.entries()).filter(([k]) => typeof k === "string" && !k.startsWith("__loading_")).map(([k, e]) => [k, e.row])); } catch {}
     window.dispatchEvent(new CustomEvent("interactions:updated"));
@@ -8061,7 +8068,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function applyRemoteSit(entity, sittingId) {
     if (!entity || !entity.mixer || !entity.character) return;
     const cur = entity.__remoteSit || null;
-    if ((cur?.id || null) === (sittingId || null)) return;
+    if ((cur?.id || null) === (sittingId || null) && (cur?.action || cur?.loading || !sittingId)) return;
     // Para a ação anterior, se houver.
     if (cur?.action) {
       try { cur.action.fadeOut(0.2); } catch {}
@@ -8088,7 +8095,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       return;
     }
     const inter = (window.__mapInteractions || []).find((i) => i.id === sittingId);
-    if (!inter) { entity.__remoteSit = { id: sittingId, action: null }; return; }
+    if (!inter) { entity.__remoteSit = { id: sittingId, action: null, loading: false }; return; }
     if (inter.kind === "football") return;
     const pose = computeSeatPose(inter);
     if (pose && entity.group) {
@@ -8096,7 +8103,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       entity.group.position.copy(pose.worldPos);
       entity.group.rotation.set(pose.worldRotX, pose.worldRotY, pose.worldRotZ);
     }
-    entity.__remoteSit = { id: sittingId, action: null };
+    entity.__remoteSit = { id: sittingId, action: null, loading: !!inter.animation_url };
     if (!inter.animation_url) return;
     const token = entity.__remoteSit;
     try {
@@ -8112,6 +8119,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       action.reset().fadeIn(0.25).play();
       if (prevAction) { try { prevAction.fadeOut(0.25); } catch {} }
       entity.currentAction = null;
+      token.loading = false;
       token.action = action;
     } catch (e) { console.warn("[interactions] remote sit clip", e); }
   }
