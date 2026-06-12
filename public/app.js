@@ -2566,6 +2566,16 @@ async function setupRoomChannels(mapId) {
       const entity = playerEntities.get(payload.id);
       if (entity && payload.slot !== "jump") playEmote(entity, payload.slot);
     })
+    .on("broadcast", { event: "interaction" }, ({ payload }) => {
+      if (!payload || payload.id === myId) return;
+      const idx = players.findIndex((p) => p.id === payload.id);
+      if (idx >= 0) players[idx] = { ...players[idx], sitting_id: payload.sitting_id || null };
+      const entity = playerEntities.get(payload.id);
+      if (entity) {
+        entity.player = { ...(entity.player || {}), sitting_id: payload.sitting_id || null };
+        try { window.__applyRemoteSit?.(entity, payload.sitting_id || null); } catch {}
+      }
+    })
     .on("broadcast", { event: "character" }, ({ payload }) => {
       if (!payload || payload.id === myId) return;
       // Descarta eventos antigos (chegou após uma troca mais nova).
