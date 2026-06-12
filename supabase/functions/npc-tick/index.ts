@@ -125,8 +125,23 @@ async function runOneTick() {
 
     if (inserts.length) await admin.from("npc_state").insert(inserts);
     if (updates.length) await admin.from("npc_state").upsert(updates, { onConflict: "npc_id" });
+    return { ticked: npcs.length, updated: updates.length, inserted: inserts.length };
+}
 
-    return new Response(JSON.stringify({ ticked: npcs.length, updated: updates.length, inserted: inserts.length }), {
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    const url = new URL(req.url);
+    const iterations = Math.min(55, Math.max(1, Number(url.searchParams.get("iter") || "50")));
+    const results: any[] = [];
+    const start = Date.now();
+    for (let i = 0; i < iterations; i++) {
+      if (Date.now() - start > 55000) break;
+      const r = await runOneTick();
+      results.push(r);
+      await sleep(1000);
+    }
+    return new Response(JSON.stringify({ iterations: results.length, last: results[results.length-1] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
