@@ -2371,6 +2371,9 @@ async function applyCharacter(entity, slug) {
       }
     });
     setPlayerAction(entity, "idle");
+    if (entity.player?.id && entity.player.id !== myId && entity.player.sitting_id) {
+      setTimeout(() => { try { window.__applyRemoteSit?.(entity, entity.player.sitting_id); } catch {} }, 0);
+    }
     console.log(`[applyCharacter] aplicado "${slug}" com clips:`, Object.keys(clips));
   } catch (err) {
     console.warn("Falha ao aplicar personagem", slug, err);
