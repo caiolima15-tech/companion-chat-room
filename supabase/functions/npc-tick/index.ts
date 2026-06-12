@@ -19,16 +19,15 @@ const SPEED_CROSS = 2.2;      // m/s
 const TICK_MS = 1000;
 
 function dist(a: any, b: any) { return Math.hypot(a.x - b.x, a.z - b.z); }
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  try {
+async function runOneTick() {
     const { data: npcs } = await admin
       .from("npc_instances")
       .select("id,route_id,active")
       .eq("active", true);
 
-    if (!npcs || npcs.length === 0) return new Response(JSON.stringify({ moved: 0 }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (!npcs || npcs.length === 0) return { ticked: 0 };
 
     // pega waypoints de todas as rotas envolvidas
     const routeIds = [...new Set(npcs.map((n: any) => n.route_id).filter(Boolean))];
