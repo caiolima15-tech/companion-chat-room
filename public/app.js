@@ -11974,18 +11974,21 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
           // Mask: keep only the right-arm chain so the cup-to-mouth motion
           // is the ONLY thing the drink clip drives. Idle/walk continue to
           // control the rest of the body normally.
-          const keep = /right(arm|forearm|hand|shoulder)/i;
+          const keep = /right(arm|forearm|hand|shoulder)|rightshoulder|rightuparm|rightforearm|righthand/i;
           retarg.tracks = retarg.tracks.filter((t) => keep.test(t.name.replace(/^mixamorig\d*:?/i, "")));
           if (retarg.tracks.length) {
-            // Make the clip ADDITIVE relative to its first frame, so it
-            // applies as a delta on top of idle/walk instead of blending
-            // with them (which caused the arm to "merge" half-way).
-            try { THREE.AnimationUtils.makeClipAdditive(retarg); } catch {}
+            retarg.name = `drink-${cat.slug}-${Date.now()}`;
+            // Make the clip ADDITIVE relative to its first frame, so it applies
+            // only the cup-to-mouth delta on top of idle/walk instead of
+            // crossfading the whole body or fighting the base arm swing.
+            try { THREE.AnimationUtils.makeClipAdditive(retarg, 0, retarg, 30); } catch {}
             drinkAction = entity.mixer.clipAction(retarg);
             drinkAction.blendMode = THREE.AdditiveAnimationBlendMode;
-            drinkAction.setLoop(THREE.LoopRepeat, Infinity);
-            drinkAction.weight = 1;
-            drinkAction.play();
+            drinkAction.setLoop(THREE.LoopOnce, 1);
+            drinkAction.clampWhenFinished = false;
+            drinkAction.enabled = true;
+            drinkAction.weight = 0.85;
+            drinkAction.reset().fadeIn(0.12).play();
           }
         }
       } catch (e) { console.warn("[items] drink anim", e); }
