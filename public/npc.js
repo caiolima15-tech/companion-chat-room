@@ -176,7 +176,14 @@
       const dt = clock.getDelta();
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
-        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
+        if (ent.targetPos) {
+          // Aterra o alvo no chão real do mapa (segue rampas, escadas, plataformas)
+          if (window.__groundHeightAt) {
+            const gy = window.__groundHeightAt(ent.targetPos, ent.targetPos.y);
+            if (typeof gy === "number") ent.targetPos.y = gy;
+          }
+          ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
+        }
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
