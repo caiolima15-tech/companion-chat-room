@@ -262,13 +262,17 @@
     if (!npcInstances.has(s.npc_id)) return;
     const ent = npcEntities.get(s.npc_id);
     if (!ent) return;
+    ent.status = s.status;
+    // Em interação: NPC fica congelado em idle (não recebe novos alvos do servidor).
+    if (ent.lockToPlayer || ent._talkLock) {
+      // mantém targetPos = posição atual para não andar
+      if (ent.targetPos) ent.targetPos.copy(ent.group.position);
+      ent._speed = 0;
+      return;
+    }
     ent.targetPos = new (THREE().Vector3)(s.x, s.y, s.z);
     ent._speed = s.status === "walking" ? 1.4 : 0;
-    ent.status = s.status;
-    // Tick deriva a anim do movimento real; aqui só sincroniza rotação alvo quando não está em interação.
-    if (!ent.lockToPlayer && !ent._talkLock && typeof s.rot_y === "number") {
-      ent.targetRot = s.rot_y;
-    }
+    if (typeof s.rot_y === "number") ent.targetRot = s.rot_y;
   }
 
 
@@ -299,8 +303,9 @@
     if (!ent.mixer) return;
     const target = pickAnimClip(ent, name);
     if (!target || ent.currentAction === target) return;
-    if (ent.currentAction) ent.currentAction.fadeOut(0.25);
-    target.reset().fadeIn(0.25).play();
+    const fade = name === "talk" || ent.currentAnimName === "talk" ? 0.35 : 0.3;
+    if (ent.currentAction) ent.currentAction.fadeOut(fade);
+    target.reset().fadeIn(fade).play();
     ent.currentAction = target;
   }
 
@@ -420,10 +425,12 @@
     engagedNpc = { id, ent };
     ent.lockToPlayer = true;
     ent._talkLock = true;
-    ent._speed = 0; // para o movimento no cliente imediatamente
-    // Para o NPC visualmente onde está: alvo = posição atual
+    ent._speed = 0;
     if (ent.targetPos) ent.targetPos.copy(ent.group.position);
-    setAnim(ent, "talk");
+    ent._moving = false;
+    // Começa em idle — só toca "talk" quando o NPC efetivamente falar.
+    if (ent._talkTimer) { clearTimeout(ent._talkTimer); ent._talkTimer = null; }
+    setAnim(ent, "idle");
     window.__npcChatActive = true;
     const input = document.getElementById("chatInput");
     if (input) {
@@ -613,10 +620,11 @@
         // Resposta em TEXTO: balão na cabeça + linha no chat. Sem áudio.
         window.__addNpcLine?.(ent.name || "NPC", data.reply, false);
         showBubble(ent, data.reply);
-        // toca animação de "talk" por uma duração proporcional ao texto
+        // toca "talk" só enquanto o NPC "fala" — duração proporcional ao tamanho do texto
         if (ent._talkTimer) clearTimeout(ent._talkTimer);
         setAnim(ent, "talk");
-        const dur = Math.max(1500, Math.min(6000, (data.reply || "").length * 60));
+        const len = (data.reply || "").length;
+        const dur = Math.max(800, Math.min(9000, len * 55));
         ent._talkTimer = setTimeout(() => { setAnim(ent, "idle"); ent._talkTimer = null; }, dur);
       } else {
 
