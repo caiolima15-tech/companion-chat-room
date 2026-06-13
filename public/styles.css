@@ -2057,7 +2057,7 @@ body.world-ready #speedAdminPanel:not([hidden]) {
   right: 232px !important;
   left: auto !important;
 }
-@media (max-width: 640px) and (orientation: portrait) {
+@media (max-width: 640px) and (orientation: portrait), (max-height: 600px) and (pointer: coarse) {
   .admin-dock { width: 168px; top: 60px; right: 8px; padding: 6px; }
   .admin-dock button.admin-dock-item { font-size: 12px; padding: 7px 8px; }
   body.world-ready #lightsAdminPanel:not([hidden]),
