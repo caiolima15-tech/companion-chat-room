@@ -1009,11 +1009,11 @@
     if (routeEditor.dragWp) {
       const hit = raycastGround(); if (!hit) return;
       const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
-      if (giz) giz.position.set(hit.x, 0.5, hit.z);
+      if (giz) giz.position.set(hit.x, (hit.y || 0) + 0.5, hit.z);
       if (dragDebounceT) clearTimeout(dragDebounceT);
       dragDebounceT = setTimeout(async () => {
         const sb = SB();
-        await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
+        await sb.from("npc_waypoints").update({ x: hit.x, y: hit.y || 0, z: hit.z }).eq("id", routeEditor.dragWp.id);
       }, 200);
       e.stopPropagation(); e.stopImmediatePropagation();
     }
