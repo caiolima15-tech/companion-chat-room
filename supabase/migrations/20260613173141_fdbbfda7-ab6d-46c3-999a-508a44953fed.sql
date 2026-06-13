@@ -1,0 +1,1 @@
+update public.npc_state set status='walking', anim='walk', next_decision_at=now() where status='socializing';
