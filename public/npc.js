@@ -25,27 +25,60 @@
   setTimeout(tryBoot, 1500);
 
   // ============ ANIMATION LIBRARY ============
-  // slug -> THREE.AnimationClip (genérico, retargetado por nome de bone)
+  // key (`${slug}` ou `${slug}:${gender}`) -> THREE.AnimationClip
   const animLib = new Map();
   const animLibLoading = new Map();
   async function loadAnimationLibrary() {
     const sb = SB();
     const { data: anims } = await sb.from("npc_animations").select("*");
-    const Loader = window.__GLTFLoader; if (!Loader) return;
-    const loader = new Loader();
+    const GLTF = window.__GLTFLoader;
+    const FBX = window.__FBXLoader;
+    if (!GLTF && !FBX) return;
+    const gLoader = GLTF ? new GLTF() : null;
+    const fLoader = FBX ? new FBX() : null;
     const pending = [];
     for (const a of anims || []) {
-      if (animLib.has(a.slug)) continue;
-      if (animLibLoading.has(a.slug)) continue;
-      const p = loader.loadAsync(a.model_url).then((gltf) => {
-        const clip = gltf.animations?.[0];
-        if (clip) { clip.name = a.slug; animLib.set(a.slug, clip); }
-      }).catch((e) => console.warn("[npc-anim] load fail", a.slug, e));
-      animLibLoading.set(a.slug, p);
+      const key = a.gender && a.gender !== "any" ? `${a.slug}:${a.gender}` : a.slug;
+      if (animLib.has(key) || animLibLoading.has(key)) continue;
+      const isFbx = /\.fbx(\?|$)/i.test(a.model_url);
+      const loader = isFbx ? fLoader : gLoader;
+      if (!loader) { console.warn("[npc-anim] sem loader pra", a.model_url); continue; }
+      const p = loader.loadAsync(a.model_url).then((asset) => {
+        const clip = asset?.animations?.[0];
+        if (clip) {
+          clip.name = a.slug;
+          animLib.set(key, clip);
+          console.log("[npc-anim] carregado:", key);
+        } else {
+          console.warn("[npc-anim] sem clip em", a.model_url);
+        }
+      }).catch((e) => console.warn("[npc-anim] load fail", key, e));
+      animLibLoading.set(key, p);
       pending.push(p);
     }
     if (pending.length) await Promise.allSettled(pending);
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
+  }
+
+  // Retarget de tracks: ajusta prefixo Mixamo conforme o esqueleto destino.
+  function retargetClipForEnt(ent, clip) {
+    const T = THREE();
+    const cloned = clip.clone();
+    const needsMixamo = !!ent.bonePrefix; // ent tem prefixo 'mixamorig' -> queremos preservar
+    for (const tr of cloned.tracks) {
+      const dot = tr.name.indexOf(".");
+      const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
+      const prop = dot >= 0 ? tr.name.slice(dot) : "";
+      let newBone = bone;
+      if (needsMixamo && !bone.startsWith("mixamorig")) {
+        newBone = "mixamorig" + bone.charAt(0).toUpperCase() + bone.slice(1);
+      } else if (!needsMixamo && bone.startsWith("mixamorig")) {
+        const stripped = bone.slice("mixamorig".length);
+        newBone = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+      }
+      tr.name = newBone + prop;
+    }
+    return cloned;
   }
 
   // ============ RUNTIME ============
