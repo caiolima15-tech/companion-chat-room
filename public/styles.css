@@ -709,7 +709,7 @@ input:focus {
 }
 
 
-@media (max-width: 600px) and (orientation: portrait) {
+@media (max-width: 600px) and (orientation: portrait), (max-height: 600px) and (pointer: coarse) {
   body { overflow: hidden; }
 
   .app-shell {
