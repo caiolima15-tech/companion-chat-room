@@ -283,7 +283,9 @@
         // Detecta prefixo Mixamo no esqueleto destino (pra retarget de clips externos)
         ent.bonePrefix = "";
         root.traverse((o) => {
-          if (!ent.bonePrefix && o.isBone && o.name?.startsWith("mixamorig")) ent.bonePrefix = "mixamorig";
+          if (ent.bonePrefix || !o.isBone || !o.name) return;
+          const m = o.name.match(MIXAMO_RE);
+          if (m) ent.bonePrefix = m[0];
         });
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
