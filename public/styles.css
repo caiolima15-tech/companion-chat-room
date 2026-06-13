@@ -1027,7 +1027,7 @@ input:focus {
 }
 
 .mobile-bar { display: none; }
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-height: 600px) and (pointer: coarse) {
   .mobile-bar { display: flex; }
 }
 /* Admins também veem a barra de ações (chat/emotes/config) no desktop */
