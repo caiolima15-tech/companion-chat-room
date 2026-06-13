@@ -716,15 +716,8 @@
       scene().add(sph);
       routeEditor.gizmos.set(wp.id, sph);
     }
-    if (wps.length >= 2) {
-      const pts = wps.map(w => new T.Vector3(w.x, (w.y || 0) + 0.3, w.z));
-      pts.push(pts[0]);
-      const geo = new T.BufferGeometry().setFromPoints(pts);
-      const mat = new T.LineDashedMaterial({ color: 0x39c5bb, dashSize: 0.4, gapSize: 0.25, depthTest: false });
-      const line = new T.Line(geo, mat); line.computeLineDistances(); line.renderOrder = 9998;
-      scene().add(line);
-      routeEditor.lines = line;
-    }
+    // Sem linhas conectando: NPCs escolhem o ponto mais próximo dinamicamente.
+
   }
   function showRouteEditorHud() {
     const old = document.getElementById("npcRouteHudFixed"); if (old) old.remove();
@@ -733,7 +726,8 @@
     hud.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111d;border:1px solid #39c5bb;border-radius:10px;padding:8px 14px;color:#fff;font:13px system-ui;z-index:10000;display:flex;gap:8px;align-items:center";
     hud.innerHTML = `
       <strong>✏️ Editor de rota</strong>
-      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar · Arraste bolinhas pra mover · Click numa bolinha pra editar</span>
+      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Arraste bolinhas pra mover · Click numa bolinha pra editar · NPCs caminham do ponto atual até o mais próximo</span>
+
       <button id="npcRouteExit" style="background:#c33;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Sair</button>`;
     document.body.appendChild(hud);
     document.getElementById("npcRouteExit").onclick = () => { exitRouteEditor(); renderTab("routes"); };

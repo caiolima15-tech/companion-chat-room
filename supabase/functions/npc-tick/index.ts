@@ -97,6 +97,16 @@ async function runOneTick() {
       }
     }
 
+    function pickNearest(wps: any[], fromX: number, fromZ: number, excludeSeq: number | null) {
+      let best: any = null, bestD = Infinity;
+      for (const w of wps) {
+        if (excludeSeq != null && w.seq === excludeSeq) continue;
+        const d = Math.hypot(w.x - fromX, w.z - fromZ);
+        if (d < bestD) { bestD = d; best = w; }
+      }
+      return best;
+    }
+
     for (const npc of npcs) {
       if (usedSocial.has(npc.id)) continue;
       const wps = npc.route_id ? wpsByRoute[npc.route_id] : null;
@@ -105,9 +115,10 @@ async function runOneTick() {
       let st = stateMap[npc.id];
       if (!st) {
         const first = wps[0];
+        const next = pickNearest(wps, first.x, first.z, first.seq) || wps[1] || wps[0];
         inserts.push({
           npc_id: npc.id, x: first.x, y: first.y, z: first.z, rot_y: 0,
-          anim: "walk", status: "walking", target_wp_seq: 1,
+          anim: "walk", status: "walking", target_wp_seq: next.seq,
           next_decision_at: new Date(now).toISOString(),
           updated_at: new Date(now).toISOString(),
         });
@@ -122,10 +133,11 @@ async function runOneTick() {
       if (st.status === "sit" || st.status === "talking" || st.status === "paused" || st.status === "socializing") {
         if (new Date(st.next_decision_at).getTime() > now) continue;
         st.status = "walking"; st.anim = "walk";
-        st.target_wp_seq = (st.target_wp_seq + 1) % wps.length;
+        const nx = pickNearest(wps, st.x, st.z, st.target_wp_seq);
+        if (nx) st.target_wp_seq = nx.seq;
       }
 
-      const target = wps.find((w: any) => w.seq === st.target_wp_seq) || wps[0];
+      const target = wps.find((w: any) => w.seq === st.target_wp_seq) || pickNearest(wps, st.x, st.z, null) || wps[0];
       const isCross = target.is_crosswalk;
       const speed = isCross ? SPEED_CROSS : SPEED_WALK;
       const dx = target.x - st.x, dz = target.z - st.z;
@@ -150,7 +162,9 @@ async function runOneTick() {
           newAnim = "idle"; newStatus = "paused";
           nextDecision = new Date(now + target.pause_ms).toISOString();
         } else {
-          newTarget = (st.target_wp_seq + 1) % wps.length;
+          // escolhe o ponto mais próximo, excluindo o que acabou de chegar (evita ping-pong com 3+ pontos)
+          const nx = pickNearest(wps, target.x, target.z, target.seq);
+          newTarget = nx ? nx.seq : target.seq;
         }
       } else {
         newRot = Math.atan2(dx, dz);
@@ -165,6 +179,7 @@ async function runOneTick() {
         updated_at: new Date(now).toISOString(),
       });
     }
+
 
     if (inserts.length) await admin.from("npc_state").insert(inserts);
     if (updates.length) await admin.from("npc_state").upsert(updates, { onConflict: "npc_id" });
