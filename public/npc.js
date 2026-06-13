@@ -9,13 +9,18 @@
   const scene = () => window.__scene;
   const player = () => window.__player;
 
-  let booted = false;
+  let booted = false, adminBtnAdded = false;
   function tryBoot() {
-    if (booted) return;
-    if (!SB() || !THREE() || !scene()) { return setTimeout(tryBoot, 600); }
-    booted = true;
-    initNpcRuntime();
-    if (window.__isAdmin) initNpcAdminButton();
+    if (!booted) {
+      if (!SB() || !THREE() || !scene()) { return setTimeout(tryBoot, 600); }
+      booted = true;
+      initNpcRuntime();
+    }
+    if (!adminBtnAdded && window.__isAdmin) {
+      adminBtnAdded = true;
+      initNpcAdminButton();
+    }
+    if (!adminBtnAdded) setTimeout(tryBoot, 1000);
   }
   setTimeout(tryBoot, 1500);
 
