@@ -4997,6 +4997,13 @@ chatForm.addEventListener("submit", async (event) => {
   const text = chatInput.value.trim();
   if (!text || !myId || !me) return;
   chatInput.value = "";
+
+  // Se está conversando com NPC, rota pra ele (texto -> resposta em texto, sem áudio)
+  if (window.__npcChatActive && window.__sendNpcText) {
+    window.__sendNpcText(text, "text");
+    return;
+  }
+
   const { error } = await supabase.from("chat_messages").insert({
     user_id: myId,
     nickname: me.name,
@@ -5010,7 +5017,6 @@ chatForm.addEventListener("submit", async (event) => {
     addSystemLine("Falha ao enviar: " + error.message);
     return;
   }
-  // Bolha local imediata (o postgres_changes também atualiza pros outros)
   me.speech = text;
   await trackMe();
   setTimeout(() => {
@@ -5020,6 +5026,7 @@ chatForm.addEventListener("submit", async (event) => {
     }
   }, 4500);
 });
+
 
 joinButton.addEventListener("click", saveNickname);
 nameInput.addEventListener("keydown", (event) => {
