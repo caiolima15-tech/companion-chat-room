@@ -303,8 +303,9 @@
     if (!ent.mixer) return;
     const target = pickAnimClip(ent, name);
     if (!target || ent.currentAction === target) return;
-    if (ent.currentAction) ent.currentAction.fadeOut(0.25);
-    target.reset().fadeIn(0.25).play();
+    const fade = name === "talk" || ent.currentAnimName === "talk" ? 0.35 : 0.3;
+    if (ent.currentAction) ent.currentAction.fadeOut(fade);
+    target.reset().fadeIn(fade).play();
     ent.currentAction = target;
   }
 
