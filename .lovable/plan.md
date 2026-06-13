@@ -1,37 +1,31 @@
-# Correções de animação dos NPCs + base de história
+Plano de correção:
 
-## Problema raiz das animações
-A biblioteca de animações (`npc_animations`) está com arquivos **.fbx** (Idle, Walk, Talk do Mixamo), mas o código tenta carregar tudo com `GLTFLoader`. O `GLTFLoader` não consegue ler `.fbx`, então `animLib` fica **vazia**, e o NPC só toca a animação embutida no próprio `.glb` do modelo — que muitas vezes é só um idle. Por isso "nenhuma animação funciona" e os NPCs parecem teleportar sem walk.
+1. Realtime de NPCs
+- Ativar realtime no backend para `npc_instances`, `npc_models`, `npc_animations`, `npc_waypoints` e `npc_routes`, além do `npc_state` que já está ativo.
+- Ajustar `public/npc.js` para tratar `INSERT`, `UPDATE` e `DELETE` de `npc_instances` sem depender de recarregar tudo: NPC criado aparece, NPC removido/desativado desaparece imediatamente.
+- Atualizar também o painel de Spawn/Rotas quando houver mudanças ao vivo.
 
-Os NPCs **estão** se movendo (confirmado em `npc_state`: posições e status mudando a cada tick), mas sem a clip `walk` na biblioteca o `pickAnimClip` cai no fallback idle.
+2. Pontos de rota como “cliques automáticos”
+- Trocar a lógica do `npc-tick` para seguir os waypoints em ordem de `seq`: ponto 0 -> 1 -> 2 -> 3 -> volta para 0, em vez de escolher o ponto mais próximo.
+- Quando o NPC for criado ou a rota for trocada, iniciar o estado no ponto inicial e mirar no próximo ponto.
+- Remover a lógica que pode fazer o NPC ficar parado por pausas longas ou escolher pontos errados.
 
-## Mudanças
+3. Altura e chão corretos
+- Expor do mapa principal as mesmas funções que o jogador usa para chão e colisão: altura do chão e bloqueio por objetos.
+- No editor de rotas, o clique vai bater no chão real/objetos caminháveis, não no plano fixo `y=0`; assim os pontos não ficam “voando” nem enterrados.
+- No runtime dos NPCs, ao deslocar visualmente, ajustar o `Y` pelo chão real igual ao jogador.
 
-### 1. Carregar FBX corretamente (`public/npc.js`)
-- Adicionar `FBXLoader` (CDN `three/examples/jsm/loaders/FBXLoader.js`) junto do `GLTFLoader` existente.
-- Em `loadAnimationLibrary`: detectar extensão do `model_url` (`.fbx` vs `.glb/.gltf`) e usar o loader certo.
-- Ao extrair o clip do FBX, normalizar nomes de tracks Mixamo: remover prefixo `mixamorig` se o modelo destino não tiver esse prefixo (e vice-versa) para retargeting básico por nome de bone.
-- Suportar variante por gênero: quando há `idle` male e female, `pickAnimClip` escolhe pela `ent.gender`.
+4. Movimento visual com colisão
+- O NPC vai interpolar em pequenos passos até o próximo alvo, usando a mesma checagem de colisão do jogador.
+- Enquanto há deslocamento real no mapa, forçar animação `walk`; quando chegar/parar/conversar, trocar para `idle` ou `talk`.
+- Se um trecho entre pontos estiver bloqueado, o NPC não atravessa objeto; ele para visualmente, deixando claro que os pontos precisam contornar o obstáculo.
 
-### 2. Aplicar clip da lib com retarget seguro
-- Em `pickAnimClip`: clonar o clip (`clip.clone()`) antes de criar a action, e remapear nomes de tracks para casar com bones do modelo destino (heurística simples: igualar prefixo Mixamo).
-- Garantir que ao trocar para `walk`, a action faça `setLoop(LoopRepeat)` e `clampWhenFinished = false`.
+5. Animações FBX por função, não por nome do arquivo
+- Garantir que o slug salvo (`idle`, `walk`, `talk`) seja o que manda; o nome interno do FBX pode ser qualquer um.
+- Corrigir o retarget das animações Mixamo criando um mapa real dos ossos do modelo e removendo tracks que não existem no personagem, evitando T-pose e erros como `No target node found`.
+- Se não existir animação `walk` cadastrada no banco, manter fallback, mas deixar o sistema pronto para tocar qualquer FBX enviado com slug `walk`.
 
-### 3. UI: base de história (backstory) no painel de edição do NPC
-- Na aba **Spawn** (lista de NPCs), por NPC:
-  - `<textarea>` "Base da história" (até 2000 chars) lendo/gravando `npc_instances.backstory`.
-  - Botão "📄 Subir .txt" que lê arquivo local (`input type=file accept=".txt"`) e preenche o textarea.
-  - Botão "Salvar história".
-- Quando o admin grava manualmente, o `npc-chat` já respeita (não regenera, pois `backstory` deixa de ser nulo).
-
-### 4. Pequenos ajustes
-- Aumentar lerp de posição (linha 115) de `dt * 4` para `dt * 8` para acompanhar o tick do servidor com menos atraso visual.
-- Log curto no console quando uma clip da lib é aplicada com sucesso (debug).
-
-## Arquivos
-- `public/npc.js` — loader FBX, retarget, seleção por gênero, UI backstory, lerp.
-- Nenhuma migração nova (coluna `backstory` já existe).
-- Nenhuma alteração em `npc-chat` nem `npc-tick`.
-
-## Observação
-Os arquivos atuais são Mixamo, então o retarget por nome de bone funciona para qualquer modelo que também siga o esqueleto Mixamo (caso comum). Modelos com esqueleto totalmente custom continuarão tocando só o idle deles — isso é limitação dos próprios assets, não do código.
+6. Validação final
+- Conferir no banco que o estado do NPC está mudando de ponto em ponto.
+- Conferir no console que os erros de tracks inválidas sumiram.
+- Deploy da função `npc-tick` depois da alteração para a simulação usar a nova lógica.
