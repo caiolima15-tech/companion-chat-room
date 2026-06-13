@@ -283,6 +283,7 @@
       const raw = animLib.get(k);
       if (!raw) continue;
       const retargeted = retargetClipForEnt(ent, raw);
+      if (!retargeted) continue;
       const action = ent.mixer.clipAction(retargeted);
       action.setLoop(T.LoopRepeat, Infinity);
       action.clampWhenFinished = false;
