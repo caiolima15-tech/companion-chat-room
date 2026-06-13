@@ -138,23 +138,25 @@
     const loadR = getLoadRadius();
     const despawnR = getDespawnRadius();
     for (const [id, inst] of npcInstances) {
-      const st = npcStateCache.get(id);
-      if (!st) continue;
+      let st = npcStateCache.get(id);
+      if (!st) {
+        // Sem state ainda (NPC recém-criado, npc-tick ainda não rodou):
+        // usa posição do player como fallback pra spawnar imediatamente
+        st = { x: p.position.x, y: p.position.y, z: p.position.z, rot_y: 0, anim: "idle" };
+        npcStateCache.set(id, st);
+      }
       const d = Math.hypot(st.x - p.position.x, st.z - p.position.z);
       const ent = npcEntities.get(id);
       if (!ent && !npcLoading.has(id) && d < loadR) {
-        // spawn
         npcLoading.add(id);
         spawnNpc(inst).then((e) => {
           npcLoading.delete(id);
           if (!e) return;
-          const cur = npcStateCache.get(id);
-          if (cur) {
-            e.group.position.set(cur.x, cur.y, cur.z);
-            e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
-            e.targetRot = cur.rot_y;
-            setAnim(e, cur.anim);
-          }
+          const cur = npcStateCache.get(id) || st;
+          e.group.position.set(cur.x, cur.y, cur.z);
+          e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
+          e.targetRot = cur.rot_y || 0;
+          setAnim(e, cur.anim || "idle");
         });
       } else if (ent && d > despawnR) {
         try { scene().remove(ent.group); } catch {}
