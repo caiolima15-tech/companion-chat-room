@@ -138,8 +138,30 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
         if (payload.new) handleStateUpdate(payload.new);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, () => {
-        reloadForMap();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "npc_instances" }, (payload) => {
+        const inst = payload.new;
+        if (!inst || inst.map_id !== getCurrentMapId() || !inst.active) return;
+        npcInstances.set(inst.id, inst);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "npc_instances" }, (payload) => {
+        const inst = payload.new;
+        if (!inst) return;
+        const inMap = inst.map_id === getCurrentMapId();
+        if (inMap && inst.active) {
+          npcInstances.set(inst.id, inst);
+        } else {
+          npcInstances.delete(inst.id);
+          const ent = npcEntities.get(inst.id);
+          if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
+        }
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "npc_instances" }, (payload) => {
+        const id = payload.old?.id;
+        if (!id) return;
+        npcInstances.delete(id);
+        npcStateCache.delete(id);
+        const ent = npcEntities.get(id);
+        if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
