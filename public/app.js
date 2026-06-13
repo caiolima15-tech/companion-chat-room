@@ -4135,6 +4135,27 @@ function addMessage(message) {
   chatLog.scrollTop = chatLog.scrollHeight;
 }
 
+// Expor helpers pra outros módulos (npc.js)
+window.__addChatMessage = addMessage;
+window.__addSystemLine = addSystemLine;
+window.__addNpcLine = function (npcName, text, isMe) {
+  const item = document.createElement("div");
+  item.className = "chat-item" + (isMe ? " is-self" : "");
+  item.setAttribute("data-ts", String(Date.now()));
+  const safeName = (npcName || "NPC").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  const safeText = (text || "").replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c]));
+  const initial = safeName.trim().charAt(0).toUpperCase();
+  item.innerHTML = `
+    <div class="chat-avatar placeholder" style="background:#39c5bb;color:#000">${initial}</div>
+    <div class="chat-copy">
+      ${isMe ? "" : `<span class="chat-name" style="color:#39c5bb">${safeName}</span>`}
+      <div class="chat-bubble" style="border-left:2px solid #39c5bb">${safeText}</div>
+    </div>`;
+  chatLog.appendChild(item);
+  chatLog.scrollTop = chatLog.scrollHeight;
+};
+
+
 
 // ============ Movement ============
 function move(dx, dy, facing) {
