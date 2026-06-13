@@ -60,11 +60,13 @@
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
-  // Retarget de tracks: normaliza prefixos Mixamo (mixamorig, mixamorig7, etc) ao do esqueleto destino.
+  // Retarget de tracks: normaliza prefixos Mixamo e descarta tracks cujo bone não existe no destino.
   const MIXAMO_RE = /^mixamorig\d*/i;
   function retargetClipForEnt(ent, clip) {
     const cloned = clip.clone();
-    const destPrefix = ent.bonePrefix || ""; // ex: "" | "mixamorig" | "mixamorig7"
+    const destPrefix = ent.bonePrefix || "";
+    const boneSet = ent.boneNames; // Set<string> com nomes válidos
+    const kept = [];
     for (const tr of cloned.tracks) {
       const dot = tr.name.indexOf(".");
       const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
@@ -72,16 +74,21 @@
       const m = bone.match(MIXAMO_RE);
       let newBone = bone;
       if (m) {
-        const rest = bone.slice(m[0].length); // ex: "RightHand"
+        const rest = bone.slice(m[0].length);
         if (destPrefix) newBone = destPrefix + rest;
         else newBone = rest.charAt(0).toLowerCase() + rest.slice(1);
       } else if (destPrefix && !bone.startsWith(destPrefix)) {
         newBone = destPrefix + bone.charAt(0).toUpperCase() + bone.slice(1);
       }
+      // Descarta tracks cujo bone não existe no modelo destino — evita T-pose por bind falho
+      if (boneSet && boneSet.size && !boneSet.has(newBone)) continue;
       tr.name = newBone + prop;
+      kept.push(tr);
     }
+    cloned.tracks = kept;
     return cloned;
   }
+
 
   // ============ RUNTIME ============
   const npcEntities = new Map();   // id -> ent (loaded visual)
