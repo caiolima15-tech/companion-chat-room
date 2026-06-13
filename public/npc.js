@@ -221,12 +221,19 @@
   function pickAnimClip(ent, name) {
     // 1) clip do próprio modelo
     if (ent.actions && ent.actions[name]) return ent.actions[name];
-    // 2) lib externa
-    const libClip = animLib.get(name);
-    if (libClip && ent.mixer) {
-      // cacheia ação criada com clip externo
-      ent.actions[name] = ent.mixer.clipAction(libClip);
-      return ent.actions[name];
+    if (!ent.mixer) return null;
+    // 2) lib externa: gênero específico primeiro, depois genérico
+    const T = THREE();
+    const candidates = [`${name}:${ent.gender}`, name];
+    for (const k of candidates) {
+      const raw = animLib.get(k);
+      if (!raw) continue;
+      const retargeted = retargetClipForEnt(ent, raw);
+      const action = ent.mixer.clipAction(retargeted);
+      action.setLoop(T.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+      ent.actions[name] = action;
+      return action;
     }
     // 3) fallback idle
     return ent.actions?.["idle"] || (ent.actions ? Object.values(ent.actions)[0] : null);
