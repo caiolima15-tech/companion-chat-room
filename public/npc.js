@@ -606,14 +606,17 @@
     (models || []).forEach((m) => {
       const icon = m.gender === "male" ? "♂" : m.gender === "female" ? "♀" : "·";
       const row = document.createElement("div");
-      row.style.cssText = "padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px";
+      row.style.cssText = "padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap";
       row.innerHTML = `
-        <span style="flex:1">${icon} ${m.name}</span>
+        <span style="flex:1;min-width:120px">${icon} ${m.name}</span>
         <select data-id="${m.id}" class="npc-gen-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px">
           <option value="male" ${m.gender==='male'?'selected':''}>♂</option>
           <option value="female" ${m.gender==='female'?'selected':''}>♀</option>
           <option value="neutral" ${m.gender==='neutral'?'selected':''}>·</option>
         </select>
+        <label style="font-size:11px;display:flex;align-items:center;gap:3px">Tam:
+          <input type="number" data-id="${m.id}" class="npc-scale-inp" min="0.1" max="5" step="0.05" value="${m.scale_mul || 1}" style="width:55px;background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px"/>
+        </label>
         <button data-id="${m.id}" class="npc-spawn-btn" style="background:#39c5bb;color:#000;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">+Spawn</button>
         <button data-id="${m.id}" class="npc-del-btn" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>`;
       list.appendChild(row);
@@ -621,6 +624,21 @@
     list.querySelectorAll(".npc-gen-sel").forEach((s) => s.onchange = async () => {
       await sb.from("npc_models").update({ gender: s.value }).eq("id", s.dataset.id);
     });
+    list.querySelectorAll(".npc-scale-inp").forEach((inp) => inp.onchange = async () => {
+      const v = Math.max(0.1, Math.min(5, Number(inp.value) || 1));
+      inp.value = v;
+      const modelId = inp.dataset.id;
+      await sb.from("npc_models").update({ scale_mul: v }).eq("id", modelId);
+      const m = npcModels.get(modelId); if (m) m.scale_mul = v;
+      // re-escala NPCs já carregados que usam esse modelo
+      for (const [npcId, ent] of npcEntities) {
+        const inst = npcInstances.get(npcId);
+        if (inst && inst.model_id === modelId && ent.group?.children?.[0]) {
+          ent.group.children[0].scale.setScalar(v);
+        }
+      }
+    });
+
     list.querySelectorAll(".npc-del-btn").forEach((b) => b.onclick = async () => {
       if (!confirm("Excluir modelo?")) return;
       await sb.from("npc_models").delete().eq("id", b.dataset.id);
