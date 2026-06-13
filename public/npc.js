@@ -424,10 +424,12 @@
     engagedNpc = { id, ent };
     ent.lockToPlayer = true;
     ent._talkLock = true;
-    ent._speed = 0; // para o movimento no cliente imediatamente
-    // Para o NPC visualmente onde está: alvo = posição atual
+    ent._speed = 0;
     if (ent.targetPos) ent.targetPos.copy(ent.group.position);
-    setAnim(ent, "talk");
+    ent._moving = false;
+    // Começa em idle — só toca "talk" quando o NPC efetivamente falar.
+    if (ent._talkTimer) { clearTimeout(ent._talkTimer); ent._talkTimer = null; }
+    setAnim(ent, "idle");
     window.__npcChatActive = true;
     const input = document.getElementById("chatInput");
     if (input) {
