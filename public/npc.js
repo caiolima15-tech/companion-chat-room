@@ -934,13 +934,22 @@
     }
     if (moved) return;
     if (Date.now() - downTime > 700) return;
+    const justAdded = routeEditor.lastAddAt && Date.now() - routeEditor.lastAddAt < 250;
+    if (routeEditor.addingPoint || justAdded) return;
     const hit = raycastGround();
     if (!hit) { editorToast("✗ clique fora do chão"); return; }
     const sb = SB();
-    const nextSeq = (routeEditor.wps?.length || 0);
-    const { error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+    routeEditor.addingPoint = true;
+    const nextSeq = ((routeEditor.wps || []).reduce((max, wp) => Math.max(max, Number(wp.seq) || 0), -1) + 1);
+    const { data: wp, error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 }).select("*").single();
+    routeEditor.addingPoint = false;
+    routeEditor.lastAddAt = Date.now();
     if (error) editorToast("✗ erro: " + error.message);
-    else editorToast(`✔ ponto #${nextSeq} adicionado`);
+    else {
+      const wps = [...(routeEditor.wps || []), wp].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+      rebuildRouteGizmos(wps);
+      editorToast(`✔ ponto #${nextSeq} criado`);
+    }
     e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
   let toastT = null;
