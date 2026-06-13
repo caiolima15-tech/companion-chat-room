@@ -2670,7 +2670,7 @@ body:not(.world-ready) #voicePttBtn { display:none !important; }
    ============================================================ */
 
 /* GTA-like display font for HUD numbers */
-@import url('https://fonts.googleapis.com/css2?family=Anton&family=Russo+One&display=swap');
+/* Anton/Russo One loaded at top of file */
 
 /* Floating pill base — used by NPCs, money, logout */
 .hud-pill {
