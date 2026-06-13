@@ -145,7 +145,7 @@
       const dt = clock.getDelta();
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
-        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 4));
+        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
