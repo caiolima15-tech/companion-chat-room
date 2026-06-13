@@ -1117,7 +1117,7 @@
       <label style="display:block;margin:4px 0"><input type="checkbox" id="wpCross" ${wp.is_crosswalk?'checked':''}/> 🚸 Travessia</label>
       <label style="display:block;margin:4px 0"><input type="checkbox" id="wpTalk" ${wp.is_talk_spot?'checked':''}/> 💬 Ponto de conversa</label>
       <label style="display:block;margin:4px 0"><input type="checkbox" id="wpSit" ${wp.is_sit_spot?'checked':''}/> 🪑 Sentar</label>
-      <label style="display:block;margin:4px 0">⏱ Pausa (ms): <input type="number" id="wpPause" value="${wp.pause_ms||0}" style="width:80px;background:#000;color:#fff;border:1px solid #444"/></label>
+      <label style="display:block;margin:4px 0">⏱ Pausa (segundos): <input type="number" id="wpPause" min="0" step="0.5" value="${((wp.pause_ms||0)/1000)}" style="width:80px;background:#000;color:#fff;border:1px solid #444"/></label>
       <button id="wpSave" style="width:100%;background:#39c5bb;color:#000;border:none;padding:6px;border-radius:4px;font-weight:700;cursor:pointer;margin-top:6px">Salvar</button>
       <button id="wpDel" style="width:100%;background:#c33;color:#fff;border:none;padding:6px;border-radius:4px;font-weight:700;cursor:pointer;margin-top:4px">Excluir</button>`;
     document.body.appendChild(hud);
@@ -1128,7 +1128,7 @@
         is_crosswalk: document.getElementById("wpCross").checked,
         is_talk_spot: document.getElementById("wpTalk").checked,
         is_sit_spot: document.getElementById("wpSit").checked,
-        pause_ms: Number(document.getElementById("wpPause").value) || 0,
+        pause_ms: Math.max(0, Math.round((Number(document.getElementById("wpPause").value) || 0) * 1000)),
       }).eq("id", wp.id);
       hud.remove();
     };
