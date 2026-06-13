@@ -935,9 +935,10 @@
     if (moved) return;
     if (Date.now() - downTime > 700) return;
     const justAdded = routeEditor.lastAddAt && Date.now() - routeEditor.lastAddAt < 250;
-    if (routeEditor.addingPoint || justAdded) return;
+    if (routeEditor.addingPoint || justAdded) { e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault(); return; }
     const hit = raycastGround();
     if (!hit) { editorToast("✗ clique fora do chão"); return; }
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
     const sb = SB();
     routeEditor.addingPoint = true;
     const nextSeq = ((routeEditor.wps || []).reduce((max, wp) => Math.max(max, Number(wp.seq) || 0), -1) + 1);
@@ -950,7 +951,6 @@
       rebuildRouteGizmos(wps);
       editorToast(`✔ ponto #${nextSeq} criado`);
     }
-    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
   let toastT = null;
   function editorToast(msg) {
