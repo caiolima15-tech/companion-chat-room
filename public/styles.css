@@ -692,7 +692,7 @@ input:focus {
   display: none;
 }
 
-@media (max-width: 960px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: portrait), (max-height: 600px) and (pointer: coarse) {
   body {
     overflow: auto;
   }
@@ -709,7 +709,7 @@ input:focus {
 }
 
 
-@media (max-width: 600px) and (orientation: portrait) {
+@media (max-width: 600px) and (orientation: portrait), (max-height: 600px) and (pointer: coarse) {
   body { overflow: hidden; }
 
   .app-shell {
@@ -1027,7 +1027,7 @@ input:focus {
 }
 
 .mobile-bar { display: none; }
-@media (max-width: 600px) {
+@media (max-width: 600px), (max-height: 600px) and (pointer: coarse) {
   .mobile-bar { display: flex; }
 }
 /* Admins também veem a barra de ações (chat/emotes/config) no desktop */
@@ -2057,7 +2057,7 @@ body.world-ready #speedAdminPanel:not([hidden]) {
   right: 232px !important;
   left: auto !important;
 }
-@media (max-width: 640px) and (orientation: portrait) {
+@media (max-width: 640px) and (orientation: portrait), (max-height: 600px) and (pointer: coarse) {
   .admin-dock { width: 168px; top: 60px; right: 8px; padding: 6px; }
   .admin-dock button.admin-dock-item { font-size: 12px; padding: 7px 8px; }
   body.world-ready #lightsAdminPanel:not([hidden]),
