@@ -955,21 +955,37 @@
 
   async function renderSpawnTab(el, sb) {
     const mapId = window.__currentMapId || "bar";
-    const { data: insts } = await sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").eq("map_id", mapId).order("created_at", { ascending: false });
+    const [{ data: insts }, { data: routes }] = await Promise.all([
+      sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").eq("map_id", mapId).order("created_at", { ascending: false }),
+      sb.from("npc_routes").select("id,name").eq("map_id", mapId).order("name"),
+    ]);
+    const routeOpts = (routes || []).map(r => `<option value="${r.id}">${r.name}</option>`).join("");
     el.innerHTML = `<p style="opacity:.7">NPCs nesta sala (${mapId}):</p>` +
-      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px">
-        <span style="flex:1">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'} · ${i.npc_routes?.name || 'sem rota'})</small></span>
+      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px">
+        <span style="flex:1;min-width:140px">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
+        <select data-id="${i.id}" class="npc-route-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px;max-width:140px">
+          <option value="">— sem rota —</option>
+          ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
+        </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
       </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
     });
+    el.querySelectorAll(".npc-route-sel").forEach((s) => s.onchange = async () => {
+      const npcId = s.dataset.id;
+      const newRoute = s.value || null;
+      await sb.from("npc_instances").update({ route_id: newRoute }).eq("id", npcId);
+      // reset state pra forçar o tick a re-spawnar no 1º waypoint
+      await sb.from("npc_state").delete().eq("npc_id", npcId);
+    });
     el.querySelectorAll(".npc-inst-del").forEach((b) => b.onclick = async () => {
       await sb.from("npc_instances").delete().eq("id", b.dataset.id);
       renderTab("spawn");
     });
   }
+
 
   async function renderJobsTab(el, sb) {
     const { data: hubs } = await sb.from("delivery_hubs").select("*,delivery_destinations(count)").order("created_at", { ascending: false });
