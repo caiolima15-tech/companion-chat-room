@@ -500,6 +500,7 @@ const BUILTIN_MAPS = [
 ];
 let MAPS = [...BUILTIN_MAPS];
 let currentMapId = localStorage.getItem("neon-tap-room-map") || "bar";
+window.__currentMapId = currentMapId;
 let selectedMapId = currentMapId;
 
 
