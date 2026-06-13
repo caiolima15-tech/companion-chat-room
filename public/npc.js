@@ -690,17 +690,18 @@
   let routeEditor = null; // { routeId, gizmos: Map<wp_id, mesh>, lines, dragWp, ... }
 
   async function renderRoutesTab(el, sb) {
-    const { data: routes } = await sb.from("npc_routes").select("*,npc_waypoints(count)").order("created_at", { ascending: false });
+    const mapId = getCurrentMapId();
+    const { data: routes } = await sb.from("npc_routes").select("*,npc_waypoints(count)").eq("map_id", mapId).order("created_at", { ascending: false });
     const cur = routeEditor?.routeId || "";
     el.innerHTML = `
-      <button id="npcNewRoute" style="width:100%;background:#39c5bb;color:#000;border:none;padding:8px;border-radius:6px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Nova rota</button>
-      <p style="font-size:11px;opacity:.7;margin:4px 0">Selecione uma rota e clique "Editar" pra adicionar/arrastar pontos no mapa.</p>
+      <button id="npcNewRoute" style="width:100%;background:#39c5bb;color:#000;border:none;padding:8px;border-radius:6px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Nova rota neste mapa</button>
+      <p style="font-size:11px;opacity:.7;margin:4px 0">Mapa atual: <b>${mapId}</b>. Clique "Editar" e depois clique no chão pra adicionar pontos. Arraste pra mover. Os NPCs caminham do ponto atual até o mais próximo.</p>
       <div id="npcRoutesList"></div>
       <div id="npcRouteHud"></div>`;
     document.getElementById("npcNewRoute").onclick = async () => {
       const name = prompt("Nome da rota:", "Rota " + Date.now());
       if (!name) return;
-      await sb.from("npc_routes").insert({ name });
+      await sb.from("npc_routes").insert({ name, map_id: mapId });
       renderTab("routes");
     };
     const list = document.getElementById("npcRoutesList");
