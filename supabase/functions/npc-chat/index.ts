@@ -41,13 +41,47 @@ Deno.serve(async (req) => {
     const { npc_id, text } = await req.json();
     if (!npc_id || !text) return new Response(JSON.stringify({ error: "bad request" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: npc } = await admin.from("npc_instances").select("display_name,persona,voice_id,model_id").eq("id", npc_id).maybeSingle();
+    const { data: npc } = await admin.from("npc_instances").select("display_name,persona,voice_id,model_id,backstory").eq("id", npc_id).maybeSingle();
     if (!npc) return new Response(JSON.stringify({ error: "npc not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
     const { data: model } = await admin.from("npc_models").select("default_persona,voice_id,gender").eq("id", npc.model_id).maybeSingle();
     const persona = { ...(model?.default_persona || {}), ...(npc.persona || {}) };
     const gender = (model?.gender || "neutral") as string;
     const voiceId = npc.voice_id || model?.voice_id || pickVoice(npc_id, gender);
+
+    // ===== Gerar nome + backstory se ainda não tem =====
+    let displayName = npc.display_name;
+    let backstory = npc.backstory;
+    const looksGeneric = !displayName || /^npc/i.test(displayName) || /^pessoa/i.test(displayName);
+    if (!backstory || looksGeneric) {
+      try {
+        const genderHint = gender === "male" ? "masculino" : gender === "female" ? "feminino" : "qualquer";
+        const genRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: { "Lovable-API-Key": LOVABLE_API_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "google/gemini-3-flash-preview",
+            messages: [{
+              role: "user",
+              content: `Crie um personagem brasileiro fictício, gênero ${genderHint}.
+Responda APENAS em JSON válido: {"name":"Nome Sobrenome","backstory":"4 a 6 frases curtas em português brasileiro sobre quem é, idade aproximada, profissão, gostos, peculiaridades, onde mora e um segredo ou sonho. Tom natural, sem clichês."}`,
+            }],
+          }),
+        });
+        if (genRes.ok) {
+          const gj = await genRes.json();
+          let raw = gj?.choices?.[0]?.message?.content?.trim() || "";
+          raw = raw.replace(/^```json\s*|\s*```$/g, "");
+          const m = raw.match(/\{[\s\S]*\}/);
+          if (m) {
+            const parsed = JSON.parse(m[0]);
+            if (parsed.name) displayName = String(parsed.name).slice(0, 60);
+            if (parsed.backstory) backstory = String(parsed.backstory).slice(0, 2000);
+            await admin.from("npc_instances").update({ display_name: displayName, backstory }).eq("id", npc_id);
+          }
+        }
+      } catch (e) { console.warn("backstory gen fail", e); }
+    }
 
     // últimas 8 mensagens
     const { data: hist } = await admin
@@ -57,10 +91,11 @@ Deno.serve(async (req) => {
       .order("created_at", { ascending: false }).limit(8);
     const history = (hist || []).reverse();
 
-    const sys = `Você é ${npc.display_name}, um NPC vivendo numa cidade virtual.
-Persona: ${JSON.stringify(persona)}.
+    const sys = `Você é ${displayName || "um morador"}, um NPC vivendo numa cidade virtual.
+${backstory ? `Sua história: ${backstory}` : ""}
+Persona extra: ${JSON.stringify(persona)}.
 Fale em português brasileiro coloquial, curto (1-2 frases), como uma pessoa real numa conversa casual de rua.
-Nunca diga que é uma IA. Mantenha o personagem.`;
+Nunca diga que é uma IA. Mantenha o personagem e seja consistente com sua história.`;
 
     // grava mensagem do usuário + atualiza last_user_msg_at
     await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "user", text, last_user_msg_at: new Date().toISOString() });
@@ -90,9 +125,10 @@ Nunca diga que é uma IA. Mantenha o personagem.`;
 
     await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "assistant", text: reply });
 
-    return new Response(JSON.stringify({ reply, voice_id: voiceId, name: npc.display_name, gender }), {
+    return new Response(JSON.stringify({ reply, voice_id: voiceId, name: displayName, gender, backstory }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
+
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e?.message || e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
   }
