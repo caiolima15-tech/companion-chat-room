@@ -447,7 +447,23 @@
       input.dataset._oldPh = input.placeholder || "";
       input.placeholder = `Falando com ${ent.name || "NPC"} · Esc pra sair`;
     }
-    window.__addSystemLine?.(`💬 Conversando com ${ent.name || "NPC"} (Esc para sair)`);
+    showNpcBanner(`💬 Conversando com ${ent.name || "NPC"} · toque/Esc para sair`);
+  }
+  function showNpcBanner(text) {
+    let el = document.getElementById("npcChatBanner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "npcChatBanner";
+      el.className = "npc-chat-banner";
+      el.addEventListener("click", () => { try { disengageNpc(); } catch {} });
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-visible");
+  }
+  function hideNpcBanner() {
+    const el = document.getElementById("npcChatBanner");
+    if (el) el.classList.remove("is-visible");
   }
   function disengageNpc() {
     if (!engagedNpc) return;
@@ -466,7 +482,7 @@
       input.placeholder = input.dataset._oldPh;
       delete input.dataset._oldPh;
     }
-    window.__addSystemLine?.(`👋 Saiu da conversa.`);
+    hideNpcBanner();
     engagedNpc = null;
   }
   window.__disengageNpc = disengageNpc;
@@ -678,8 +694,9 @@
   // ============ ADMIN ============
   function initNpcAdminButton() {
     const btn = document.createElement("button");
-    btn.textContent = "🧍 NPCs";
-    btn.style.cssText = "position:fixed;top:12px;left:12px;z-index:9998;background:#111;color:#39c5bb;border:1px solid #39c5bb;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer";
+    btn.id = "npcAdminBtn";
+    btn.className = "hud-pill npc-pill";
+    btn.innerHTML = '<span class="hud-pill-ico">🧍</span><span class="hud-pill-label">NPCs</span>';
     btn.onclick = openNpcAdmin;
     document.body.appendChild(btn);
   }

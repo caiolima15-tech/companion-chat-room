@@ -19,7 +19,7 @@
     // HUD
     const hud = document.createElement("div");
     hud.id = "moneyHud";
-    hud.style.cssText = "position:fixed;top:12px;right:12px;background:rgba(0,0,0,.78);color:#7be37b;border:1px solid #7be37b;padding:8px 14px;border-radius:10px;font:700 18px 'Courier New',monospace;z-index:9998;box-shadow:0 2px 8px #000";
+    hud.className = "hud-pill money-pill";
     hud.textContent = "R$ 0,00";
     document.body.appendChild(hud);
 
