@@ -33,6 +33,7 @@
     const { data: anims } = await sb.from("npc_animations").select("*");
     const Loader = window.__GLTFLoader; if (!Loader) return;
     const loader = new Loader();
+    const pending = [];
     for (const a of anims || []) {
       if (animLib.has(a.slug)) continue;
       if (animLibLoading.has(a.slug)) continue;
@@ -41,7 +42,10 @@
         if (clip) { clip.name = a.slug; animLib.set(a.slug, clip); }
       }).catch((e) => console.warn("[npc-anim] load fail", a.slug, e));
       animLibLoading.set(a.slug, p);
+      pending.push(p);
     }
+    if (pending.length) await Promise.allSettled(pending);
+    for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
   // ============ RUNTIME ============
