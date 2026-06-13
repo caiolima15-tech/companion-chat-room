@@ -860,12 +860,10 @@
     if (giz) {
       routeEditor.dragWp = giz.userData.wp;
       routeEditor.dragStartX = giz.position.x; routeEditor.dragStartZ = giz.position.z;
+      e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
     } else {
       routeEditor.dragWp = null;
-      routeEditor.pendingAdd = true;
     }
-    // Sempre engole o evento no modo editor pra não mexer câmera/movimento
-    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
   let dragDebounceT = null;
   function onEditorMove(e) {
@@ -881,29 +879,26 @@
         await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
       }, 200);
       e.stopPropagation(); e.stopImmediatePropagation();
-    } else if (routeEditor.pendingAdd) {
-      // ainda engole movimento entre down e up pra não rotacionar câmera
-      e.stopPropagation(); e.stopImmediatePropagation();
     }
   }
   async function onEditorUp(e) {
     if (!routeEditor) return;
+    if (e.button !== 0) return;
     setPointerNDC(e);
-    const wasDragging = downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
+    const moved = downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
     const clickedWp = routeEditor.dragWp;
-    const wasPendingAdd = routeEditor.pendingAdd;
     routeEditor.dragWp = null;
-    routeEditor.pendingAdd = false;
-    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
-    if (wasDragging) return;
     if (clickedWp) {
-      openWpHud(clickedWp);
-    } else if (wasPendingAdd) {
-      const hit = raycastGround(); if (!hit) return;
-      const sb = SB();
-      const nextSeq = (routeEditor.wps?.length || 0);
-      await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+      e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+      if (!moved) openWpHud(clickedWp);
+      return;
     }
+    if (moved) return;
+    if (Date.now() - downTime > 350) return;
+    const hit = raycastGround(); if (!hit) return;
+    const sb = SB();
+    const nextSeq = (routeEditor.wps?.length || 0);
+    await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
   }
   function openWpHud(wp) {
     const old = document.getElementById("npcWpHud"); if (old) old.remove();
