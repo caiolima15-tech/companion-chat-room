@@ -934,13 +934,14 @@
   }
 
   async function renderSpawnTab(el, sb) {
-    const { data: insts } = await sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").order("created_at", { ascending: false });
-    el.innerHTML = `<p style="opacity:.7">NPCs ativos no mapa:</p>` +
-      (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px">
+    const mapId = window.__currentMapId || "bar";
+    const { data: insts } = await sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").eq("map_id", mapId).order("created_at", { ascending: false });
+    el.innerHTML = `<p style="opacity:.7">NPCs nesta sala (${mapId}):</p>` +
+      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px">
         <span style="flex:1">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'} · ${i.npc_routes?.name || 'sem rota'})</small></span>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
-      </div>`).join('');
+      </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
     });
