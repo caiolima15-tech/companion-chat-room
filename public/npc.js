@@ -964,7 +964,16 @@
     if (!routeEditor || !camera()) return null;
     const T = THREE();
     routeEditor.raycaster.setFromCamera(routeEditor.pointer, camera());
-    // intersecta plano y=0
+    // 1) tenta bater nos meshes caminháveis reais (chão/escadas/objetos do mapa)
+    const sc = scene();
+    const walkables = [];
+    sc?.traverse?.((o) => { if (o.isMesh && o.visible !== false) walkables.push(o); });
+    const hits = routeEditor.raycaster.intersectObjects(walkables, false);
+    // ignora as próprias bolinhas do editor
+    const gizSet = new Set(routeEditor.gizmos.values());
+    const real = hits.find((h) => !gizSet.has(h.object));
+    if (real) return real.point;
+    // 2) fallback plano y=0
     const plane = new T.Plane(new T.Vector3(0, 1, 0), 0);
     const hit = new T.Vector3();
     routeEditor.raycaster.ray.intersectPlane(plane, hit);
