@@ -332,16 +332,14 @@
         root.scale.setScalar(scale);
         group.add(root);
         ent.mixer = new T.AnimationMixer(root);
-        // Detecta prefixo Mixamo e coleta nomes de bones do destino (pra retarget e filtragem)
-        ent.bonePrefix = "";
+        // Coleta nomes de bones do destino e mapa "stripped" para retarget Mixamo robusto.
         ent.boneNames = new Set();
+        ent.boneByStripped = new Map();
         root.traverse((o) => {
           if (!o.isBone || !o.name) return;
           ent.boneNames.add(o.name);
-          if (!ent.bonePrefix) {
-            const m = o.name.match(MIXAMO_RE);
-            if (m) ent.bonePrefix = m[0];
-          }
+          const key = stripMixamoPrefix(o.name);
+          if (key && !ent.boneByStripped.has(key)) ent.boneByStripped.set(key, o.name);
         });
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
