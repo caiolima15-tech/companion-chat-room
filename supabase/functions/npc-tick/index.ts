@@ -27,20 +27,36 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function runOneTick() {
     const { data: npcs } = await admin
       .from("npc_instances")
-      .select("id,route_id,active")
+      .select("id,map_id,route_id,active")
       .eq("active", true);
 
     if (!npcs || npcs.length === 0) return { ticked: 0 };
+
+    const mapsNeedingRoute = [...new Set(npcs.filter((n: any) => !n.route_id && n.map_id).map((n: any) => n.map_id))];
+    if (mapsNeedingRoute.length) {
+      const { data: fallbackRoutes } = await admin
+        .from("npc_routes")
+        .select("id,map_id,created_at")
+        .in("map_id", mapsNeedingRoute)
+        .order("created_at", { ascending: false });
+      const fallbackByMap: Record<string, string> = {};
+      for (const r of fallbackRoutes || []) if (!fallbackByMap[r.map_id]) fallbackByMap[r.map_id] = r.id;
+      for (const npc of npcs as any[]) if (!npc.route_id && npc.map_id && fallbackByMap[npc.map_id]) npc.route_id = fallbackByMap[npc.map_id];
+    }
 
     const routeIds = [...new Set(npcs.map((n: any) => n.route_id).filter(Boolean))];
     const wpsByRoute: Record<string, any[]> = {};
     if (routeIds.length) {
       const { data: wps } = await admin
         .from("npc_waypoints")
-        .select("route_id,seq,x,y,z,is_crosswalk,is_talk_spot,is_sit_spot,pause_ms")
+        .select("route_id,seq,x,y,z,is_crosswalk,is_talk_spot,is_sit_spot,pause_ms,created_at")
         .in("route_id", routeIds)
-        .order("seq", { ascending: true });
+        .order("seq", { ascending: true })
+        .order("created_at", { ascending: true });
       for (const wp of wps || []) (wpsByRoute[wp.route_id] ||= []).push(wp);
+      for (const routeId of Object.keys(wpsByRoute)) {
+        wpsByRoute[routeId] = wpsByRoute[routeId].map((wp, idx) => ({ ...wp, seq: idx }));
+      }
     }
 
     const { data: states } = await admin.from("npc_state").select("*").in("npc_id", npcs.map((n: any) => n.id));

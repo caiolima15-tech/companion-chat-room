@@ -33,6 +33,7 @@
     const { data: anims } = await sb.from("npc_animations").select("*");
     const Loader = window.__GLTFLoader; if (!Loader) return;
     const loader = new Loader();
+    const pending = [];
     for (const a of anims || []) {
       if (animLib.has(a.slug)) continue;
       if (animLibLoading.has(a.slug)) continue;
@@ -41,7 +42,10 @@
         if (clip) { clip.name = a.slug; animLib.set(a.slug, clip); }
       }).catch((e) => console.warn("[npc-anim] load fail", a.slug, e));
       animLibLoading.set(a.slug, p);
+      pending.push(p);
     }
+    if (pending.length) await Promise.allSettled(pending);
+    for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
   // ============ RUNTIME ============
@@ -196,13 +200,13 @@
   }
 
   function setAnim(ent, name) {
+    ent.currentAnimName = name || ent.currentAnimName || "idle";
     if (!ent.mixer) return;
     const target = pickAnimClip(ent, name);
     if (!target || ent.currentAction === target) return;
     if (ent.currentAction) ent.currentAction.fadeOut(0.25);
     target.reset().fadeIn(0.25).play();
     ent.currentAction = target;
-    ent.currentAnimName = name;
   }
 
   async function spawnNpc(inst) {
@@ -236,14 +240,23 @@
         ent.mixer = new T.AnimationMixer(root);
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
-            const key = clip.name.toLowerCase();
+            const key = clip.name.toLowerCase().replace(/[\s.-]+/g, "_");
             ent.actions[key] = ent.mixer.clipAction(clip);
             // detectar slug por keywords
-            for (const slug of ["idle","walk","talk","sit","wave","social_a","social_b","social_c"]) {
-              if (key.includes(slug) && !ent.actions[slug]) ent.actions[slug] = ent.mixer.clipAction(clip);
+            const synonyms = {
+              idle: ["idle", "breath", "stand"],
+              walk: ["walk", "walking", "run", "locomotion"],
+              talk: ["talk", "talking", "speak", "speaking", "gesture"],
+              sit: ["sit", "sitting"],
+              wave: ["wave", "waving"],
+              social_a: ["social_a"], social_b: ["social_b"], social_c: ["social_c"]
+            };
+            for (const [slug, words] of Object.entries(synonyms)) {
+              if (words.some((w) => key.includes(w)) && !ent.actions[slug]) ent.actions[slug] = ent.mixer.clipAction(clip);
             }
           }
         }
+        setAnim(ent, ent.currentAnimName || "idle");
       } catch (e) {
         console.warn("[npc] load fail", e);
         const m = new T.Mesh(new T.BoxGeometry(0.5, 1.7, 0.5), new T.MeshStandardMaterial({ color: 0x39c5bb }));
@@ -921,14 +934,25 @@
     }
     if (moved) return;
     if (Date.now() - downTime > 700) return;
+    const justAdded = routeEditor.lastAddAt && Date.now() - routeEditor.lastAddAt < 250;
+    if (routeEditor.addingPoint || justAdded) { e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault(); return; }
     const hit = raycastGround();
     if (!hit) { editorToast("✗ clique fora do chão"); return; }
-    const sb = SB();
-    const nextSeq = (routeEditor.wps?.length || 0);
-    const { error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
-    if (error) editorToast("✗ erro: " + error.message);
-    else editorToast(`✔ ponto #${nextSeq} adicionado`);
     e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+    const sb = SB();
+    routeEditor.addingPoint = true;
+    const nextSeq = ((routeEditor.wps || []).reduce((max, wp) => Math.max(max, Number(wp.seq) || 0), -1) + 1);
+    const wpId = crypto.randomUUID?.() || "10000000-1000-4000-8000-" + Math.floor(Math.random() * 1e12).toString().padStart(12, "0");
+    const wp = { id: wpId, route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0, is_crosswalk: false, is_talk_spot: false, is_sit_spot: false, pause_ms: 0 };
+    const { error } = await sb.from("npc_waypoints").insert(wp);
+    routeEditor.addingPoint = false;
+    routeEditor.lastAddAt = Date.now();
+    if (error) editorToast("✗ erro: " + error.message);
+    else {
+      const wps = [...(routeEditor.wps || []), wp].sort((a, b) => (a.seq || 0) - (b.seq || 0));
+      rebuildRouteGizmos(wps);
+      editorToast(`✔ ponto #${nextSeq} criado`);
+    }
   }
   let toastT = null;
   function editorToast(msg) {
