@@ -798,17 +798,21 @@
   function bindEditorEvents() {
     if (editorBound) return; editorBound = true;
     const cv = renderer()?.domElement || window;
-    cv.addEventListener("pointerdown", onEditorDown);
-    cv.addEventListener("pointermove", onEditorMove);
-    cv.addEventListener("pointerup", onEditorUp);
+    // capture phase + stopImmediatePropagation so app camera/movement não engole
+    cv.addEventListener("pointerdown", onEditorDown, true);
+    cv.addEventListener("pointermove", onEditorMove, true);
+    cv.addEventListener("pointerup", onEditorUp, true);
+    cv.addEventListener("contextmenu", onEditorCtx, true);
   }
   function unbindEditorEvents() {
     if (!editorBound) return; editorBound = false;
     const cv = renderer()?.domElement || window;
-    cv.removeEventListener("pointerdown", onEditorDown);
-    cv.removeEventListener("pointermove", onEditorMove);
-    cv.removeEventListener("pointerup", onEditorUp);
+    cv.removeEventListener("pointerdown", onEditorDown, true);
+    cv.removeEventListener("pointermove", onEditorMove, true);
+    cv.removeEventListener("pointerup", onEditorUp, true);
+    cv.removeEventListener("contextmenu", onEditorCtx, true);
   }
+  function onEditorCtx(e) { if (routeEditor) { e.preventDefault(); e.stopPropagation(); } }
   function setPointerNDC(e) {
     if (!routeEditor) return;
     const T = THREE();
