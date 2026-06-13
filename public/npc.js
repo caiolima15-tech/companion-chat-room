@@ -60,21 +60,23 @@
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
-  // Retarget de tracks: ajusta prefixo Mixamo conforme o esqueleto destino.
+  // Retarget de tracks: normaliza prefixos Mixamo (mixamorig, mixamorig7, etc) ao do esqueleto destino.
+  const MIXAMO_RE = /^mixamorig\d*/i;
   function retargetClipForEnt(ent, clip) {
-    const T = THREE();
     const cloned = clip.clone();
-    const needsMixamo = !!ent.bonePrefix; // ent tem prefixo 'mixamorig' -> queremos preservar
+    const destPrefix = ent.bonePrefix || ""; // ex: "" | "mixamorig" | "mixamorig7"
     for (const tr of cloned.tracks) {
       const dot = tr.name.indexOf(".");
       const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
       const prop = dot >= 0 ? tr.name.slice(dot) : "";
+      const m = bone.match(MIXAMO_RE);
       let newBone = bone;
-      if (needsMixamo && !bone.startsWith("mixamorig")) {
-        newBone = "mixamorig" + bone.charAt(0).toUpperCase() + bone.slice(1);
-      } else if (!needsMixamo && bone.startsWith("mixamorig")) {
-        const stripped = bone.slice("mixamorig".length);
-        newBone = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+      if (m) {
+        const rest = bone.slice(m[0].length); // ex: "RightHand"
+        if (destPrefix) newBone = destPrefix + rest;
+        else newBone = rest.charAt(0).toLowerCase() + rest.slice(1);
+      } else if (destPrefix && !bone.startsWith(destPrefix)) {
+        newBone = destPrefix + bone.charAt(0).toUpperCase() + bone.slice(1);
       }
       tr.name = newBone + prop;
     }
