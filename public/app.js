@@ -3422,6 +3422,10 @@ function collidesAt(from, to) {
   return false;
 }
 
+// Expõe pro npc.js (e outros scripts) usarem o mesmo chão/colisão do jogador
+window.__groundHeightAt = groundHeightAt;
+window.__collidesAt = collidesAt;
+
 // ============ Camera occlusion (hide walls between camera and player) ============
 const _occRay = new THREE.Raycaster();
 const _occDir = new THREE.Vector3();
