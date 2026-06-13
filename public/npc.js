@@ -615,15 +615,16 @@
     });
     list.querySelectorAll(".npc-spawn-btn").forEach((b) => b.onclick = async () => {
       const p = player(); if (!p) return alert("jogador não localizado");
-      const { data: route } = await sb.from("npc_routes").insert({ name: "Rota " + Date.now() }).select().single();
+      const mapId = getCurrentMapId();
+      const { data: route } = await sb.from("npc_routes").insert({ name: "Rota " + Date.now(), map_id: mapId }).select().single();
       await sb.from("npc_waypoints").insert([
         { route_id: route.id, seq: 0, x: p.position.x, z: p.position.z, y: p.position.y },
         { route_id: route.id, seq: 1, x: p.position.x + 8, z: p.position.z, y: p.position.y },
         { route_id: route.id, seq: 2, x: p.position.x + 8, z: p.position.z + 8, y: p.position.y },
         { route_id: route.id, seq: 3, x: p.position.x, z: p.position.z + 8, y: p.position.y },
       ]);
-      await sb.from("npc_instances").insert({ model_id: b.dataset.id, route_id: route.id, display_name: "NPC " + Math.floor(Math.random()*999), active: true });
-      alert("NPC criado!");
+      await sb.from("npc_instances").insert({ model_id: b.dataset.id, route_id: route.id, map_id: mapId, display_name: "NPC " + Math.floor(Math.random()*999), active: true });
+      alert("NPC criado neste mapa!");
     });
     document.getElementById("npcUpload").onclick = async () => {
       const files = document.getElementById("npcGlbFile").files;
