@@ -496,7 +496,6 @@
         ent._talkTimer = setTimeout(() => { setAnim(ent, "idle"); ent._talkTimer = null; }, dur);
       } else {
 
-      } else {
         // Resposta em ÁUDIO: só toca o som, sem texto em lugar nenhum
         try {
           const { data: { session } } = await sb.auth.getSession();
