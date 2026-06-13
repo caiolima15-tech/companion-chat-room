@@ -1,5 +1,4 @@
-// NPC tick — simulação server-side. Avança NPCs ao longo dos waypoints.
-// Chamado periodicamente (pg_cron). Sem auth (cron).
+// NPC tick — segue waypoints em ordem (seq 0 -> 1 -> 2 ... -> 0). Loop.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -17,189 +16,149 @@ const admin = createClient(
 const SPEED_WALK = 1.4;
 const SPEED_CROSS = 2.2;
 const TICK_MS = 1000;
-const SOCIAL_RADIUS = 1.6;
-const SOCIAL_CHANCE = 0.02;
 const GOODBYE_AFTER_MS = 25000;
 
-function dist2(a: any, b: any) { return Math.hypot(a.x - b.x, a.z - b.z); }
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function runOneTick() {
-    const { data: npcs } = await admin
-      .from("npc_instances")
-      .select("id,map_id,route_id,active")
-      .eq("active", true);
+  const { data: npcs } = await admin
+    .from("npc_instances")
+    .select("id,map_id,route_id,active")
+    .eq("active", true);
+  if (!npcs || npcs.length === 0) return { ticked: 0 };
 
-    if (!npcs || npcs.length === 0) return { ticked: 0 };
+  // Fallback de rota para NPCs sem route_id (pega rota mais recente do mapa)
+  const mapsNeedingRoute = [...new Set(npcs.filter((n: any) => !n.route_id && n.map_id).map((n: any) => n.map_id))];
+  if (mapsNeedingRoute.length) {
+    const { data: fallbackRoutes } = await admin
+      .from("npc_routes")
+      .select("id,map_id,created_at")
+      .in("map_id", mapsNeedingRoute)
+      .order("created_at", { ascending: false });
+    const fallbackByMap: Record<string, string> = {};
+    for (const r of fallbackRoutes || []) if (!fallbackByMap[r.map_id]) fallbackByMap[r.map_id] = r.id;
+    for (const npc of npcs as any[]) if (!npc.route_id && npc.map_id && fallbackByMap[npc.map_id]) npc.route_id = fallbackByMap[npc.map_id];
+  }
 
-    const mapsNeedingRoute = [...new Set(npcs.filter((n: any) => !n.route_id && n.map_id).map((n: any) => n.map_id))];
-    if (mapsNeedingRoute.length) {
-      const { data: fallbackRoutes } = await admin
-        .from("npc_routes")
-        .select("id,map_id,created_at")
-        .in("map_id", mapsNeedingRoute)
-        .order("created_at", { ascending: false });
-      const fallbackByMap: Record<string, string> = {};
-      for (const r of fallbackRoutes || []) if (!fallbackByMap[r.map_id]) fallbackByMap[r.map_id] = r.id;
-      for (const npc of npcs as any[]) if (!npc.route_id && npc.map_id && fallbackByMap[npc.map_id]) npc.route_id = fallbackByMap[npc.map_id];
+  const routeIds = [...new Set(npcs.map((n: any) => n.route_id).filter(Boolean))];
+  const wpsByRoute: Record<string, any[]> = {};
+  if (routeIds.length) {
+    const { data: wps } = await admin
+      .from("npc_waypoints")
+      .select("route_id,id,seq,x,y,z,is_crosswalk,is_talk_spot,is_sit_spot,pause_ms,created_at")
+      .in("route_id", routeIds)
+      .order("seq", { ascending: true })
+      .order("created_at", { ascending: true });
+    for (const wp of wps || []) (wpsByRoute[wp.route_id] ||= []).push(wp);
+    // Re-sequencia (0..n-1) para suportar rotas com seq desalinhados
+    for (const routeId of Object.keys(wpsByRoute)) {
+      wpsByRoute[routeId] = wpsByRoute[routeId].map((wp, idx) => ({ ...wp, seq: idx }));
     }
+  }
 
-    const routeIds = [...new Set(npcs.map((n: any) => n.route_id).filter(Boolean))];
-    const wpsByRoute: Record<string, any[]> = {};
-    if (routeIds.length) {
-      const { data: wps } = await admin
-        .from("npc_waypoints")
-        .select("route_id,seq,x,y,z,is_crosswalk,is_talk_spot,is_sit_spot,pause_ms,created_at")
-        .in("route_id", routeIds)
-        .order("seq", { ascending: true })
-        .order("created_at", { ascending: true });
-      for (const wp of wps || []) (wpsByRoute[wp.route_id] ||= []).push(wp);
-      for (const routeId of Object.keys(wpsByRoute)) {
-        wpsByRoute[routeId] = wpsByRoute[routeId].map((wp, idx) => ({ ...wp, seq: idx }));
-      }
-    }
+  const { data: states } = await admin.from("npc_state").select("*").in("npc_id", npcs.map((n: any) => n.id));
+  const stateMap: Record<string, any> = {};
+  for (const s of states || []) stateMap[s.npc_id] = s;
 
-    const { data: states } = await admin.from("npc_state").select("*").in("npc_id", npcs.map((n: any) => n.id));
-    const stateMap: Record<string, any> = {};
-    for (const s of states || []) stateMap[s.npc_id] = s;
+  const now = Date.now();
+  const updates: any[] = [];
+  const inserts: any[] = [];
 
-    const now = Date.now();
-    const updates: any[] = [];
-    const inserts: any[] = [];
+  // Auto-goodbye após silêncio do jogador
+  const { data: convs } = await admin
+    .from("npc_conversations")
+    .select("npc_id,last_user_msg_at")
+    .gte("created_at", new Date(now - 5 * 60 * 1000).toISOString());
+  const lastByNpc: Record<string, number> = {};
+  for (const c of convs || []) {
+    const t = new Date(c.last_user_msg_at || 0).getTime();
+    if (!lastByNpc[c.npc_id] || t > lastByNpc[c.npc_id]) lastByNpc[c.npc_id] = t;
+  }
 
-    // ---- SOCIAL NPC<->NPC pair detection ----
-    const walkingIds = npcs.filter((n: any) => stateMap[n.id]?.status === "walking").map((n: any) => n.id);
-    const usedSocial = new Set<string>();
-    const socialPairs: Array<[any, any]> = [];
-    for (let i = 0; i < walkingIds.length; i++) {
-      const aId = walkingIds[i]; if (usedSocial.has(aId)) continue;
-      const a = stateMap[aId];
-      for (let j = i + 1; j < walkingIds.length; j++) {
-        const bId = walkingIds[j]; if (usedSocial.has(bId)) continue;
-        const b = stateMap[bId];
-        if (dist2(a, b) < SOCIAL_RADIUS && Math.random() < SOCIAL_CHANCE) {
-          socialPairs.push([aId, bId]);
-          usedSocial.add(aId); usedSocial.add(bId);
-          break;
-        }
-      }
-    }
-    for (const [aId, bId] of socialPairs) {
-      const a = stateMap[aId], b = stateMap[bId];
-      const angleAB = Math.atan2(b.x - a.x, b.z - a.z);
-      const angleBA = Math.atan2(a.x - b.x, a.z - b.z);
-      const ends = new Date(now + 8000 + Math.random() * 12000).toISOString();
-      updates.push({ npc_id: aId, x: a.x, y: a.y, z: a.z, rot_y: angleAB, anim: "social_a", status: "socializing", target_wp_seq: a.target_wp_seq, next_decision_at: ends, updated_at: new Date(now).toISOString() });
-      updates.push({ npc_id: bId, x: b.x, y: b.y, z: b.z, rot_y: angleBA, anim: "social_b", status: "socializing", target_wp_seq: b.target_wp_seq, next_decision_at: ends, updated_at: new Date(now).toISOString() });
-    }
+  for (const npc of npcs) {
+    const wps = npc.route_id ? wpsByRoute[npc.route_id] : null;
+    if (!wps || wps.length < 1) continue;
 
-    // ---- AUTO-GOODBYE (player idle) ----
-    const { data: convs } = await admin
-      .from("npc_conversations")
-      .select("npc_id,last_user_msg_at,role")
-      .gte("created_at", new Date(now - 5 * 60 * 1000).toISOString());
-    const lastByNpc: Record<string, number> = {};
-    for (const c of convs || []) {
-      const t = new Date(c.last_user_msg_at || 0).getTime();
-      if (!lastByNpc[c.npc_id] || t > lastByNpc[c.npc_id]) lastByNpc[c.npc_id] = t;
-    }
-    for (const npc of npcs) {
-      const st = stateMap[npc.id]; if (!st) continue;
-      if (st.status === "talking_player") {
-        const lt = lastByNpc[npc.id] || 0;
-        if (now - lt > GOODBYE_AFTER_MS) {
-          st.status = "walking"; st.anim = "wave";
-        }
-      }
-    }
+    let st = stateMap[npc.id];
 
-    function pickNearest(wps: any[], fromX: number, fromZ: number, excludeSeq: number | null) {
-      let best: any = null, bestD = Infinity;
-      for (const w of wps) {
-        if (excludeSeq != null && w.seq === excludeSeq) continue;
-        const d = Math.hypot(w.x - fromX, w.z - fromZ);
-        if (d < bestD) { bestD = d; best = w; }
-      }
-      return best;
-    }
-
-    for (const npc of npcs) {
-      if (usedSocial.has(npc.id)) continue;
-      const wps = npc.route_id ? wpsByRoute[npc.route_id] : null;
-      if (!wps || wps.length < 2) continue;
-
-      let st = stateMap[npc.id];
-      if (!st) {
-        const first = wps[0];
-        const next = pickNearest(wps, first.x, first.z, first.seq) || wps[1] || wps[0];
-        inserts.push({
-          npc_id: npc.id, x: first.x, y: first.y, z: first.z, rot_y: 0,
-          anim: "walk", status: "walking", target_wp_seq: next.seq,
-          next_decision_at: new Date(now).toISOString(),
-          updated_at: new Date(now).toISOString(),
-        });
-        continue;
-      }
-
-      // Player conversa: NPC fica parado virado pro player; npc.js cuida do lookAt+anim
-      if (st.status === "talking_player") {
-        continue;
-      }
-
-      if (st.status === "sit" || st.status === "talking" || st.status === "paused" || st.status === "socializing") {
-        if (new Date(st.next_decision_at).getTime() > now) continue;
-        st.status = "walking"; st.anim = "walk";
-        const nx = pickNearest(wps, st.x, st.z, st.target_wp_seq);
-        if (nx) st.target_wp_seq = nx.seq;
-      }
-
-      const target = wps.find((w: any) => w.seq === st.target_wp_seq) || pickNearest(wps, st.x, st.z, null) || wps[0];
-      const isCross = target.is_crosswalk;
-      const speed = isCross ? SPEED_CROSS : SPEED_WALK;
-      const dx = target.x - st.x, dz = target.z - st.z;
-      const d = Math.hypot(dx, dz);
-      const step = (speed * TICK_MS) / 1000;
-
-      let newX = st.x, newZ = st.z, newRot = st.rot_y;
-      let newAnim = "walk", newStatus = "walking", newTarget = st.target_wp_seq;
-      let nextDecision = new Date(now).toISOString();
-
-      if (d <= step) {
-        newX = target.x; newZ = target.z;
-        newRot = Math.atan2(dx, dz);
-
-        if (target.is_sit_spot) {
-          newAnim = "sit"; newStatus = "sit";
-          nextDecision = new Date(now + 12000 + Math.random() * 18000).toISOString();
-        } else if (target.is_talk_spot && Math.random() < 0.6) {
-          newAnim = "idle"; newStatus = "talking";
-          nextDecision = new Date(now + 10000 + Math.random() * 20000).toISOString();
-        } else if ((target.pause_ms || 0) > 0) {
-          newAnim = "idle"; newStatus = "paused";
-          nextDecision = new Date(now + target.pause_ms).toISOString();
-        } else {
-          // escolhe o ponto mais próximo, excluindo o que acabou de chegar (evita ping-pong com 3+ pontos)
-          const nx = pickNearest(wps, target.x, target.z, target.seq);
-          newTarget = nx ? nx.seq : target.seq;
-        }
-      } else {
-        newRot = Math.atan2(dx, dz);
-        newX = st.x + (dx / d) * step;
-        newZ = st.z + (dz / d) * step;
-      }
-
-      updates.push({
-        npc_id: npc.id, x: newX, y: target.y || 0, z: newZ, rot_y: newRot,
-        anim: newAnim, status: newStatus, target_wp_seq: newTarget,
-        next_decision_at: nextDecision,
+    // Sem state ainda: spawn no ponto 0, mira no 1 (se existir)
+    if (!st) {
+      const first = wps[0];
+      const next = wps[1] || wps[0];
+      inserts.push({
+        npc_id: npc.id, x: first.x, y: first.y || 0, z: first.z, rot_y: 0,
+        anim: "walk", status: "walking", target_wp_seq: next.seq,
+        next_decision_at: new Date(now).toISOString(),
         updated_at: new Date(now).toISOString(),
       });
+      continue;
     }
 
+    // Conversa com jogador — npc.js cuida do lookAt+anim
+    if (st.status === "talking_player") {
+      const lt = lastByNpc[npc.id] || 0;
+      if (now - lt > GOODBYE_AFTER_MS) {
+        st.status = "walking"; st.anim = "wave";
+      } else {
+        continue;
+      }
+    }
 
-    if (inserts.length) await admin.from("npc_state").insert(inserts);
-    if (updates.length) await admin.from("npc_state").upsert(updates, { onConflict: "npc_id" });
-    return { ticked: npcs.length, updated: updates.length, inserted: inserts.length, social: socialPairs.length };
+    // Pausa/sit/talk: espera terminar e segue
+    if (st.status === "sit" || st.status === "talking" || st.status === "paused") {
+      if (new Date(st.next_decision_at).getTime() > now) continue;
+      st.status = "walking"; st.anim = "walk";
+    }
+
+    // Garante target válido em ordem
+    let target = wps.find((w: any) => w.seq === st.target_wp_seq);
+    if (!target) target = wps[0];
+
+    const isCross = !!target.is_crosswalk;
+    const speed = isCross ? SPEED_CROSS : SPEED_WALK;
+    const dx = target.x - st.x;
+    const dz = target.z - st.z;
+    const d = Math.hypot(dx, dz);
+    const step = (speed * TICK_MS) / 1000;
+
+    let newX = st.x, newZ = st.z, newRot = st.rot_y;
+    let newAnim = "walk", newStatus = "walking", newTarget = st.target_wp_seq;
+    let nextDecision = new Date(now).toISOString();
+
+    if (d <= step) {
+      // Chegou no ponto
+      newX = target.x; newZ = target.z;
+      newRot = Math.atan2(dx, dz);
+
+      if (target.is_sit_spot) {
+        newAnim = "sit"; newStatus = "sit";
+        nextDecision = new Date(now + 8000 + Math.random() * 6000).toISOString();
+      } else if (target.is_talk_spot) {
+        newAnim = "idle"; newStatus = "talking";
+        nextDecision = new Date(now + 4000 + Math.random() * 4000).toISOString();
+      } else if ((target.pause_ms || 0) > 0) {
+        newAnim = "idle"; newStatus = "paused";
+        nextDecision = new Date(now + Math.min(5000, target.pause_ms)).toISOString();
+      }
+      // Avança para o próximo ponto (loop)
+      newTarget = (target.seq + 1) % wps.length;
+    } else {
+      newRot = Math.atan2(dx, dz);
+      newX = st.x + (dx / d) * step;
+      newZ = st.z + (dz / d) * step;
+    }
+
+    updates.push({
+      npc_id: npc.id, x: newX, y: target.y || 0, z: newZ, rot_y: newRot,
+      anim: newAnim, status: newStatus, target_wp_seq: newTarget,
+      next_decision_at: nextDecision,
+      updated_at: new Date(now).toISOString(),
+    });
+  }
+
+  if (inserts.length) await admin.from("npc_state").insert(inserts);
+  if (updates.length) await admin.from("npc_state").upsert(updates, { onConflict: "npc_id" });
+  return { ticked: npcs.length, updated: updates.length, inserted: inserts.length };
 }
 
 Deno.serve(async (req) => {
@@ -215,7 +174,7 @@ Deno.serve(async (req) => {
       results.push(r);
       await sleep(1000);
     }
-    return new Response(JSON.stringify({ iterations: results.length, last: results[results.length-1] }), {
+    return new Response(JSON.stringify({ iterations: results.length, last: results[results.length - 1] }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
