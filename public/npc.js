@@ -382,6 +382,11 @@
   let promptEl = null;
   const PROXIMITY = 1.6;
   const DISENGAGE_DIST = 2.8;
+  const IS_TOUCH = (typeof window !== "undefined") && (
+    ("ontouchstart" in window) ||
+    (navigator.maxTouchPoints > 0) ||
+    (window.matchMedia && window.matchMedia("(pointer:coarse)").matches)
+  );
   function checkNpcProximity() {
     const p = player();
     if (!p) return;
@@ -393,6 +398,11 @@
     nearestNpc = best;
     if (best && !promptEl && !engagedNpc) showPrompt();
     else if ((!best || engagedNpc) && promptEl) hidePrompt();
+
+    // Mobile/touch: auto-engaja ao aproximar de um NPC
+    if (IS_TOUCH && best && !engagedNpc) {
+      engageNpc(best.id, best.ent);
+    }
 
     // Se está engajado e jogador se afastou, encerra
     if (engagedNpc) {
