@@ -170,16 +170,35 @@
 
     const clock = new (THREE().Clock)();
     function tick() {
-      const dt = clock.getDelta();
+      const dt = Math.min(0.05, clock.getDelta());
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
         if (ent.targetPos) {
-          // Aterra o alvo no chão real do mapa (segue rampas, escadas, plataformas)
           if (window.__groundHeightAt) {
             const gy = window.__groundHeightAt(ent.targetPos, ent.targetPos.y);
             if (typeof gy === "number") ent.targetPos.y = gy;
           }
-          ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
+          // Movimento contínuo a velocidade constante (sem teleporte/lerp).
+          const dx = ent.targetPos.x - ent.group.position.x;
+          const dz = ent.targetPos.z - ent.group.position.z;
+          const dy = ent.targetPos.y - ent.group.position.y;
+          const dist = Math.hypot(dx, dz);
+          const speed = ent._speed != null ? ent._speed : 1.4;
+          const step = speed * dt;
+          if (dist > 0.01 && speed > 0) {
+            const k = Math.min(1, step / dist);
+            ent.group.position.x += dx * k;
+            ent.group.position.z += dz * k;
+            if (!ent.lockToPlayer) ent.targetRot = Math.atan2(dx, dz);
+            ent._moving = true;
+          } else {
+            ent._moving = false;
+          }
+          ent.group.position.y += dy * Math.min(1, dt * 10);
+          if (!ent.lockToPlayer && !ent._talkLock) {
+            const wantWalk = ent._moving && ent.status !== "sit" && ent.status !== "talking";
+            setAnim(ent, wantWalk ? "walk" : (ent.status === "sit" ? "sit" : "idle"));
+          }
         }
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
@@ -190,7 +209,7 @@
           let diff = desiredRot - ent.group.rotation.y;
           while (diff > Math.PI) diff -= 2 * Math.PI;
           while (diff < -Math.PI) diff += 2 * Math.PI;
-          ent.group.rotation.y += diff * Math.min(1, dt * 6);
+          ent.group.rotation.y += diff * Math.min(1, dt * 8);
         }
       }
       checkLOD();
@@ -239,17 +258,17 @@
   }
 
   function handleStateUpdate(s) {
-    // Cache the state regardless of whether the entity is loaded
     npcStateCache.set(s.npc_id, s);
-    if (!npcInstances.has(s.npc_id)) return; // not in current map
+    if (!npcInstances.has(s.npc_id)) return;
     const ent = npcEntities.get(s.npc_id);
-    if (!ent) return; // LOD: not loaded
+    if (!ent) return;
     ent.targetPos = new (THREE().Vector3)(s.x, s.y, s.z);
-    if (!ent.lockToPlayer) {
-      ent.targetRot = s.rot_y;
-      setAnim(ent, s.anim);
-    }
+    ent._speed = s.status === "walking" ? 1.4 : 0;
     ent.status = s.status;
+    // Tick deriva a anim do movimento real; aqui só sincroniza rotação alvo quando não está em interação.
+    if (!ent.lockToPlayer && !ent._talkLock && typeof s.rot_y === "number") {
+      ent.targetRot = s.rot_y;
+    }
   }
 
 
