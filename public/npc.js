@@ -195,8 +195,10 @@
 
   // ===== proximidade + prompt (E) interagir =====
   let nearestNpc = null;
+  let engagedNpc = null; // { id, ent }
   let promptEl = null;
   const PROXIMITY = 1.6;
+  const DISENGAGE_DIST = 2.8;
   function checkNpcProximity() {
     const p = player();
     if (!p) return;
@@ -206,8 +208,17 @@
       if (d < bestD) { bestD = d; best = { id, ent }; }
     }
     nearestNpc = best;
-    if (best && !promptEl) showPrompt();
-    else if (!best && promptEl) hidePrompt();
+    if (best && !promptEl && !engagedNpc) showPrompt();
+    else if ((!best || engagedNpc) && promptEl) hidePrompt();
+
+    // Se está engajado e jogador se afastou, encerra
+    if (engagedNpc) {
+      const e = engagedNpc.ent;
+      const d = Math.hypot(e.group.position.x - p.position.x, e.group.position.z - p.position.z);
+      if (d > DISENGAGE_DIST) disengageNpc();
+    }
+    // Update bubbles
+    for (const ent of npcEntities.values()) updateBubble(ent);
   }
   function showPrompt() {
     if (promptEl) return;
@@ -225,19 +236,90 @@
     setTimeout(() => el.remove(), 200);
   }
 
+  // ===== Engajamento (sem modal — usa o chat principal) =====
+  function engageNpc(id, ent) {
+    if (engagedNpc) return;
+    engagedNpc = { id, ent };
+    ent.lockToPlayer = true;
+    setAnim(ent, "idle");
+    window.__npcChatActive = true;
+    const input = document.getElementById("chatInput");
+    if (input) {
+      input.dataset._oldPh = input.placeholder || "";
+      input.placeholder = `Falando com ${ent.name || "NPC"} · Esc pra sair`;
+    }
+    window.__addSystemLine?.(`💬 Conversando com ${ent.name || "NPC"} (Esc para sair)`);
+  }
+  function disengageNpc() {
+    if (!engagedNpc) return;
+    const ent = engagedNpc.ent;
+    ent.lockToPlayer = false;
+    setAnim(ent, ent.status === "walking" ? "walk" : "idle");
+    hideBubble(ent);
+    try { currentAudio?.pause(); } catch {}
+    currentAudio = null;
+    window.__npcChatActive = false;
+    const input = document.getElementById("chatInput");
+    if (input && input.dataset._oldPh != null) {
+      input.placeholder = input.dataset._oldPh;
+      delete input.dataset._oldPh;
+    }
+    window.__addSystemLine?.(`👋 Saiu da conversa.`);
+    engagedNpc = null;
+  }
+  window.__disengageNpc = disengageNpc;
+
   window.addEventListener("keydown", (e) => {
     const target = e.target;
-    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
-    if (e.key.toLowerCase() === "e" && nearestNpc && !document.getElementById("npcChat")) {
-      openChat(nearestNpc.id, nearestNpc.ent);
+    const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
+    if (e.key === "Escape" && engagedNpc) { e.preventDefault(); disengageNpc(); return; }
+    if (isInput) return;
+    if (e.key.toLowerCase() === "e" && nearestNpc && !engagedNpc) {
+      engageNpc(nearestNpc.id, nearestNpc.ent);
     }
     if (e.key.toLowerCase() === "v" && nearestNpc && !e.repeat) {
-      startPushToTalk(nearestNpc.id, nearestNpc.ent);
+      if (!engagedNpc) engageNpc(nearestNpc.id, nearestNpc.ent);
+      startPushToTalk(engagedNpc.id, engagedNpc.ent);
     }
   });
   window.addEventListener("keyup", (e) => {
     if (e.key.toLowerCase() === "v") stopPushToTalk();
   });
+
+  // ===== Speech bubble acima da cabeça do NPC (somente texto) =====
+  function ensureBubble(ent) {
+    if (ent.bubble) return ent.bubble;
+    const b = document.createElement("div");
+    b.style.cssText = "position:fixed;top:0;left:0;max-width:260px;background:rgba(255,255,255,.95);color:#111;padding:8px 12px;border-radius:14px;border-bottom-left-radius:4px;font:500 13px system-ui;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:none;z-index:9998;display:none;white-space:pre-wrap";
+    document.body.appendChild(b);
+    ent.bubble = b;
+    ent.bubbleTimer = null;
+    return b;
+  }
+  function showBubble(ent, text, ms = 7000) {
+    const b = ensureBubble(ent);
+    b.textContent = text;
+    b.style.display = "block";
+    if (ent.bubbleTimer) clearTimeout(ent.bubbleTimer);
+    ent.bubbleTimer = setTimeout(() => hideBubble(ent), ms);
+  }
+  function hideBubble(ent) {
+    if (ent.bubble) ent.bubble.style.display = "none";
+    if (ent.bubbleTimer) { clearTimeout(ent.bubbleTimer); ent.bubbleTimer = null; }
+  }
+  function updateBubble(ent) {
+    if (!ent.bubble || ent.bubble.style.display === "none") return;
+    const cam = camera(); const r = renderer();
+    if (!cam || !r) return;
+    const T = THREE();
+    const v = new T.Vector3(ent.group.position.x, ent.group.position.y + 2.1, ent.group.position.z);
+    v.project(cam);
+    if (v.z > 1) { ent.bubble.style.display = "none"; return; }
+    const rect = r.domElement.getBoundingClientRect();
+    const x = (v.x * 0.5 + 0.5) * rect.width + rect.left;
+    const y = (-v.y * 0.5 + 0.5) * rect.height + rect.top;
+    ent.bubble.style.transform = `translate(-50%,-100%) translate(${x}px,${y - 8}px)`;
+  }
 
   // ============ PUSH-TO-TALK (ElevenLabs Scribe Realtime via WebSocket) ============
   let pttState = null;
@@ -262,11 +344,7 @@
 
       let transcripts = [];
       ws.onopen = () => {
-        // init session
-        ws.send(JSON.stringify({
-          type: "session.update",
-          session: { audio_format: "pcm_16000", commit_strategy: "vad" }
-        }));
+        ws.send(JSON.stringify({ type: "session.update", session: { audio_format: "pcm_16000", commit_strategy: "vad" } }));
       };
       ws.onmessage = (ev) => {
         try {
@@ -282,11 +360,9 @@
         const f32 = e.inputBuffer.getChannelData(0);
         const pcm = new Int16Array(f32.length);
         for (let i = 0; i < f32.length; i++) pcm[i] = Math.max(-1, Math.min(1, f32[i])) * 0x7FFF;
-        // base64
         const u8 = new Uint8Array(pcm.buffer);
         let bin = ""; for (let i = 0; i < u8.length; i++) bin += String.fromCharCode(u8[i]);
-        const b64 = btoa(bin);
-        ws.send(JSON.stringify({ type: "audio", audio: b64 }));
+        ws.send(JSON.stringify({ type: "audio", audio: btoa(bin) }));
       };
 
       pttState.stop = () => {
@@ -296,9 +372,7 @@
         setTimeout(() => { try { ws.close(); } catch {} }, 400);
         hideTalkIndicator();
         const finalText = transcripts.join(" ").trim();
-        if (finalText) {
-          sendNpcText(npcId, ent, finalText);
-        }
+        if (finalText) sendNpcText(npcId, ent, finalText, "voice");
       };
     } catch (e) {
       console.warn("[ptt] fail", e);
@@ -323,86 +397,74 @@
   function updateTalkIndicator(txt) { if (talkIndEl) talkIndEl.textContent = "🎤 " + (txt || ""); }
   function hideTalkIndicator() { talkIndEl?.remove(); talkIndEl = null; }
 
-  // ============ enviar texto (do chat ou do STT) ============
+  // ============ enviar texto (do chat principal ou do STT) ============
   let currentAudio = null;
-  async function sendNpcText(npcId, ent, text) {
+  async function sendNpcText(npcId, ent, text, mode = "text") {
     const sb = SB();
-    // marca NPC como conversando com jogador
     ent.lockToPlayer = true;
     setAnim(ent, "idle");
+
+    // Eco da mensagem do usuário no chat principal (apenas para o próprio usuário)
+    if (mode === "text") {
+      window.__addNpcLine?.("Você", text, true);
+    } else {
+      window.__addSystemLine?.(`🎤 Você: "${text}"`);
+    }
+
     try {
       const { data, error } = await sb.functions.invoke("npc-chat", { body: { npc_id: npcId, text } });
       if (error) throw error;
-      const log = document.getElementById("npcChatLog");
-      if (log) {
-        const me = document.createElement("div");
-        me.style.cssText = "align-self:flex-end;background:#39c5bb;color:#000;padding:8px 12px;border-radius:14px;max-width:80%;white-space:pre-wrap";
-        me.textContent = text; log.appendChild(me);
-        const them = document.createElement("div");
-        them.style.cssText = "align-self:flex-start;background:#222;color:#fff;padding:8px 12px;border-radius:14px;max-width:80%;white-space:pre-wrap";
-        them.textContent = data.reply; log.appendChild(them);
-        log.scrollTop = log.scrollHeight;
-      }
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const res = await fetch(`https://ajphaszjpizepjmnjxtm.supabase.co/functions/v1/npc-tts`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}`, apikey: sb.supabaseKey || "" },
-          body: JSON.stringify({ text: data.reply, voice_id: data.voice_id }),
-        });
-        if (res.ok) {
-          const blob = await res.blob();
-          currentAudio?.pause();
-          currentAudio = new Audio(URL.createObjectURL(blob));
-          // anim talk + lookAt enquanto fala
-          setAnim(ent, "talk");
-          currentAudio.onended = () => {
-            setAnim(ent, "idle");
-            // libera após 6s sem novo input
-            setTimeout(() => { if (!pttState && !document.getElementById("npcChat")) ent.lockToPlayer = false; }, 6000);
-          };
-          currentAudio.play().catch(() => { setAnim(ent, "idle"); });
+
+      // Atualiza nome do NPC se backstory acabou de ser gerada
+      if (data.name && ent.name !== data.name) {
+        ent.name = data.name;
+        const input = document.getElementById("chatInput");
+        if (input && engagedNpc && engagedNpc.ent === ent) {
+          input.placeholder = `Falando com ${ent.name} · Esc pra sair`;
         }
-      } catch (e) { console.warn("tts fail", e); setAnim(ent, "idle"); }
+      }
+
+      if (mode === "text") {
+        // Resposta em TEXTO: balão na cabeça + linha no chat. Sem áudio.
+        window.__addNpcLine?.(ent.name || "NPC", data.reply, false);
+        showBubble(ent, data.reply);
+      } else {
+        // Resposta em ÁUDIO: só toca o som, sem texto em lugar nenhum
+        try {
+          const { data: { session } } = await sb.auth.getSession();
+          const res = await fetch(`https://ajphaszjpizepjmnjxtm.supabase.co/functions/v1/npc-tts`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}`, apikey: sb.supabaseKey || "" },
+            body: JSON.stringify({ text: data.reply, voice_id: data.voice_id }),
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            currentAudio?.pause();
+            currentAudio = new Audio(URL.createObjectURL(blob));
+            setAnim(ent, "talk");
+            currentAudio.onended = () => setAnim(ent, "idle");
+            currentAudio.play().catch(() => setAnim(ent, "idle"));
+          } else {
+            // Fallback: se TTS falhou, mostra balão pra não perder a resposta
+            window.__addSystemLine?.("(áudio indisponível, exibindo texto)");
+            showBubble(ent, data.reply);
+          }
+        } catch (e) {
+          console.warn("tts fail", e);
+          showBubble(ent, data.reply);
+        }
+      }
     } catch (e) {
       console.warn("npc-chat fail", e);
-      ent.lockToPlayer = false;
+      window.__addSystemLine?.("NPC não conseguiu responder.");
     }
   }
+  window.__sendNpcText = (text, mode) => {
+    if (!engagedNpc) return;
+    sendNpcText(engagedNpc.id, engagedNpc.ent, text, mode || "text");
+  };
 
-  // ============ CHAT MODAL (texto opcional) ============
-  async function openChat(npcId, ent) {
-    if (document.getElementById("npcChat")) return;
-    ent.lockToPlayer = true;
-    const wrap = document.createElement("div");
-    wrap.id = "npcChat";
-    wrap.style.cssText = "position:fixed;right:20px;bottom:20px;width:360px;max-height:60vh;background:#111c;backdrop-filter:blur(10px);border:1px solid #39c5bb;border-radius:14px;display:flex;flex-direction:column;z-index:10000;color:#fff;font:14px system-ui";
-    wrap.innerHTML = `
-      <div style="padding:10px 14px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center">
-        <strong>${ent.name}</strong>
-        <button id="npcChatClose" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">×</button>
-      </div>
-      <div id="npcChatLog" style="flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px"></div>
-      <div style="display:flex;gap:6px;padding:8px;border-top:1px solid #333">
-        <input id="npcChatInput" placeholder="Diga algo (ou segure V pra falar)..." style="flex:1;background:#000;color:#fff;border:1px solid #444;border-radius:8px;padding:8px"/>
-        <button id="npcChatSend" style="background:#39c5bb;border:none;color:#000;font-weight:700;padding:8px 14px;border-radius:8px;cursor:pointer">↑</button>
-      </div>`;
-    document.body.appendChild(wrap);
-    document.getElementById("npcChatClose").onclick = () => {
-      wrap.remove(); currentAudio?.pause(); currentAudio = null;
-      ent.lockToPlayer = false; setAnim(ent, "idle");
-    };
-    const input = document.getElementById("npcChatInput");
-    const send = document.getElementById("npcChatSend");
-    async function doSend() {
-      const t = input.value.trim(); if (!t) return;
-      input.value = "";
-      await sendNpcText(npcId, ent, t);
-    }
-    send.onclick = doSend;
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") doSend(); });
-    input.focus();
-  }
+
 
   // ============ ADMIN ============
   function initNpcAdminButton() {
