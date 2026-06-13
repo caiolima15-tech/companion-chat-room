@@ -544,6 +544,12 @@
         <strong>Painel NPCs</strong>
         <button id="npcAdminClose" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">×</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:6px;background:#0008;border-radius:6px;font-size:11px">
+        <label style="flex:1">🎯 Raio de carregamento (m):
+          <input id="npcLoadRadius" type="number" min="5" max="200" value="${getLoadRadius()}" style="width:60px;background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px"/>
+        </label>
+        <span style="opacity:.6">NPCs além disso ficam invisíveis pra economizar.</span>
+      </div>
       <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
         <button data-tab="models" class="npc-tab" style="flex:1;padding:6px;background:#39c5bb;color:#000;border:none;border-radius:6px;cursor:pointer">Modelos</button>
         <button data-tab="anims" class="npc-tab" style="flex:1;padding:6px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer">Animações</button>
@@ -553,6 +559,11 @@
       </div>
       <div id="npcTabContent"></div>`;
     document.body.appendChild(panel);
+    document.getElementById("npcLoadRadius").onchange = (e) => {
+      const v = Math.max(5, Math.min(200, Number(e.target.value) || 25));
+      localStorage.setItem("npcLoadRadius", String(v));
+      e.target.value = v;
+    };
     document.getElementById("npcAdminClose").onclick = () => { panel.remove(); exitRouteEditor(); };
     panel.querySelectorAll(".npc-tab").forEach((b) => b.addEventListener("click", () => {
       panel.querySelectorAll(".npc-tab").forEach((x) => { x.style.background = "#333"; x.style.color = "#fff"; });
