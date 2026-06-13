@@ -447,7 +447,23 @@
       input.dataset._oldPh = input.placeholder || "";
       input.placeholder = `Falando com ${ent.name || "NPC"} · Esc pra sair`;
     }
-    window.__addSystemLine?.(`💬 Conversando com ${ent.name || "NPC"} (Esc para sair)`);
+    showNpcBanner(`💬 Conversando com ${ent.name || "NPC"} · toque/Esc para sair`);
+  }
+  function showNpcBanner(text) {
+    let el = document.getElementById("npcChatBanner");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "npcChatBanner";
+      el.className = "npc-chat-banner";
+      el.addEventListener("click", () => { try { disengageNpc(); } catch {} });
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-visible");
+  }
+  function hideNpcBanner() {
+    const el = document.getElementById("npcChatBanner");
+    if (el) el.classList.remove("is-visible");
   }
   function disengageNpc() {
     if (!engagedNpc) return;
