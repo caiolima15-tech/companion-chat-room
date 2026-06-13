@@ -1,97 +1,118 @@
+# Plano: NPCs mais vivos (voz, animações, rotas, interações)
 
-# Plano: NPCs vivos + Emprego de Entregador
+## 1. Visual: tirar nameplate, prompt sutil
 
-## Parte 1 — NPCs que caminham pelo mapa
+- Remover o `Sprite` com o nome acima da cabeça do NPC (em `public/npc.js > spawnNpc`).
+- Trocar o prompt atual "Pressione E para conversar" por um label pequeno e cinza claro **`(E) interagir`** com:
+  - Fonte 12px, opacidade ~0.7, sem borda/glow.
+  - Só aparece quando o jogador está **bem perto** (raio reduzido de 2.5m → **1.6m**).
+  - Suave fade-in/out (150ms).
 
-### 1.1 Painel admin de NPCs (modo edição)
-Novo botão no menu admin: **"NPCs"**. Abre painel com:
-- **Biblioteca de modelos**: upload em lote de `.glb` / `.fbx` (vai para bucket `characters`, marca `is_npc=true`).
-- **Editor de rotas (waypoints)**: clicar no mapa adiciona pontos numerados, ligados em sequência. Suporta:
-  - rotas circulares (calçadas) e rotas com travessia (`is_crosswalk=true` faz o NPC parar, olhar dois lados, atravessar mais rápido).
-  - pontos especiais: `talk_spot` (NPCs param e conversam entre si por 10–30 s) e `sit_spot` (vincula a um `interaction_template` existente — "sentar").
-- **Áreas de spawn**: retângulos onde NPCs nascem; configura quantos NPCs por área e quais modelos podem aparecer.
+## 2. Gênero do NPC + 6 vozes sorteadas
 
-### 1.2 Simulação servidor‑side
-Edge function `npc-tick` roda a cada 1 s via `pg_cron` e:
-- Lê NPCs ativos do mapa, avança posição ao longo do waypoint atual (velocidade caminhada/parada/atravessando).
-- Decide aleatoriamente: parar pra conversar, sentar num `sit_spot`, mudar de rota.
-- Grava `npc_state` (posição, rotação, animação, estado, alvo) em tabela com `REPLICA IDENTITY FULL` e publicação realtime.
-- Clientes apenas interpolam — não decidem comportamento. Garante consistência.
+- **Schema**: adicionar coluna `gender text check (gender in ('male','female','neutral')) default 'neutral'` em `npc_models`. No painel admin, dropdown obrigatório ao subir o GLB.
+- **Pool de vozes** (ElevenLabs, escolhidas da lista oficial):
+  - Masculinas: George (`JBFqnCBsd6RMkjVDRZzb`), Liam (`TX3LPaxmHKxFdv7VOQHJ`), Brian (`nPczCjzI2devNBz1zQrb`).
+  - Femininas: Sarah (`EXAVITQu4vr4xnSDxMaL`), Laura (`FGY2WhTYpPnrIDTdsKH5`), Alice (`Xb7hH8MSUJpSbSDYk0k2`).
+- Ao spawnar um NPC sem `voice_id` definido, escolhe **determinístico por hash do `npc_instances.id`** dentro do pool do gênero (mesmo NPC sempre tem a mesma voz, mas distribuído).
+- A edge `npc-chat` retorna esse `voice_id` resolvido para o front (já faz; só usar a lógica acima).
 
-### 1.3 Renderização no cliente (`public/app.js`)
-- Subscribe em `npc_state` via realtime; cada NPC é uma entity Three.js com retargeting nas animações existentes (idle, walk, sit, drink, talk).
-- Interpolação suave entre ticks (1 s) para movimento fluido.
-- Quando o jogador chega a < 2 m de um NPC, aparece prompt **"E — Conversar"**.
+## 3. Voz do jogador: VAD + STT (ElevenLabs Scribe Realtime)
 
-### 1.4 Conversa com IA (texto + voz)
-- Modal de chat ao apertar E. NPC tem `persona` (nome, idade, ocupação, humor) salva na linha do NPC.
-- Backend: edge function `npc-chat` chama **Lovable AI** (`google/gemini-3-flash-preview`) com a persona + histórico curto da conversa para gerar resposta em PT‑BR coloquial.
-- Voz: resposta passa pela função `npc-tts` que usa **ElevenLabs** (conector padrão `elevenlabs`) com voz mapeada por persona (Sarah, Brian, Liam, etc.). Áudio retornado como MP3, tocado no browser; texto exibido em balão simultaneamente.
-- Histórico salvo em `npc_conversations` (limpa após 24 h por trigger, como `chat_messages`).
+- Quando o jogador entra no raio do NPC, o `npc.js` abre uma sessão STT em background usando `@elevenlabs/react`? Não — `npc.js` é vanilla. Vou usar **WebSocket direto pro `scribe_v2_realtime`** com token gerado por uma nova edge function `npc-stt-token` (single-use token, mesma rotina do connector).
+- Microfone com `getUserMedia` + `AudioWorklet` enviando PCM 16kHz, `commitStrategy: vad`.
+- Quando o servidor manda `committed_transcript`, dispara o mesmo fluxo de chat (`npc-chat` → `npc-tts`) automaticamente — sem precisar digitar.
+- Botão UI: 🎤 no canto inferior central só quando há NPC próximo. Clicar liga/desliga; se ligado, escuta passiva por VAD.
+- Se nenhuma fala for detectada por **~25s**, NPC se despede ("Foi bom conversar, até mais!") + animação `wave` + sai andando pela rota (volta a `status='walking'`). Implementado em `npc-tick` checando `last_user_msg_at` em `npc_conversations`.
 
-## Parte 2 — Emprego de entregador
+## 4. Animações: dual source (embutidas + GLBs avulsos)
 
-### 2.1 Saldo do jogador
-- Coluna `balance_cents` em `profiles` + tabela `wallet_transactions` (audit).
-- HUD novo no canto superior direito: **"R$ 0,00"** sempre visível, atualizado em realtime via subscription em `profiles`.
-- Tabela `delivery_stats` com `xp`, `level`, `deliveries_completed`, `best_time_ms`.
+- Nova tabela `npc_animations`:
+  - `slug` (idle, walk, talk, sit, wave, point, social_a, social_b, social_c)
+  - `model_url` (GLB com 1 clipe), `gender` (male|female|any), `created_by`.
+- Bucket `characters` já existe; subir lá em `npcs/anims/`.
+- **Resolução em runtime** (no `npc.js`):
+  1. Se o GLB do personagem tem um clipe com nome compatível (regex `idle|walk|talk|sit|wave`), usa ele.
+  2. Senão, carrega o GLB genérico mais próximo do gênero e aplica via `SkeletonUtils.retargetClip` (já temos `vendor/utils/SkeletonUtils.js`).
+- Aba nova no painel admin: **Animações** — upload + lista + preview.
 
-### 2.2 Postos de emprego (admin)
-Mesmo painel admin ganha aba **"Empregos"**: clica no mapa para criar um **delivery hub** (ponto de retirada). Cada hub tem:
-- localização da caixa (onde pegar)
-- lista de locais de entrega (clica em N pontos = portas de casas).
-- pagamento base por km + bônus de velocidade + nível mínimo desbloqueado.
+### Triggers de animação
+- `idle` → parado em waypoint/aguardando.
+- `walk` → movendo.
+- `talk` → SOMENTE durante a fala (recebe evento do TTS: começa ao tocar áudio, para no `ended`). Combina com `lookAt(player)` (rotaciona `group` suave pro jogador) enquanto a conversa está ativa.
+- `sit` → ao chegar em `is_sit_spot`.
+- `wave` → ao se despedir.
+- `social_*` → conversa NPC-NPC (ver §6).
 
-### 2.3 Loop de gameplay da entrega
-1. Jogador chega ao hub → prompt "Aceitar entrega". Sorteia destino e calcula tempo limite a partir da distância (ex.: 90 s + 8 s/100 m).
-2. Anima **pegar caixa** (animação existente de "drink" reaproveitada como "carregar", ou nova FBX se disponível). Caixa aparece presa à mão.
-3. Vai até o carro mais próximo. Animação de **abrir mala → colocar caixa → fechar mala** (sequência de interações; caixa some da mão e aparece presa ao carro).
-4. Dirige até o destino. Barra de tempo no HUD.
-5. Sai do carro, animação **abrir mala → pegar caixa → entregar na porta**.
-6. Tela mostra **"✅ Entrega concluída — R$ 12,40 +35 XP"** (verde, fade‑in/out). Saldo atualiza.
+## 5. Editor de rotas visual (drag & drop)
 
-Fórmula: `pay = base + bonus * max(0, (time_limit - tempo_real) / time_limit)`; XP proporcional. Sobe de nível a cada N XP (curva escalonada), desbloqueando hubs/distâncias maiores.
+Nova aba **Rotas** no painel admin com modo "Editar":
+- Ao entrar no modo, intercepta clique no chão (raycast no mesh `ground` que o `app.js` expõe).
+  - **Clique simples** → adiciona waypoint no fim da rota selecionada (`npc_waypoints` insert).
+  - **Clique num waypoint existente** → seleciona; aparece HUD com: Mover (drag), 🚸 travessia, 💬 talk_spot, 🪑 sit_spot, ⏱ pausa(ms), 🗑.
+  - **Arrastar waypoint** → atualiza `x,z` no `npc_waypoints` via debounce 250ms.
+- Renderiza no mundo:
+  - Esfera colorida por tipo em cada waypoint (cinza=normal, amarelo=travessia, azul=talk, verde=sit).
+  - Linha tracejada (`THREE.Line` com `LineDashedMaterial`) ligando seq → seq+1, e seq_final → seq_0 se `loop_back`.
+- Botões: **+ Nova rota**, **Atribuir rota a NPC** (dropdown).
+- Tudo client-side via supabase + realtime, sem edge function nova.
 
-### 2.4 Cancelamento / falha
-- Estourou o tempo: paga 30 % do valor, sem XP, toast "⚠ Atrasado".
-- Sair do carro com caixa longe do destino: marca como abandonada após 60 s.
+## 6. NPC-NPC: encontros sociais (sem texto, sem voz)
 
-## Detalhes técnicos
+- Em `npc-tick`, quando dois NPCs em `status='walking'` ficam a <2m um do outro e ambos rolam `random() < 0.15`:
+  - Ambos viram-se um pro outro, entram em `status='socializing'`, anim alterna entre `social_a`/`social_b`/`social_c` a cada 3-6s.
+  - `next_decision_at = now + (60-180s)`. Ao expirar, voltam ao caminho.
+- Adicionar `'socializing'` aos status válidos. Zero custo de IA/voz (só anim + posição).
+- Se um jogador interage com um deles → quebra o social e prioriza o jogador.
 
-### Banco (uma migração)
-- `npc_models` (referência aos GLB/FBX em `characters`, persona padrão, voz ElevenLabs).
-- `npc_routes`, `npc_waypoints` (com `is_crosswalk`, `is_talk_spot`, `is_sit_spot`).
-- `npc_spawn_areas`.
-- `npc_instances` (estático: id, modelo, persona, rota inicial).
-- `npc_state` (dinâmico: pos, rot, anim, estado, target_waypoint) — REPLICA IDENTITY FULL + publicação realtime.
-- `npc_conversations` (user_id, npc_id, role, text, created_at) com trigger de limpeza 24 h.
-- `delivery_hubs`, `delivery_destinations`, `delivery_jobs` (estado por jogador).
-- `wallet_transactions`, `delivery_stats`.
-- Coluna `balance_cents` em `profiles`.
-- Todas com RLS: leitura pública para o que precisa renderizar; escrita restrita a admin ou ao próprio dono; pagamento só via função `SECURITY DEFINER` `complete_delivery(job_id)` para impedir trapaça.
+## 7. Sentar / usar interações próximas
+
+- Já há `map_asset_interactions` (com tipos). Em `npc-tick`, quando NPC entra em `status='idle'` e não tem próximo waypoint urgente, com prob. 20%:
+  - Busca interações dentro de 8m com `type in ('bench','chair','seat')` livres (sem outro NPC ocupando — guardar `occupied_by_npc` em estado local).
+  - Cria waypoint temporário até ela, marca `is_sit_spot=true`, ao chegar entra em `sit` por 20-60s.
+
+---
+
+## Mudanças técnicas / arquivos
+
+### Banco (1 migração)
+1. `alter table npc_models add column gender text check (...) default 'neutral'`.
+2. `create table npc_animations(...)` + GRANT + RLS (admin write, public read).
+3. `alter table npc_state` — adicionar `'socializing'` como status válido (drop/add check).
+4. `alter table npc_conversations add column last_user_msg_at timestamptz default now()` (pro auto-despedida).
+5. Função `pick_voice_for_npc(npc_id, gender)` — opcional, pode ser client-side.
 
 ### Edge functions
-- `npc-tick` — simulação periódica (pg_cron a cada 1 s).
-- `npc-chat` — Lovable AI Gateway, resposta de texto.
-- `npc-tts` — ElevenLabs (precisa do connector `elevenlabs` linkado; pergunto antes de criar).
-- `complete-delivery` — valida tempo/posição, credita saldo + XP via função SQL `SECURITY DEFINER`.
+- **Nova `npc-stt-token`**: gera single-use token do Scribe Realtime usando `ELEVENLABS_API_KEY`.
+- **`npc-tick`**: adicionar lógica de social NPC-NPC, auto-sit, auto-goodbye por inatividade.
+- **`npc-chat`**: usar pool de vozes por gênero quando `voice_id` ausente; gravar `last_user_msg_at`.
 
-### Frontend (`public/app.js` + `public/styles.css`)
-- Módulo `npc_admin.js` (painel + waypoints).
-- Módulo `npc_runtime.js` (subscribe realtime, render, conversa).
-- Módulo `delivery.js` (HUD R$, fluxo de jobs, toast de conclusão).
-- Estilos: HUD saldo (canto sup. direito), balão de chat NPC, toast de entrega.
+### Frontend (`public/npc.js`)
+- Remover sprite-nameplate.
+- Reduzir raio de detecção + novo prompt cinza `(E) interagir`.
+- Sistema de animação dual-source + retargeting.
+- Cliente STT WebSocket (push-to-talk inicial, depois VAD).
+- Hook `talk` anim + `lookAt` durante TTS.
+- Editor visual de rotas (drag).
+- Aba "Animações" no admin.
 
-### Dependências externas
-- **ElevenLabs**: preciso linkar o connector padrão `elevenlabs` (sem custo extra de setup; usa a conta do workspace). Confirmo antes de seguir.
-- **Lovable AI** (`LOVABLE_API_KEY`) — já configurado.
+### Storage
+- Reusar bucket `characters` (já público). Pastas `npcs/`, `npcs/anims/`.
 
-## Ordem de execução
-1. Migração do banco (todas as tabelas + RLS + função `complete_delivery`).
-2. Conectar ElevenLabs.
-3. Edge functions (`npc-chat`, `npc-tts`, `npc-tick`, `complete-delivery`) + cron.
-4. Painel admin NPCs (modelos, rotas, áreas).
-5. Runtime NPCs no cliente + chat com voz.
-6. HUD R$ + painel admin de hubs de entrega.
-7. Loop de entrega completo + toast de conclusão.
-8. XP/nível e desbloqueios.
+---
+
+## Ordem de implementação (commits sugeridos)
+
+1. Migração de schema (gender, npc_animations, status, last_user_msg_at).
+2. Visual: remove nameplate + prompt cinza + raio menor.
+3. Pool de vozes por gênero.
+4. Editor de rotas drag&drop.
+5. Upload + retargeting de animações.
+6. Talk anim + lookAt durante TTS.
+7. STT (push-to-talk → VAD).
+8. NPC-NPC social + auto-sit + auto-goodbye.
+
+## Riscos / pontos de atenção
+- **Retargeting GLB**: depende dos esqueletos serem compatíveis (Mixamo-style funciona bem; se você usar modelos exóticos pode falhar — fallback é só usar idle estático).
+- **STT custa créditos ElevenLabs**: VAD permanente perto de NPC pode estourar. Vou começar com push-to-talk segurando V e oferecer toggle "modo VAD" depois.
+- **Realtime de waypoints durante drag**: vou debounce + otimistic local pra não floodear DB.

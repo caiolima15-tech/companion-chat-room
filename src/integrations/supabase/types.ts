@@ -1264,10 +1264,44 @@ export type Database = {
         }
         Relationships: []
       }
+      npc_animations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          gender: string
+          id: string
+          model_url: string
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          gender?: string
+          id?: string
+          model_url: string
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          gender?: string
+          id?: string
+          model_url?: string
+          name?: string
+          slug?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       npc_conversations: {
         Row: {
           created_at: string
           id: string
+          last_user_msg_at: string
           npc_id: string
           role: string
           text: string
@@ -1276,6 +1310,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          last_user_msg_at?: string
           npc_id: string
           role: string
           text: string
@@ -1284,6 +1319,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          last_user_msg_at?: string
           npc_id?: string
           role?: string
           text?: string
@@ -1355,6 +1391,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           default_persona: Json
+          gender: string
           id: string
           model_url: string
           name: string
@@ -1368,6 +1405,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           default_persona?: Json
+          gender?: string
           id?: string
           model_url: string
           name: string
@@ -1381,6 +1419,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           default_persona?: Json
+          gender?: string
           id?: string
           model_url?: string
           name?: string
