@@ -418,7 +418,11 @@
     if (engagedNpc) return;
     engagedNpc = { id, ent };
     ent.lockToPlayer = true;
-    setAnim(ent, "idle");
+    ent._talkLock = true;
+    ent._speed = 0; // para o movimento no cliente imediatamente
+    // Para o NPC visualmente onde está: alvo = posição atual
+    if (ent.targetPos) ent.targetPos.copy(ent.group.position);
+    setAnim(ent, "talk");
     window.__npcChatActive = true;
     const input = document.getElementById("chatInput");
     if (input) {
@@ -431,6 +435,9 @@
     if (!engagedNpc) return;
     const ent = engagedNpc.ent;
     ent.lockToPlayer = false;
+    ent._talkLock = false;
+    // volta a respeitar o speed do server no próximo state update
+    ent._speed = ent.status === "walking" ? 1.4 : 0;
     setAnim(ent, ent.status === "walking" ? "walk" : "idle");
     hideBubble(ent);
     try { currentAudio?.pause(); } catch {}
