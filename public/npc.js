@@ -45,29 +45,55 @@
   }
 
   // ============ RUNTIME ============
-  const npcEntities = new Map();
-  const npcInstances = new Map();
+  const npcEntities = new Map();   // id -> ent (loaded visual)
+  const npcInstances = new Map();  // id -> instance row (filtered by current map)
+  const npcStateCache = new Map(); // id -> latest state row (lightweight, kept for all NPCs in map)
   const npcModels = new Map();
+  const npcLoading = new Set();    // ids currently loading GLB
+
+  function getCurrentMapId() { return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar"; }
+  function getLoadRadius() { return Number(localStorage.getItem("npcLoadRadius")) || 25; }
+  function getDespawnRadius() { return getLoadRadius() * 1.25; }
+
+  async function reloadForMap() {
+    const sb = SB();
+    const mapId = getCurrentMapId();
+    // despawn everything
+    for (const [id, ent] of npcEntities) {
+      try { scene().remove(ent.group); } catch {}
+      try { ent.bubble?.remove(); } catch {}
+    }
+    npcEntities.clear();
+    npcInstances.clear();
+    npcStateCache.clear();
+    npcLoading.clear();
+
+    const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true).eq("map_id", mapId);
+    (inst || []).forEach((i) => npcInstances.set(i.id, i));
+    if (npcInstances.size) {
+      const ids = [...npcInstances.keys()];
+      const { data: states } = await sb.from("npc_state").select("*").in("npc_id", ids);
+      (states || []).forEach((s) => { npcStateCache.set(s.npc_id, s); });
+    }
+  }
 
   async function initNpcRuntime() {
     const sb = SB();
     const { data: models } = await sb.from("npc_models").select("*");
     (models || []).forEach((m) => npcModels.set(m.id, m));
-    const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true);
-    (inst || []).forEach((i) => npcInstances.set(i.id, i));
-    const { data: states } = await sb.from("npc_state").select("*");
-    (states || []).forEach((s) => applyState(s));
+
+    await reloadForMap();
 
     loadAnimationLibrary();
 
+    window.addEventListener("map-changed", () => { reloadForMap(); });
+
     sb.channel("npc-state")
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
-        if (payload.new) applyState(payload.new);
+        if (payload.new) handleStateUpdate(payload.new);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, async () => {
-        const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true);
-        npcInstances.clear();
-        (inst || []).forEach((i) => npcInstances.set(i.id, i));
+      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, () => {
+        reloadForMap();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
@@ -83,7 +109,6 @@
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
         if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 4));
-        // lookAt player override
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
@@ -96,29 +121,63 @@
           ent.group.rotation.y += diff * Math.min(1, dt * 6);
         }
       }
+      checkLOD();
       checkNpcProximity();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
 
-  async function applyState(s) {
-    const inst = npcInstances.get(s.npc_id);
-    if (!inst) return;
-    let ent = npcEntities.get(s.npc_id);
-    if (!ent) {
-      ent = await spawnNpc(inst);
-      if (!ent) return;
-      ent.group.position.set(s.x, s.y, s.z);
+  // Despawn far NPCs and spawn close ones (LOD)
+  let lodCheckT = 0;
+  function checkLOD() {
+    const now = performance.now();
+    if (now - lodCheckT < 500) return; // 2 Hz
+    lodCheckT = now;
+    const p = player(); if (!p) return;
+    const loadR = getLoadRadius();
+    const despawnR = getDespawnRadius();
+    for (const [id, inst] of npcInstances) {
+      const st = npcStateCache.get(id);
+      if (!st) continue;
+      const d = Math.hypot(st.x - p.position.x, st.z - p.position.z);
+      const ent = npcEntities.get(id);
+      if (!ent && !npcLoading.has(id) && d < loadR) {
+        // spawn
+        npcLoading.add(id);
+        spawnNpc(inst).then((e) => {
+          npcLoading.delete(id);
+          if (!e) return;
+          const cur = npcStateCache.get(id);
+          if (cur) {
+            e.group.position.set(cur.x, cur.y, cur.z);
+            e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
+            e.targetRot = cur.rot_y;
+            setAnim(e, cur.anim);
+          }
+        });
+      } else if (ent && d > despawnR) {
+        try { scene().remove(ent.group); } catch {}
+        try { ent.bubble?.remove(); } catch {}
+        npcEntities.delete(id);
+      }
     }
+  }
+
+  function handleStateUpdate(s) {
+    // Cache the state regardless of whether the entity is loaded
+    npcStateCache.set(s.npc_id, s);
+    if (!npcInstances.has(s.npc_id)) return; // not in current map
+    const ent = npcEntities.get(s.npc_id);
+    if (!ent) return; // LOD: not loaded
     ent.targetPos = new (THREE().Vector3)(s.x, s.y, s.z);
-    // Não sobrescreve rot/anim quando jogador está conversando
     if (!ent.lockToPlayer) {
       ent.targetRot = s.rot_y;
       setAnim(ent, s.anim);
     }
     ent.status = s.status;
   }
+
 
   function pickAnimClip(ent, name) {
     // 1) clip do próprio modelo
@@ -485,6 +544,12 @@
         <strong>Painel NPCs</strong>
         <button id="npcAdminClose" style="background:none;border:none;color:#fff;font-size:18px;cursor:pointer">×</button>
       </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding:6px;background:#0008;border-radius:6px;font-size:11px">
+        <label style="flex:1">🎯 Raio de carregamento (m):
+          <input id="npcLoadRadius" type="number" min="5" max="200" value="${getLoadRadius()}" style="width:60px;background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px"/>
+        </label>
+        <span style="opacity:.6">NPCs além disso ficam invisíveis pra economizar.</span>
+      </div>
       <div style="display:flex;gap:4px;margin-bottom:10px;flex-wrap:wrap">
         <button data-tab="models" class="npc-tab" style="flex:1;padding:6px;background:#39c5bb;color:#000;border:none;border-radius:6px;cursor:pointer">Modelos</button>
         <button data-tab="anims" class="npc-tab" style="flex:1;padding:6px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer">Animações</button>
@@ -494,6 +559,11 @@
       </div>
       <div id="npcTabContent"></div>`;
     document.body.appendChild(panel);
+    document.getElementById("npcLoadRadius").onchange = (e) => {
+      const v = Math.max(5, Math.min(200, Number(e.target.value) || 25));
+      localStorage.setItem("npcLoadRadius", String(v));
+      e.target.value = v;
+    };
     document.getElementById("npcAdminClose").onclick = () => { panel.remove(); exitRouteEditor(); };
     panel.querySelectorAll(".npc-tab").forEach((b) => b.addEventListener("click", () => {
       panel.querySelectorAll(".npc-tab").forEach((x) => { x.style.background = "#333"; x.style.color = "#fff"; });
@@ -556,15 +626,16 @@
     });
     list.querySelectorAll(".npc-spawn-btn").forEach((b) => b.onclick = async () => {
       const p = player(); if (!p) return alert("jogador não localizado");
-      const { data: route } = await sb.from("npc_routes").insert({ name: "Rota " + Date.now() }).select().single();
+      const mapId = getCurrentMapId();
+      const { data: route } = await sb.from("npc_routes").insert({ name: "Rota " + Date.now(), map_id: mapId }).select().single();
       await sb.from("npc_waypoints").insert([
         { route_id: route.id, seq: 0, x: p.position.x, z: p.position.z, y: p.position.y },
         { route_id: route.id, seq: 1, x: p.position.x + 8, z: p.position.z, y: p.position.y },
         { route_id: route.id, seq: 2, x: p.position.x + 8, z: p.position.z + 8, y: p.position.y },
         { route_id: route.id, seq: 3, x: p.position.x, z: p.position.z + 8, y: p.position.y },
       ]);
-      await sb.from("npc_instances").insert({ model_id: b.dataset.id, route_id: route.id, display_name: "NPC " + Math.floor(Math.random()*999), active: true });
-      alert("NPC criado!");
+      await sb.from("npc_instances").insert({ model_id: b.dataset.id, route_id: route.id, map_id: mapId, display_name: "NPC " + Math.floor(Math.random()*999), active: true });
+      alert("NPC criado neste mapa!");
     });
     document.getElementById("npcUpload").onclick = async () => {
       const files = document.getElementById("npcGlbFile").files;
@@ -630,17 +701,18 @@
   let routeEditor = null; // { routeId, gizmos: Map<wp_id, mesh>, lines, dragWp, ... }
 
   async function renderRoutesTab(el, sb) {
-    const { data: routes } = await sb.from("npc_routes").select("*,npc_waypoints(count)").order("created_at", { ascending: false });
+    const mapId = getCurrentMapId();
+    const { data: routes } = await sb.from("npc_routes").select("*,npc_waypoints(count)").eq("map_id", mapId).order("created_at", { ascending: false });
     const cur = routeEditor?.routeId || "";
     el.innerHTML = `
-      <button id="npcNewRoute" style="width:100%;background:#39c5bb;color:#000;border:none;padding:8px;border-radius:6px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Nova rota</button>
-      <p style="font-size:11px;opacity:.7;margin:4px 0">Selecione uma rota e clique "Editar" pra adicionar/arrastar pontos no mapa.</p>
+      <button id="npcNewRoute" style="width:100%;background:#39c5bb;color:#000;border:none;padding:8px;border-radius:6px;font-weight:700;cursor:pointer;margin-bottom:8px">+ Nova rota neste mapa</button>
+      <p style="font-size:11px;opacity:.7;margin:4px 0">Mapa atual: <b>${mapId}</b>. Clique "Editar" e depois clique no chão pra adicionar pontos. Arraste pra mover. Os NPCs caminham do ponto atual até o mais próximo.</p>
       <div id="npcRoutesList"></div>
       <div id="npcRouteHud"></div>`;
     document.getElementById("npcNewRoute").onclick = async () => {
       const name = prompt("Nome da rota:", "Rota " + Date.now());
       if (!name) return;
-      await sb.from("npc_routes").insert({ name });
+      await sb.from("npc_routes").insert({ name, map_id: mapId });
       renderTab("routes");
     };
     const list = document.getElementById("npcRoutesList");
@@ -737,17 +809,21 @@
   function bindEditorEvents() {
     if (editorBound) return; editorBound = true;
     const cv = renderer()?.domElement || window;
-    cv.addEventListener("pointerdown", onEditorDown);
-    cv.addEventListener("pointermove", onEditorMove);
-    cv.addEventListener("pointerup", onEditorUp);
+    // capture phase + stopImmediatePropagation so app camera/movement não engole
+    cv.addEventListener("pointerdown", onEditorDown, true);
+    cv.addEventListener("pointermove", onEditorMove, true);
+    cv.addEventListener("pointerup", onEditorUp, true);
+    cv.addEventListener("contextmenu", onEditorCtx, true);
   }
   function unbindEditorEvents() {
     if (!editorBound) return; editorBound = false;
     const cv = renderer()?.domElement || window;
-    cv.removeEventListener("pointerdown", onEditorDown);
-    cv.removeEventListener("pointermove", onEditorMove);
-    cv.removeEventListener("pointerup", onEditorUp);
+    cv.removeEventListener("pointerdown", onEditorDown, true);
+    cv.removeEventListener("pointermove", onEditorMove, true);
+    cv.removeEventListener("pointerup", onEditorUp, true);
+    cv.removeEventListener("contextmenu", onEditorCtx, true);
   }
+  function onEditorCtx(e) { if (routeEditor) { e.preventDefault(); e.stopPropagation(); } }
   function setPointerNDC(e) {
     if (!routeEditor) return;
     const T = THREE();
@@ -775,56 +851,58 @@
   }
   let downTime = 0, downPos = null;
   async function onEditorDown(e) {
+    if (!routeEditor) return;
     if (e.button !== 0) return;
     setPointerNDC(e);
     const giz = raycastGizmo();
+    downTime = Date.now();
+    downPos = { x: e.clientX, y: e.clientY };
     if (giz) {
       routeEditor.dragWp = giz.userData.wp;
       routeEditor.dragStartX = giz.position.x; routeEditor.dragStartZ = giz.position.z;
-      downTime = Date.now(); downPos = { x: e.clientX, y: e.clientY };
-      e.stopPropagation();
+    } else {
+      routeEditor.dragWp = null;
+      routeEditor.pendingAdd = true;
     }
+    // Sempre engole o evento no modo editor pra não mexer câmera/movimento
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
   let dragDebounceT = null;
   function onEditorMove(e) {
-    if (!routeEditor || !routeEditor.dragWp) return;
+    if (!routeEditor) return;
     setPointerNDC(e);
-    const hit = raycastGround(); if (!hit) return;
-    const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
-    if (giz) giz.position.set(hit.x, 0.5, hit.z);
-    // atualiza linha
-    if (routeEditor.lines && routeEditor.wps) {
-      const T = THREE();
-      const pts = routeEditor.wps.map(w => w.id === routeEditor.dragWp.id
-        ? new T.Vector3(hit.x, 0.3, hit.z)
-        : new T.Vector3(w.x, (w.y || 0) + 0.3, w.z));
-      pts.push(pts[0]);
-      routeEditor.lines.geometry.setFromPoints(pts);
-      routeEditor.lines.computeLineDistances();
+    if (routeEditor.dragWp) {
+      const hit = raycastGround(); if (!hit) return;
+      const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
+      if (giz) giz.position.set(hit.x, 0.5, hit.z);
+      if (dragDebounceT) clearTimeout(dragDebounceT);
+      dragDebounceT = setTimeout(async () => {
+        const sb = SB();
+        await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
+      }, 200);
+      e.stopPropagation(); e.stopImmediatePropagation();
+    } else if (routeEditor.pendingAdd) {
+      // ainda engole movimento entre down e up pra não rotacionar câmera
+      e.stopPropagation(); e.stopImmediatePropagation();
     }
-    if (dragDebounceT) clearTimeout(dragDebounceT);
-    dragDebounceT = setTimeout(async () => {
-      const sb = SB();
-      await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
-    }, 200);
   }
   async function onEditorUp(e) {
     if (!routeEditor) return;
     setPointerNDC(e);
-    const wasDragging = routeEditor.dragWp && downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
+    const wasDragging = downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
     const clickedWp = routeEditor.dragWp;
+    const wasPendingAdd = routeEditor.pendingAdd;
     routeEditor.dragWp = null;
-    if (!wasDragging) {
-      if (clickedWp) {
-        // editar
-        openWpHud(clickedWp);
-      } else {
-        // adicionar novo waypoint no chão
-        const hit = raycastGround(); if (!hit) return;
-        const sb = SB();
-        const nextSeq = (routeEditor.wps?.length || 0);
-        await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
-      }
+    routeEditor.pendingAdd = false;
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+    if (wasDragging) return;
+    if (clickedWp) {
+      openWpHud(clickedWp);
+    } else if (wasPendingAdd) {
+      const hit = raycastGround(); if (!hit) return;
+      const sb = SB();
+      const nextSeq = (routeEditor.wps?.length || 0);
+      await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
     }
   }
   function openWpHud(wp) {
