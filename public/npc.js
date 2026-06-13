@@ -840,56 +840,58 @@
   }
   let downTime = 0, downPos = null;
   async function onEditorDown(e) {
+    if (!routeEditor) return;
     if (e.button !== 0) return;
     setPointerNDC(e);
     const giz = raycastGizmo();
+    downTime = Date.now();
+    downPos = { x: e.clientX, y: e.clientY };
     if (giz) {
       routeEditor.dragWp = giz.userData.wp;
       routeEditor.dragStartX = giz.position.x; routeEditor.dragStartZ = giz.position.z;
-      downTime = Date.now(); downPos = { x: e.clientX, y: e.clientY };
-      e.stopPropagation();
+    } else {
+      routeEditor.dragWp = null;
+      routeEditor.pendingAdd = true;
     }
+    // Sempre engole o evento no modo editor pra não mexer câmera/movimento
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
   let dragDebounceT = null;
   function onEditorMove(e) {
-    if (!routeEditor || !routeEditor.dragWp) return;
+    if (!routeEditor) return;
     setPointerNDC(e);
-    const hit = raycastGround(); if (!hit) return;
-    const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
-    if (giz) giz.position.set(hit.x, 0.5, hit.z);
-    // atualiza linha
-    if (routeEditor.lines && routeEditor.wps) {
-      const T = THREE();
-      const pts = routeEditor.wps.map(w => w.id === routeEditor.dragWp.id
-        ? new T.Vector3(hit.x, 0.3, hit.z)
-        : new T.Vector3(w.x, (w.y || 0) + 0.3, w.z));
-      pts.push(pts[0]);
-      routeEditor.lines.geometry.setFromPoints(pts);
-      routeEditor.lines.computeLineDistances();
+    if (routeEditor.dragWp) {
+      const hit = raycastGround(); if (!hit) return;
+      const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
+      if (giz) giz.position.set(hit.x, 0.5, hit.z);
+      if (dragDebounceT) clearTimeout(dragDebounceT);
+      dragDebounceT = setTimeout(async () => {
+        const sb = SB();
+        await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
+      }, 200);
+      e.stopPropagation(); e.stopImmediatePropagation();
+    } else if (routeEditor.pendingAdd) {
+      // ainda engole movimento entre down e up pra não rotacionar câmera
+      e.stopPropagation(); e.stopImmediatePropagation();
     }
-    if (dragDebounceT) clearTimeout(dragDebounceT);
-    dragDebounceT = setTimeout(async () => {
-      const sb = SB();
-      await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
-    }, 200);
   }
   async function onEditorUp(e) {
     if (!routeEditor) return;
     setPointerNDC(e);
-    const wasDragging = routeEditor.dragWp && downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
+    const wasDragging = downPos && Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 5;
     const clickedWp = routeEditor.dragWp;
+    const wasPendingAdd = routeEditor.pendingAdd;
     routeEditor.dragWp = null;
-    if (!wasDragging) {
-      if (clickedWp) {
-        // editar
-        openWpHud(clickedWp);
-      } else {
-        // adicionar novo waypoint no chão
-        const hit = raycastGround(); if (!hit) return;
-        const sb = SB();
-        const nextSeq = (routeEditor.wps?.length || 0);
-        await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
-      }
+    routeEditor.pendingAdd = false;
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
+    if (wasDragging) return;
+    if (clickedWp) {
+      openWpHud(clickedWp);
+    } else if (wasPendingAdd) {
+      const hit = raycastGround(); if (!hit) return;
+      const sb = SB();
+      const nextSeq = (routeEditor.wps?.length || 0);
+      await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
     }
   }
   function openWpHud(wp) {
