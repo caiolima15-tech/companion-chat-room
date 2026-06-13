@@ -60,31 +60,28 @@
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
-  // Retarget de tracks: normaliza prefixos Mixamo e descarta tracks cujo bone não existe no destino.
-  const MIXAMO_RE = /^mixamorig\d*/i;
+  // Retarget de tracks: normaliza prefixos Mixamo (: / sem :, com dígitos) e descarta tracks inválidas.
+  const MIXAMO_RE = /^mixamorig\d*:?/i;
+  function stripMixamoPrefix(name = "") { return String(name).replace(MIXAMO_RE, "").toLowerCase(); }
   function retargetClipForEnt(ent, clip) {
     const cloned = clip.clone();
-    const destPrefix = ent.bonePrefix || "";
     const boneSet = ent.boneNames; // Set<string> com nomes válidos
+    const boneByStripped = ent.boneByStripped || new Map();
     const kept = [];
     for (const tr of cloned.tracks) {
       const dot = tr.name.indexOf(".");
-      const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
-      const prop = dot >= 0 ? tr.name.slice(dot) : "";
-      const m = bone.match(MIXAMO_RE);
-      let newBone = bone;
-      if (m) {
-        const rest = bone.slice(m[0].length);
-        if (destPrefix) newBone = destPrefix + rest;
-        else newBone = rest.charAt(0).toLowerCase() + rest.slice(1);
-      } else if (destPrefix && !bone.startsWith(destPrefix)) {
-        newBone = destPrefix + bone.charAt(0).toUpperCase() + bone.slice(1);
-      }
-      // Descarta tracks cujo bone não existe no modelo destino — evita T-pose por bind falho
-      if (boneSet && boneSet.size && !boneSet.has(newBone)) continue;
-      tr.name = newBone + prop;
-      kept.push(tr);
+      if (dot < 0) continue;
+      const bone = tr.name.slice(0, dot);
+      const prop = tr.name.slice(dot);
+      // Locomoção fica no group; posição do hips/root no FBX causa salto/T-pose em avatar GLB.
+      if (prop === ".position") continue;
+      const newBone = boneSet?.has(bone) ? bone : boneByStripped.get(stripMixamoPrefix(bone));
+      if (!newBone) continue;
+      const nt = tr.clone();
+      nt.name = newBone + prop;
+      kept.push(nt);
     }
+    if (!kept.length) return null;
     cloned.tracks = kept;
     return cloned;
   }
