@@ -482,7 +482,7 @@
       input.placeholder = input.dataset._oldPh;
       delete input.dataset._oldPh;
     }
-    window.__addSystemLine?.(`👋 Saiu da conversa.`);
+    hideNpcBanner();
     engagedNpc = null;
   }
   window.__disengageNpc = disengageNpc;
