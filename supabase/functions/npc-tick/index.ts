@@ -152,8 +152,18 @@ async function runOneTick() {
         newAnim = "idle"; newStatus = "paused";
         nextDecision = new Date(now + Math.min(5000, target.pause_ms)).toISOString();
       }
-      // Avança para o próximo ponto (loop)
-      newTarget = (target.seq + 1) % wps.length;
+      // Próximo ponto: a maioria das vezes segue a sequência (direção da personalidade),
+      // mas ~30% das vezes "pula" para um ponto mais distante (1..floor(n/2) à frente),
+      // criando dispersão e evitando enfileiramento.
+      const n = wps.length;
+      let jump = 1;
+      if (n > 2 && Math.random() < 0.3) {
+        jump = 1 + Math.floor(Math.random() * Math.max(1, Math.floor(n / 2)));
+      }
+      // pequeno desvio aleatório por NPC para que cheguem em momentos diferentes
+      if (n > 3 && Math.random() < 0.1) jump += 1;
+      const nextSeq = ((target.seq + dir * jump) % n + n) % n;
+      newTarget = nextSeq;
     } else {
       newRot = Math.atan2(dx, dz);
       newX = st.x + (dx / d) * step;
