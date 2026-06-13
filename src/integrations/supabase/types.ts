@@ -1338,6 +1338,7 @@ export type Database = {
       npc_instances: {
         Row: {
           active: boolean
+          backstory: string | null
           created_at: string
           display_name: string
           id: string
@@ -1349,6 +1350,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          backstory?: string | null
           created_at?: string
           display_name?: string
           id?: string
@@ -1360,6 +1362,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          backstory?: string | null
           created_at?: string
           display_name?: string
           id?: string
