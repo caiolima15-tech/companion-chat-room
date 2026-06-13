@@ -920,12 +920,31 @@
       return;
     }
     if (moved) return;
-    if (Date.now() - downTime > 350) return;
-    const hit = raycastGround(); if (!hit) return;
+    if (Date.now() - downTime > 700) return;
+    const hit = raycastGround();
+    if (!hit) { editorToast("✗ clique fora do chão"); return; }
     const sb = SB();
     const nextSeq = (routeEditor.wps?.length || 0);
-    await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+    const { error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+    if (error) editorToast("✗ erro: " + error.message);
+    else editorToast(`✔ ponto #${nextSeq} adicionado`);
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
+  let toastT = null;
+  function editorToast(msg) {
+    let t = document.getElementById("npcEditorToast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "npcEditorToast";
+      t.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111d;color:#39c5bb;border:1px solid #39c5bb;border-radius:6px;padding:6px 12px;font:600 12px system-ui;z-index:10002;pointer-events:none";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = "1";
+    if (toastT) clearTimeout(toastT);
+    toastT = setTimeout(() => { t.style.opacity = "0"; }, 1500);
+  }
+
   function openWpHud(wp) {
     const old = document.getElementById("npcWpHud"); if (old) old.remove();
     const hud = document.createElement("div");
