@@ -75,16 +75,28 @@ async function runOneTick() {
     if (!lastByNpc[c.npc_id] || t > lastByNpc[c.npc_id]) lastByNpc[c.npc_id] = t;
   }
 
+  // Hash determinístico por id (0..1) — dá "personalidade" estável ao NPC
+  const hashId = (id: string) => {
+    let h = 2166136261;
+    for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    return (h % 10000) / 10000;
+  };
+
   for (const npc of npcs) {
     const wps = npc.route_id ? wpsByRoute[npc.route_id] : null;
     if (!wps || wps.length < 1) continue;
 
     let st = stateMap[npc.id];
+    const personality = hashId(npc.id);
+    // direção preferida: alguns andam ao contrário
+    const dir = personality < 0.5 ? 1 : -1;
 
-    // Sem state ainda: spawn no ponto 0, mira no 1 (se existir)
+    // Sem state ainda: spawn em ponto aleatório, mira em um vizinho
     if (!st) {
-      const first = wps[0];
-      const next = wps[1] || wps[0];
+      const startIdx = Math.floor(personality * wps.length) % wps.length;
+      const first = wps[startIdx];
+      const nextIdx = (startIdx + dir + wps.length) % wps.length;
+      const next = wps[nextIdx] || first;
       inserts.push({
         npc_id: npc.id, x: first.x, y: first.y || 0, z: first.z, rot_y: 0,
         anim: "walk", status: "walking", target_wp_seq: next.seq,
