@@ -716,15 +716,8 @@
       scene().add(sph);
       routeEditor.gizmos.set(wp.id, sph);
     }
-    if (wps.length >= 2) {
-      const pts = wps.map(w => new T.Vector3(w.x, (w.y || 0) + 0.3, w.z));
-      pts.push(pts[0]);
-      const geo = new T.BufferGeometry().setFromPoints(pts);
-      const mat = new T.LineDashedMaterial({ color: 0x39c5bb, dashSize: 0.4, gapSize: 0.25, depthTest: false });
-      const line = new T.Line(geo, mat); line.computeLineDistances(); line.renderOrder = 9998;
-      scene().add(line);
-      routeEditor.lines = line;
-    }
+    // Sem linhas conectando: NPCs escolhem o ponto mais próximo dinamicamente.
+
   }
   function showRouteEditorHud() {
     const old = document.getElementById("npcRouteHudFixed"); if (old) old.remove();
