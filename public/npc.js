@@ -489,7 +489,13 @@
         // Resposta em TEXTO: balão na cabeça + linha no chat. Sem áudio.
         window.__addNpcLine?.(ent.name || "NPC", data.reply, false);
         showBubble(ent, data.reply);
+        // toca animação de "talk" por uma duração proporcional ao texto
+        if (ent._talkTimer) clearTimeout(ent._talkTimer);
+        setAnim(ent, "talk");
+        const dur = Math.max(1500, Math.min(6000, (data.reply || "").length * 60));
+        ent._talkTimer = setTimeout(() => { setAnim(ent, "idle"); ent._talkTimer = null; }, dur);
       } else {
+
         // Resposta em ÁUDIO: só toca o som, sem texto em lugar nenhum
         try {
           const { data: { session } } = await sb.auth.getSession();
@@ -606,14 +612,17 @@
     (models || []).forEach((m) => {
       const icon = m.gender === "male" ? "♂" : m.gender === "female" ? "♀" : "·";
       const row = document.createElement("div");
-      row.style.cssText = "padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px";
+      row.style.cssText = "padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px;flex-wrap:wrap";
       row.innerHTML = `
-        <span style="flex:1">${icon} ${m.name}</span>
+        <span style="flex:1;min-width:120px">${icon} ${m.name}</span>
         <select data-id="${m.id}" class="npc-gen-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px">
           <option value="male" ${m.gender==='male'?'selected':''}>♂</option>
           <option value="female" ${m.gender==='female'?'selected':''}>♀</option>
           <option value="neutral" ${m.gender==='neutral'?'selected':''}>·</option>
         </select>
+        <label style="font-size:11px;display:flex;align-items:center;gap:3px">Tam:
+          <input type="number" data-id="${m.id}" class="npc-scale-inp" min="0.1" max="5" step="0.05" value="${m.scale_mul || 1}" style="width:55px;background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px"/>
+        </label>
         <button data-id="${m.id}" class="npc-spawn-btn" style="background:#39c5bb;color:#000;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">+Spawn</button>
         <button data-id="${m.id}" class="npc-del-btn" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>`;
       list.appendChild(row);
@@ -621,6 +630,21 @@
     list.querySelectorAll(".npc-gen-sel").forEach((s) => s.onchange = async () => {
       await sb.from("npc_models").update({ gender: s.value }).eq("id", s.dataset.id);
     });
+    list.querySelectorAll(".npc-scale-inp").forEach((inp) => inp.onchange = async () => {
+      const v = Math.max(0.1, Math.min(5, Number(inp.value) || 1));
+      inp.value = v;
+      const modelId = inp.dataset.id;
+      await sb.from("npc_models").update({ scale_mul: v }).eq("id", modelId);
+      const m = npcModels.get(modelId); if (m) m.scale_mul = v;
+      // re-escala NPCs já carregados que usam esse modelo
+      for (const [npcId, ent] of npcEntities) {
+        const inst = npcInstances.get(npcId);
+        if (inst && inst.model_id === modelId && ent.group?.children?.[0]) {
+          ent.group.children[0].scale.setScalar(v);
+        }
+      }
+    });
+
     list.querySelectorAll(".npc-del-btn").forEach((b) => b.onclick = async () => {
       if (!confirm("Excluir modelo?")) return;
       await sb.from("npc_models").delete().eq("id", b.dataset.id);
@@ -896,12 +920,31 @@
       return;
     }
     if (moved) return;
-    if (Date.now() - downTime > 350) return;
-    const hit = raycastGround(); if (!hit) return;
+    if (Date.now() - downTime > 700) return;
+    const hit = raycastGround();
+    if (!hit) { editorToast("✗ clique fora do chão"); return; }
     const sb = SB();
     const nextSeq = (routeEditor.wps?.length || 0);
-    await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+    const { error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 });
+    if (error) editorToast("✗ erro: " + error.message);
+    else editorToast(`✔ ponto #${nextSeq} adicionado`);
+    e.stopPropagation(); e.stopImmediatePropagation(); e.preventDefault();
   }
+  let toastT = null;
+  function editorToast(msg) {
+    let t = document.getElementById("npcEditorToast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "npcEditorToast";
+      t.style.cssText = "position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#111d;color:#39c5bb;border:1px solid #39c5bb;border-radius:6px;padding:6px 12px;font:600 12px system-ui;z-index:10002;pointer-events:none";
+      document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = "1";
+    if (toastT) clearTimeout(toastT);
+    toastT = setTimeout(() => { t.style.opacity = "0"; }, 1500);
+  }
+
   function openWpHud(wp) {
     const old = document.getElementById("npcWpHud"); if (old) old.remove();
     const hud = document.createElement("div");
@@ -937,21 +980,37 @@
 
   async function renderSpawnTab(el, sb) {
     const mapId = window.__currentMapId || "bar";
-    const { data: insts } = await sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").eq("map_id", mapId).order("created_at", { ascending: false });
+    const [{ data: insts }, { data: routes }] = await Promise.all([
+      sb.from("npc_instances").select("*,npc_models(name,gender),npc_routes(name)").eq("map_id", mapId).order("created_at", { ascending: false }),
+      sb.from("npc_routes").select("id,name").eq("map_id", mapId).order("name"),
+    ]);
+    const routeOpts = (routes || []).map(r => `<option value="${r.id}">${r.name}</option>`).join("");
     el.innerHTML = `<p style="opacity:.7">NPCs nesta sala (${mapId}):</p>` +
-      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;justify-content:space-between;align-items:center;gap:4px">
-        <span style="flex:1">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'} · ${i.npc_routes?.name || 'sem rota'})</small></span>
+      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px">
+        <span style="flex:1;min-width:140px">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
+        <select data-id="${i.id}" class="npc-route-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px;max-width:140px">
+          <option value="">— sem rota —</option>
+          ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
+        </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
       </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
     });
+    el.querySelectorAll(".npc-route-sel").forEach((s) => s.onchange = async () => {
+      const npcId = s.dataset.id;
+      const newRoute = s.value || null;
+      await sb.from("npc_instances").update({ route_id: newRoute }).eq("id", npcId);
+      // reset state pra forçar o tick a re-spawnar no 1º waypoint
+      await sb.from("npc_state").delete().eq("npc_id", npcId);
+    });
     el.querySelectorAll(".npc-inst-del").forEach((b) => b.onclick = async () => {
       await sb.from("npc_instances").delete().eq("id", b.dataset.id);
       renderTab("spawn");
     });
   }
+
 
   async function renderJobsTab(el, sb) {
     const { data: hubs } = await sb.from("delivery_hubs").select("*,delivery_destinations(count)").order("created_at", { ascending: false });
