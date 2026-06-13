@@ -262,13 +262,17 @@
     if (!npcInstances.has(s.npc_id)) return;
     const ent = npcEntities.get(s.npc_id);
     if (!ent) return;
+    ent.status = s.status;
+    // Em interação: NPC fica congelado em idle (não recebe novos alvos do servidor).
+    if (ent.lockToPlayer || ent._talkLock) {
+      // mantém targetPos = posição atual para não andar
+      if (ent.targetPos) ent.targetPos.copy(ent.group.position);
+      ent._speed = 0;
+      return;
+    }
     ent.targetPos = new (THREE().Vector3)(s.x, s.y, s.z);
     ent._speed = s.status === "walking" ? 1.4 : 0;
-    ent.status = s.status;
-    // Tick deriva a anim do movimento real; aqui só sincroniza rotação alvo quando não está em interação.
-    if (!ent.lockToPlayer && !ent._talkLock && typeof s.rot_y === "number") {
-      ent.targetRot = s.rot_y;
-    }
+    if (typeof s.rot_y === "number") ent.targetRot = s.rot_y;
   }
 
 
