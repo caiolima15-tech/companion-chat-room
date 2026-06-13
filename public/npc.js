@@ -278,6 +278,11 @@
         root.scale.setScalar(scale);
         group.add(root);
         ent.mixer = new T.AnimationMixer(root);
+        // Detecta prefixo Mixamo no esqueleto destino (pra retarget de clips externos)
+        ent.bonePrefix = "";
+        root.traverse((o) => {
+          if (!ent.bonePrefix && o.isBone && o.name?.startsWith("mixamorig")) ent.bonePrefix = "mixamorig";
+        });
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
             const key = clip.name.toLowerCase().replace(/[\s.-]+/g, "_");
