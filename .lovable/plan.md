@@ -1,37 +1,40 @@
-## Objetivo
-Deixar os NPCs com fala mais natural e curta no começo, soltando-se ao longo da conversa.
+## O que muda
 
-## Mudanças em `supabase/functions/npc-chat/index.ts`
+### 1. Tamanho dos NPCs (escala) — painel admin
+Na aba **Modelos** (`renderModelsTab` em `public/npc.js`):
+- adicionar um input numérico `scale` por linha (0.1–5, passo 0.05), lendo/escrevendo `npc_models.scale_mul`.
+- ao salvar, atualizar no banco e re-aplicar nos NPCs já spawnados (re-escala `ent.group.children[0]` sem precisar recarregar GLB).
+- A coluna `scale_mul` já existe e já é lida no `spawnNpc` (linha 233), só falta UI.
 
-### 1. System prompt mais restritivo por "fase" da conversa
-Contar quantas mensagens o usuário já trocou com aquele NPC (`hist.length` já é buscado) e injetar regras de tamanho no `system`:
+### 2. NPCs estão parados (não andam)
+Causa confirmada no banco: 2 dos 3 NPCs estão com `route_id = NULL` (foram criados antes do sistema de rotas amarrar automaticamente). O `npc-tick` pula qualquer NPC sem rota.
 
-- **Mensagens 1–2** (primeiro contato): MÁX 3–6 palavras. Tipo `"oi, fala"`, `"e aí?"`, `"opa, tudo?"`. Nada de se apresentar, nada de contar o que está fazendo. Pode ser só uma interjeição.
-- **Mensagens 3–5** (esquentando): 1 frase curta, até ~12 palavras. Pode responder o que foi perguntado mas sem floreio.
-- **Mensagens 6+** (à vontade): até 2 frases, ainda coloquial. Só conta detalhes da própria história (backstory) se o usuário perguntar ou se vier muito a propósito.
+Correções:
+- Na aba **Spawn**, adicionar um `<select>` por NPC com as rotas da sala atual para reatribuir/trocar a rota. Botão "Salvar" grava `route_id`.
+- Quando o NPC ganha rota, apagar o `npc_state` antigo dele (assim o tick recria o state no 1º waypoint e ele começa a andar).
+- Mostrar aviso visual ("sem rota — não anda") nos NPCs com `route_id = NULL`.
 
-### 2. Regras gerais de estilo (sempre)
-Adicionar ao system prompt:
-- Falar como brasileiro real numa rua: gírias leves, contrações ("tô", "tá", "pra", "cê"), pode usar "kkk" raramente.
-- **Proibido**: parágrafos, listas, emojis em excesso, frases tipo "Acabei de sair do trabalho e tô só aproveitando a brisa antes de ir pra casa" no primeiro "oi".
-- **Proibido** narrar ações entre asteriscos.
-- Não puxar assunto sozinho nas duas primeiras trocas — responder e parar.
-- Variar abertura: nem todo "oi" precisa virar "Oi! Tudo bem?". Pode ser só "fala", "e aí", "opa".
+### 3. Animação de "talk" durante chat de texto
+Hoje só roda `setAnim(ent, "talk")` quando a resposta vem em áudio (linha 505). No modo texto, o NPC fica em idle.
 
-### 3. Parâmetros do modelo
-Na chamada pro `ai.gateway.lovable.dev`, adicionar:
-- `temperature: 0.9` (mais variedade nas respostas curtas)
-- `max_tokens` dinâmico baseado na fase: 30 / 60 / 120
+Correção em `sendNpcText` (`public/npc.js` ~488):
+- ao mostrar o balão (`showBubble`), tocar `setAnim(ent, "talk")` e voltar pra `idle` depois de uma duração proporcional ao tamanho do texto (ex: ~60 ms por caractere, mínimo 1.5s, máx 6s).
+- limpar timer anterior se nova mensagem chegar.
 
-### 4. Pós-processamento defensivo
-Depois de receber `reply`, se a fase for 1–2 e o texto tiver mais de ~10 palavras ou mais de 1 frase, cortar na primeira frase. Isso garante que mesmo se o modelo escapar, o usuário não recebe um textão no "oi".
+### 4. Editor de rotas não adiciona pontos com clique
+Possíveis causas no `onEditorUp` (linha 886):
+- threshold `Date.now() - downTime > 350` é curto demais (descarta cliques "normais" que demoram 400–500 ms);
+- não há feedback quando o raycast falha (ex: clicou fora do plano y=0 ou em cima de outro mesh).
+
+Correções:
+- aumentar threshold de clique pra 700 ms.
+- adicionar pequeno toast/log quando insere ("✔ ponto adicionado #N") e quando descarta (motivo).
+- garantir que o evento de clique no canvas não está sendo bloqueado por overlay (verificar `pointer-events` do painel admin durante o editor — se necessário, dar `pointer-events:none` no painel enquanto edita).
+
+## Arquivos tocados
+- `public/npc.js` — UI de escala em Modelos, dropdown de rota em Spawn, `talk` no modo texto, ajustes no editor.
+- (sem migrations: `scale_mul` e `route_id` já existem.)
 
 ## Não muda
-- Geração de nome/backstory (continua igual, só não é "despejado" na conversa).
-- TTS, STT, balões, lógica de proximidade.
-- Frontend.
-
-## Resultado esperado
-- Usuário: "oi" → NPC: "opa, e aí?"
-- Usuário: "qual a boa" → NPC: "to por aqui, e tu?"
-- Depois de 4–5 trocas, NPC começa a soltar mais sobre quem é, o que faz, etc.
+- `npc-chat` / fase de conversa / TTS.
+- LOD, cron, schema do banco.
