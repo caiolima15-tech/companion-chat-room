@@ -25,27 +25,60 @@
   setTimeout(tryBoot, 1500);
 
   // ============ ANIMATION LIBRARY ============
-  // slug -> THREE.AnimationClip (genérico, retargetado por nome de bone)
+  // key (`${slug}` ou `${slug}:${gender}`) -> THREE.AnimationClip
   const animLib = new Map();
   const animLibLoading = new Map();
   async function loadAnimationLibrary() {
     const sb = SB();
     const { data: anims } = await sb.from("npc_animations").select("*");
-    const Loader = window.__GLTFLoader; if (!Loader) return;
-    const loader = new Loader();
+    const GLTF = window.__GLTFLoader;
+    const FBX = window.__FBXLoader;
+    if (!GLTF && !FBX) return;
+    const gLoader = GLTF ? new GLTF() : null;
+    const fLoader = FBX ? new FBX() : null;
     const pending = [];
     for (const a of anims || []) {
-      if (animLib.has(a.slug)) continue;
-      if (animLibLoading.has(a.slug)) continue;
-      const p = loader.loadAsync(a.model_url).then((gltf) => {
-        const clip = gltf.animations?.[0];
-        if (clip) { clip.name = a.slug; animLib.set(a.slug, clip); }
-      }).catch((e) => console.warn("[npc-anim] load fail", a.slug, e));
-      animLibLoading.set(a.slug, p);
+      const key = a.gender && a.gender !== "any" ? `${a.slug}:${a.gender}` : a.slug;
+      if (animLib.has(key) || animLibLoading.has(key)) continue;
+      const isFbx = /\.fbx(\?|$)/i.test(a.model_url);
+      const loader = isFbx ? fLoader : gLoader;
+      if (!loader) { console.warn("[npc-anim] sem loader pra", a.model_url); continue; }
+      const p = loader.loadAsync(a.model_url).then((asset) => {
+        const clip = asset?.animations?.[0];
+        if (clip) {
+          clip.name = a.slug;
+          animLib.set(key, clip);
+          console.log("[npc-anim] carregado:", key);
+        } else {
+          console.warn("[npc-anim] sem clip em", a.model_url);
+        }
+      }).catch((e) => console.warn("[npc-anim] load fail", key, e));
+      animLibLoading.set(key, p);
       pending.push(p);
     }
     if (pending.length) await Promise.allSettled(pending);
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
+  }
+
+  // Retarget de tracks: ajusta prefixo Mixamo conforme o esqueleto destino.
+  function retargetClipForEnt(ent, clip) {
+    const T = THREE();
+    const cloned = clip.clone();
+    const needsMixamo = !!ent.bonePrefix; // ent tem prefixo 'mixamorig' -> queremos preservar
+    for (const tr of cloned.tracks) {
+      const dot = tr.name.indexOf(".");
+      const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
+      const prop = dot >= 0 ? tr.name.slice(dot) : "";
+      let newBone = bone;
+      if (needsMixamo && !bone.startsWith("mixamorig")) {
+        newBone = "mixamorig" + bone.charAt(0).toUpperCase() + bone.slice(1);
+      } else if (!needsMixamo && bone.startsWith("mixamorig")) {
+        const stripped = bone.slice("mixamorig".length);
+        newBone = stripped.charAt(0).toLowerCase() + stripped.slice(1);
+      }
+      tr.name = newBone + prop;
+    }
+    return cloned;
   }
 
   // ============ RUNTIME ============
@@ -112,7 +145,7 @@
       const dt = clock.getDelta();
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
-        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 4));
+        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
@@ -188,12 +221,19 @@
   function pickAnimClip(ent, name) {
     // 1) clip do próprio modelo
     if (ent.actions && ent.actions[name]) return ent.actions[name];
-    // 2) lib externa
-    const libClip = animLib.get(name);
-    if (libClip && ent.mixer) {
-      // cacheia ação criada com clip externo
-      ent.actions[name] = ent.mixer.clipAction(libClip);
-      return ent.actions[name];
+    if (!ent.mixer) return null;
+    // 2) lib externa: gênero específico primeiro, depois genérico
+    const T = THREE();
+    const candidates = [`${name}:${ent.gender}`, name];
+    for (const k of candidates) {
+      const raw = animLib.get(k);
+      if (!raw) continue;
+      const retargeted = retargetClipForEnt(ent, raw);
+      const action = ent.mixer.clipAction(retargeted);
+      action.setLoop(T.LoopRepeat, Infinity);
+      action.clampWhenFinished = false;
+      ent.actions[name] = action;
+      return action;
     }
     // 3) fallback idle
     return ent.actions?.["idle"] || (ent.actions ? Object.values(ent.actions)[0] : null);
@@ -238,6 +278,11 @@
         root.scale.setScalar(scale);
         group.add(root);
         ent.mixer = new T.AnimationMixer(root);
+        // Detecta prefixo Mixamo no esqueleto destino (pra retarget de clips externos)
+        ent.bonePrefix = "";
+        root.traverse((o) => {
+          if (!ent.bonePrefix && o.isBone && o.name?.startsWith("mixamorig")) ent.bonePrefix = "mixamorig";
+        });
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
             const key = clip.name.toLowerCase().replace(/[\s.-]+/g, "_");
@@ -1009,15 +1054,26 @@
       sb.from("npc_routes").select("id,name").eq("map_id", mapId).order("name"),
     ]);
     const routeOpts = (routes || []).map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+    const esc = (s) => String(s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     el.innerHTML = `<p style="opacity:.7">NPCs nesta sala (${mapId}):</p>` +
-      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px">
-        <span style="flex:1;min-width:140px">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
+      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px" data-row="${i.id}">
+        <span style="flex:1;min-width:140px">${esc(i.display_name)} <small style="opacity:.6">(${esc(i.npc_models?.name || '?')})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
         <select data-id="${i.id}" class="npc-route-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px;max-width:140px">
           <option value="">— sem rota —</option>
           ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
         </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
+        <button data-id="${i.id}" class="npc-bs-toggle" style="background:#444;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📖 História</button>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
+        <div class="npc-bs-panel" data-id="${i.id}" style="display:none;width:100%;margin-top:6px">
+          <textarea class="npc-bs-text" data-id="${i.id}" maxlength="2000" placeholder="Base da história deste NPC (até 2000 chars). Ex.: nome, idade, profissão, gostos, segredos, lugar onde mora..." style="width:100%;min-height:90px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical">${esc(i.backstory||'')}</textarea>
+          <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+            <label style="background:#39c5bb;color:#000;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11px;font-weight:700">📄 Subir .txt<input type="file" class="npc-bs-file" data-id="${i.id}" accept=".txt,text/plain" style="display:none"/></label>
+            <button class="npc-bs-save" data-id="${i.id}" style="background:#3a3;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">Salvar história</button>
+            <button class="npc-bs-clear" data-id="${i.id}" style="background:#666;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Limpar (auto-gerar)</button>
+            <span class="npc-bs-status" data-id="${i.id}" style="font-size:11px;opacity:.7;align-self:center"></span>
+          </div>
+        </div>
       </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
@@ -1026,8 +1082,34 @@
       const npcId = s.dataset.id;
       const newRoute = s.value || null;
       await sb.from("npc_instances").update({ route_id: newRoute }).eq("id", npcId);
-      // reset state pra forçar o tick a re-spawnar no 1º waypoint
       await sb.from("npc_state").delete().eq("npc_id", npcId);
+    });
+    el.querySelectorAll(".npc-bs-toggle").forEach((b) => b.onclick = () => {
+      const panel = el.querySelector(`.npc-bs-panel[data-id="${b.dataset.id}"]`);
+      if (panel) panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+    el.querySelectorAll(".npc-bs-file").forEach((inp) => inp.onchange = async () => {
+      const f = inp.files?.[0]; if (!f) return;
+      const txt = (await f.text()).slice(0, 2000);
+      const ta = el.querySelector(`.npc-bs-text[data-id="${inp.dataset.id}"]`);
+      if (ta) ta.value = txt;
+      inp.value = "";
+    });
+    el.querySelectorAll(".npc-bs-save").forEach((b) => b.onclick = async () => {
+      const id = b.dataset.id;
+      const ta = el.querySelector(`.npc-bs-text[data-id="${id}"]`);
+      const status = el.querySelector(`.npc-bs-status[data-id="${id}"]`);
+      const val = (ta?.value || "").trim().slice(0, 2000);
+      if (status) status.textContent = "salvando...";
+      const { error } = await sb.from("npc_instances").update({ backstory: val || null }).eq("id", id);
+      if (status) status.textContent = error ? "✗ erro" : "✔ salvo";
+      setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+    });
+    el.querySelectorAll(".npc-bs-clear").forEach((b) => b.onclick = async () => {
+      const id = b.dataset.id;
+      const ta = el.querySelector(`.npc-bs-text[data-id="${id}"]`);
+      if (ta) ta.value = "";
+      await sb.from("npc_instances").update({ backstory: null }).eq("id", id);
     });
     el.querySelectorAll(".npc-inst-del").forEach((b) => b.onclick = async () => {
       await sb.from("npc_instances").delete().eq("id", b.dataset.id);
