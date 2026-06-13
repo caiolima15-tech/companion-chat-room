@@ -726,7 +726,8 @@
     hud.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111d;border:1px solid #39c5bb;border-radius:10px;padding:8px 14px;color:#fff;font:13px system-ui;z-index:10000;display:flex;gap:8px;align-items:center";
     hud.innerHTML = `
       <strong>✏️ Editor de rota</strong>
-      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar · Arraste bolinhas pra mover · Click numa bolinha pra editar</span>
+      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Arraste bolinhas pra mover · Click numa bolinha pra editar · NPCs caminham do ponto atual até o mais próximo</span>
+
       <button id="npcRouteExit" style="background:#c33;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Sair</button>`;
     document.body.appendChild(hud);
     document.getElementById("npcRouteExit").onclick = () => { exitRouteEditor(); renderTab("routes"); };
