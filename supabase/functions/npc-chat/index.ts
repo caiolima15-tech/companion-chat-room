@@ -9,6 +9,17 @@ const corsHeaders = {
 
 const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
 
+const VOICE_POOL = {
+  male:   ["JBFqnCBsd6RMkjVDRZzb", "TX3LPaxmHKxFdv7VOQHJ", "nPczCjzI2devNBz1zQrb"], // George, Liam, Brian
+  female: ["EXAVITQu4vr4xnSDxMaL", "FGY2WhTYpPnrIDTdsKH5", "Xb7hH8MSUJpSbSDYk0k2"], // Sarah, Laura, Alice
+  neutral:["JBFqnCBsd6RMkjVDRZzb", "EXAVITQu4vr4xnSDxMaL"],
+};
+function hashStr(s: string) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+function pickVoice(npcId: string, gender: string) {
+  const pool = (VOICE_POOL as any)[gender] || VOICE_POOL.neutral;
+  return pool[hashStr(npcId) % pool.length];
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   try {
@@ -33,9 +44,10 @@ Deno.serve(async (req) => {
     const { data: npc } = await admin.from("npc_instances").select("display_name,persona,voice_id,model_id").eq("id", npc_id).maybeSingle();
     if (!npc) return new Response(JSON.stringify({ error: "npc not found" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-    const { data: model } = await admin.from("npc_models").select("default_persona,voice_id").eq("id", npc.model_id).maybeSingle();
+    const { data: model } = await admin.from("npc_models").select("default_persona,voice_id,gender").eq("id", npc.model_id).maybeSingle();
     const persona = { ...(model?.default_persona || {}), ...(npc.persona || {}) };
-    const voiceId = npc.voice_id || model?.voice_id || "JBFqnCBsd6RMkjVDRZzb";
+    const gender = (model?.gender || "neutral") as string;
+    const voiceId = npc.voice_id || model?.voice_id || pickVoice(npc_id, gender);
 
     // últimas 8 mensagens
     const { data: hist } = await admin
@@ -50,8 +62,8 @@ Persona: ${JSON.stringify(persona)}.
 Fale em português brasileiro coloquial, curto (1-2 frases), como uma pessoa real numa conversa casual de rua.
 Nunca diga que é uma IA. Mantenha o personagem.`;
 
-    // grava mensagem do usuário
-    await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "user", text });
+    // grava mensagem do usuário + atualiza last_user_msg_at
+    await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "user", text, last_user_msg_at: new Date().toISOString() });
 
     const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -78,7 +90,7 @@ Nunca diga que é uma IA. Mantenha o personagem.`;
 
     await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "assistant", text: reply });
 
-    return new Response(JSON.stringify({ reply, voice_id: voiceId, name: npc.display_name }), {
+    return new Response(JSON.stringify({ reply, voice_id: voiceId, name: npc.display_name, gender }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
