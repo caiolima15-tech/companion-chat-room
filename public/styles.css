@@ -2663,3 +2663,184 @@ body:not(.world-ready) #voicePttBtn { display:none !important; }
 .ig-req-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: #2a2750; cursor: pointer; }
 .ig-req-name { flex: 1; font-size: 0.85rem; color: #e8e8f0; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ig-req-item .ig-btn { padding: 4px 10px; font-size: 0.75rem; }
+
+/* ============================================================
+   HUD pills + Mobile landscape redesign + GTA-style money font
+   ============================================================ */
+
+/* GTA-like display font for HUD numbers */
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Russo+One&display=swap');
+
+/* Floating pill base — used by NPCs, money, logout */
+.hud-pill {
+  position: fixed;
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02)),
+    rgba(10,14,22,0.55);
+  color: #fff;
+  font: 700 14px/1 system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(18px) saturate(170%);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.22),
+    0 10px 26px rgba(0,0,0,0.45);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, background .15s ease, border-color .15s ease;
+}
+.hud-pill:hover { background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.04)), rgba(10,14,22,0.6); }
+.hud-pill:active { transform: scale(0.96); }
+.hud-pill .hud-pill-ico { font-size: 16px; line-height: 1; }
+.hud-pill .hud-pill-label { font-weight: 800; text-transform: uppercase; font-size: 12.5px; letter-spacing: 0.06em; }
+
+/* Specific positions */
+#npcAdminBtn.npc-pill { top: calc(12px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); color: #5eead4; }
+#npcAdminBtn.npc-pill .hud-pill-label { color: #5eead4; }
+body:not(.is-admin) #npcAdminBtn.npc-pill { display: none !important; }
+
+#moneyHud.money-pill {
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(12px + env(safe-area-inset-right));
+  font-family: "Pricedown", "Russo One", "Anton", "Bebas Neue", system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: 1.5px;
+  color: #7be37b;
+  text-shadow: 0 2px 0 rgba(0,0,0,0.55), 0 0 12px rgba(123,227,123,0.35);
+  padding: 0 18px;
+}
+
+/* Logout pill in topbar status — only restyle, keep in flow */
+.logout-pill {
+  position: static !important;
+  height: 36px !important;
+  padding: 0 14px !important;
+  color: #ffb4b4;
+}
+.logout-pill .hud-pill-ico { font-weight: 900; }
+
+/* Nameplate readability boost */
+.nameplate {
+  background: rgba(0,0,0,0.42) !important;
+  padding: 3px 8px !important;
+  border-radius: 8px !important;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* NPC conversation banner — replaces noisy chat-log system lines */
+.npc-chat-banner {
+  position: fixed;
+  top: calc(64px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translate(-50%, -8px);
+  z-index: 1200;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(10,14,22,0.6);
+  color: #fff;
+  font: 700 13px/1 system-ui;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), 0 12px 30px rgba(0,0,0,0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease, transform .25s ease;
+  white-space: nowrap;
+  max-width: 92vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.npc-chat-banner.is-visible { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; cursor: pointer; }
+
+/* ============================================================
+   Landscape mobile (short height + coarse pointer)
+   - hide topbar, push bottom controls up, glassify the chat
+   ============================================================ */
+@media (max-height: 600px) and (pointer: coarse), (max-width: 900px) and (orientation: landscape) and (pointer: coarse) {
+  /* Sumir com a tarja superior — pills assumem o topo */
+  .topbar { display: none !important; }
+  .stage-panel { grid-template-rows: minmax(0, 1fr) auto !important; }
+
+  /* Logout vira pill flutuante no canto sup. direito, ao lado do saldo */
+  .logout-pill {
+    position: fixed !important;
+    top: calc(12px + env(safe-area-inset-top)) !important;
+    right: calc(140px + env(safe-area-inset-right)) !important;
+    z-index: 1100;
+  }
+
+  /* Desce a barra inferior pra não colar na borda */
+  .mobile-bar {
+    padding: 10px 22px calc(22px + env(safe-area-inset-bottom)) !important;
+    gap: 16px !important;
+  }
+
+  /* Joystick e mic com mais respiro */
+  .joy-hud {
+    left: calc(22px + env(safe-area-inset-left)) !important;
+    bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+  }
+  .voice-ptt {
+    right: calc(22px + env(safe-area-inset-right)) !important;
+    bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+  }
+
+  /* Joystick mais discreto quando ocioso */
+  .fb-joy { opacity: 0.55; transition: opacity .2s ease; }
+  .fb-joy:active, .fb-joy.is-active { opacity: 0.95; }
+
+  /* Chat: painel lateral esquerdo glass, mais estreito, com input fixo embaixo */
+  body.mobile-show-chat .chat-panel {
+    left: calc(12px + env(safe-area-inset-left)) !important;
+    right: auto !important;
+    bottom: calc(96px + env(safe-area-inset-bottom)) !important;
+    width: 360px !important;
+    max-width: calc(100vw - 24px) !important;
+    height: calc(100dvh - 180px) !important;
+    max-height: 60dvh !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(255,255,255,0.10) !important;
+    background: rgba(10, 12, 20, 0.55) !important;
+    backdrop-filter: blur(22px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.55) !important;
+    transform: translateY(0) !important;
+  }
+  body:not(.mobile-show-chat) .chat-panel { transform: translateY(140%) !important; }
+
+  .chat-panel .chat-log {
+    padding: 12px 12px 8px !important;
+    gap: 8px !important;
+  }
+  .chat-panel .chat-form {
+    position: sticky;
+    bottom: 0;
+    padding: 10px 12px calc(12px + env(safe-area-inset-bottom)) !important;
+    background: rgba(0,0,0,0.45) !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+  }
+
+  /* Banner de NPC entra logo abaixo das pills */
+  .npc-chat-banner { top: calc(64px + env(safe-area-inset-top)); }
+}
+
+/* ============================================================
+   Portrait mobile — só os ajustes do pill de saldo
+   ============================================================ */
+@media (max-width: 600px) and (orientation: portrait) {
+  #moneyHud.money-pill { font-size: 18px; padding: 0 14px; height: 38px; }
+  #npcAdminBtn.npc-pill { height: 38px; padding: 0 12px; font-size: 12px; }
+}
