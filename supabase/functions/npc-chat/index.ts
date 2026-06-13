@@ -91,11 +91,23 @@ Responda APENAS em JSON válido: {"name":"Nome Sobrenome","backstory":"4 a 6 fra
       .order("created_at", { ascending: false }).limit(8);
     const history = (hist || []).reverse();
 
+    // Fase da conversa baseada em quantas mensagens do user já existem (antes desta)
+    const userMsgCount = history.filter((m: any) => m.role === "user").length;
+    const phase = userMsgCount < 2 ? 1 : userMsgCount < 5 ? 2 : 3;
+    const phaseRules = phase === 1
+      ? `FASE: primeiro contato. Responda com NO MÁXIMO 3 a 6 palavras. Tipo "opa, e aí?", "fala", "oi, tudo?", "eae mano". NÃO se apresente, NÃO conte o que está fazendo, NÃO puxe assunto. Só cumprimente de volta ou responda curtíssimo. Pode ser uma interjeição só.`
+      : phase === 2
+      ? `FASE: esquentando. 1 frase curta, até ~12 palavras. Responde o que foi perguntado sem floreio, sem contar história de vida. Ainda não puxe assunto demais.`
+      : `FASE: à vontade. Até 2 frases coloquiais. Pode contar coisas da sua história SE perguntarem ou vier muito a propósito. Continue curto, sem monólogo.`;
+    const maxTok = phase === 1 ? 30 : phase === 2 ? 60 : 120;
+
     const sys = `Você é ${displayName || "um morador"}, um NPC vivendo numa cidade virtual.
-${backstory ? `Sua história: ${backstory}` : ""}
+${backstory ? `Sua história (NÃO despeje isso, use só se vier muito a propósito numa conversa já em andamento): ${backstory}` : ""}
 Persona extra: ${JSON.stringify(persona)}.
-Fale em português brasileiro coloquial, curto (1-2 frases), como uma pessoa real numa conversa casual de rua.
-Nunca diga que é uma IA. Mantenha o personagem e seja consistente com sua história.`;
+
+Fale como brasileiro de verdade na rua: gírias leves, contrações ("tô", "tá", "pra", "cê", "tbm"), pode usar "kkk" raramente. Nunca diga que é uma IA. Nunca narre ações entre asteriscos. Nada de emojis em excesso, nada de listas, nada de parágrafos. Varie aberturas — nem todo "oi" precisa virar "Oi! Tudo bem?". Pode ser só "fala", "e aí", "opa", "eae".
+
+${phaseRules}`;
 
     // grava mensagem do usuário + atualiza last_user_msg_at
     await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "user", text, last_user_msg_at: new Date().toISOString() });
@@ -108,6 +120,8 @@ Nunca diga que é uma IA. Mantenha o personagem e seja consistente com sua hist�
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
+        temperature: 0.9,
+        max_tokens: maxTok,
         messages: [
           { role: "system", content: sys },
           ...history.map((m: any) => ({ role: m.role, content: m.text })),
@@ -121,7 +135,18 @@ Nunca diga que é uma IA. Mantenha o personagem e seja consistente com sua hist�
       return new Response(JSON.stringify({ error: "ai failed", detail: errTxt, status: aiRes.status }), { status: aiRes.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     const aiJson = await aiRes.json();
-    const reply = aiJson?.choices?.[0]?.message?.content?.trim() || "...";
+    let reply = aiJson?.choices?.[0]?.message?.content?.trim() || "...";
+
+    // Pós-processamento defensivo: na fase 1, corta tudo depois da 1ª frase / limita palavras
+    if (phase === 1) {
+      const firstSentence = reply.split(/(?<=[.!?…])\s+/)[0] || reply;
+      reply = firstSentence;
+      const words = reply.split(/\s+/);
+      if (words.length > 10) reply = words.slice(0, 10).join(" ");
+    } else if (phase === 2) {
+      const sentences = reply.split(/(?<=[.!?…])\s+/);
+      if (sentences.length > 1) reply = sentences.slice(0, 1).join(" ");
+    }
 
     await admin.from("npc_conversations").insert({ user_id: user.id, npc_id, role: "assistant", text: reply });
 
