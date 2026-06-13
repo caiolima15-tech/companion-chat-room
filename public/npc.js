@@ -200,13 +200,13 @@
   }
 
   function setAnim(ent, name) {
+    ent.currentAnimName = name || ent.currentAnimName || "idle";
     if (!ent.mixer) return;
     const target = pickAnimClip(ent, name);
     if (!target || ent.currentAction === target) return;
     if (ent.currentAction) ent.currentAction.fadeOut(0.25);
     target.reset().fadeIn(0.25).play();
     ent.currentAction = target;
-    ent.currentAnimName = name;
   }
 
   async function spawnNpc(inst) {
@@ -240,14 +240,23 @@
         ent.mixer = new T.AnimationMixer(root);
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
-            const key = clip.name.toLowerCase();
+            const key = clip.name.toLowerCase().replace(/[\s.-]+/g, "_");
             ent.actions[key] = ent.mixer.clipAction(clip);
             // detectar slug por keywords
-            for (const slug of ["idle","walk","talk","sit","wave","social_a","social_b","social_c"]) {
-              if (key.includes(slug) && !ent.actions[slug]) ent.actions[slug] = ent.mixer.clipAction(clip);
+            const synonyms = {
+              idle: ["idle", "breath", "stand"],
+              walk: ["walk", "walking", "run", "locomotion"],
+              talk: ["talk", "talking", "speak", "speaking", "gesture"],
+              sit: ["sit", "sitting"],
+              wave: ["wave", "waving"],
+              social_a: ["social_a"], social_b: ["social_b"], social_c: ["social_c"]
+            };
+            for (const [slug, words] of Object.entries(synonyms)) {
+              if (words.some((w) => key.includes(w)) && !ent.actions[slug]) ent.actions[slug] = ent.mixer.clipAction(clip);
             }
           }
         }
+        setAnim(ent, ent.currentAnimName || "idle");
       } catch (e) {
         console.warn("[npc] load fail", e);
         const m = new T.Mesh(new T.BoxGeometry(0.5, 1.7, 0.5), new T.MeshStandardMaterial({ color: 0x39c5bb }));
