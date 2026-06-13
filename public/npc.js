@@ -1054,15 +1054,26 @@
       sb.from("npc_routes").select("id,name").eq("map_id", mapId).order("name"),
     ]);
     const routeOpts = (routes || []).map(r => `<option value="${r.id}">${r.name}</option>`).join("");
+    const esc = (s) => String(s||"").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
     el.innerHTML = `<p style="opacity:.7">NPCs nesta sala (${mapId}):</p>` +
-      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px">
-        <span style="flex:1;min-width:140px">${i.display_name} <small style="opacity:.6">(${i.npc_models?.name || '?'})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
+      ((insts||[]).length ? (insts||[]).map(i => `<div style="padding:6px;border-bottom:1px solid #333;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px" data-row="${i.id}">
+        <span style="flex:1;min-width:140px">${esc(i.display_name)} <small style="opacity:.6">(${esc(i.npc_models?.name || '?')})</small>${!i.route_id?' <span style="color:#fc3;font-size:10px">⚠ sem rota</span>':''}</span>
         <select data-id="${i.id}" class="npc-route-sel" style="background:#000;color:#fff;border:1px solid #444;border-radius:4px;padding:2px;font-size:11px;max-width:140px">
           <option value="">— sem rota —</option>
           ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
         </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
+        <button data-id="${i.id}" class="npc-bs-toggle" style="background:#444;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📖 História</button>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
+        <div class="npc-bs-panel" data-id="${i.id}" style="display:none;width:100%;margin-top:6px">
+          <textarea class="npc-bs-text" data-id="${i.id}" maxlength="2000" placeholder="Base da história deste NPC (até 2000 chars). Ex.: nome, idade, profissão, gostos, segredos, lugar onde mora..." style="width:100%;min-height:90px;background:#111;color:#fff;border:1px solid #444;border-radius:4px;padding:6px;font-size:12px;font-family:inherit;resize:vertical">${esc(i.backstory||'')}</textarea>
+          <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap">
+            <label style="background:#39c5bb;color:#000;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:11px;font-weight:700">📄 Subir .txt<input type="file" class="npc-bs-file" data-id="${i.id}" accept=".txt,text/plain" style="display:none"/></label>
+            <button class="npc-bs-save" data-id="${i.id}" style="background:#3a3;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">Salvar história</button>
+            <button class="npc-bs-clear" data-id="${i.id}" style="background:#666;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px">Limpar (auto-gerar)</button>
+            <span class="npc-bs-status" data-id="${i.id}" style="font-size:11px;opacity:.7;align-self:center"></span>
+          </div>
+        </div>
       </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
@@ -1071,8 +1082,34 @@
       const npcId = s.dataset.id;
       const newRoute = s.value || null;
       await sb.from("npc_instances").update({ route_id: newRoute }).eq("id", npcId);
-      // reset state pra forçar o tick a re-spawnar no 1º waypoint
       await sb.from("npc_state").delete().eq("npc_id", npcId);
+    });
+    el.querySelectorAll(".npc-bs-toggle").forEach((b) => b.onclick = () => {
+      const panel = el.querySelector(`.npc-bs-panel[data-id="${b.dataset.id}"]`);
+      if (panel) panel.style.display = panel.style.display === "none" ? "block" : "none";
+    });
+    el.querySelectorAll(".npc-bs-file").forEach((inp) => inp.onchange = async () => {
+      const f = inp.files?.[0]; if (!f) return;
+      const txt = (await f.text()).slice(0, 2000);
+      const ta = el.querySelector(`.npc-bs-text[data-id="${inp.dataset.id}"]`);
+      if (ta) ta.value = txt;
+      inp.value = "";
+    });
+    el.querySelectorAll(".npc-bs-save").forEach((b) => b.onclick = async () => {
+      const id = b.dataset.id;
+      const ta = el.querySelector(`.npc-bs-text[data-id="${id}"]`);
+      const status = el.querySelector(`.npc-bs-status[data-id="${id}"]`);
+      const val = (ta?.value || "").trim().slice(0, 2000);
+      if (status) status.textContent = "salvando...";
+      const { error } = await sb.from("npc_instances").update({ backstory: val || null }).eq("id", id);
+      if (status) status.textContent = error ? "✗ erro" : "✔ salvo";
+      setTimeout(() => { if (status) status.textContent = ""; }, 2000);
+    });
+    el.querySelectorAll(".npc-bs-clear").forEach((b) => b.onclick = async () => {
+      const id = b.dataset.id;
+      const ta = el.querySelector(`.npc-bs-text[data-id="${id}"]`);
+      if (ta) ta.value = "";
+      await sb.from("npc_instances").update({ backstory: null }).eq("id", id);
     });
     el.querySelectorAll(".npc-inst-del").forEach((b) => b.onclick = async () => {
       await sb.from("npc_instances").delete().eq("id", b.dataset.id);
