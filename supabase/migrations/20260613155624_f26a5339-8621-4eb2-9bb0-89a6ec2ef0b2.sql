@@ -1,0 +1,1 @@
+ALTER TABLE public.npc_instances ADD COLUMN IF NOT EXISTS backstory text;
