@@ -60,11 +60,13 @@
     for (const ent of npcEntities.values()) setAnim(ent, ent.currentAnimName || (ent.status === "walking" ? "walk" : "idle"));
   }
 
-  // Retarget de tracks: normaliza prefixos Mixamo (mixamorig, mixamorig7, etc) ao do esqueleto destino.
+  // Retarget de tracks: normaliza prefixos Mixamo e descarta tracks cujo bone não existe no destino.
   const MIXAMO_RE = /^mixamorig\d*/i;
   function retargetClipForEnt(ent, clip) {
     const cloned = clip.clone();
-    const destPrefix = ent.bonePrefix || ""; // ex: "" | "mixamorig" | "mixamorig7"
+    const destPrefix = ent.bonePrefix || "";
+    const boneSet = ent.boneNames; // Set<string> com nomes válidos
+    const kept = [];
     for (const tr of cloned.tracks) {
       const dot = tr.name.indexOf(".");
       const bone = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
@@ -72,16 +74,21 @@
       const m = bone.match(MIXAMO_RE);
       let newBone = bone;
       if (m) {
-        const rest = bone.slice(m[0].length); // ex: "RightHand"
+        const rest = bone.slice(m[0].length);
         if (destPrefix) newBone = destPrefix + rest;
         else newBone = rest.charAt(0).toLowerCase() + rest.slice(1);
       } else if (destPrefix && !bone.startsWith(destPrefix)) {
         newBone = destPrefix + bone.charAt(0).toUpperCase() + bone.slice(1);
       }
+      // Descarta tracks cujo bone não existe no modelo destino — evita T-pose por bind falho
+      if (boneSet && boneSet.size && !boneSet.has(newBone)) continue;
       tr.name = newBone + prop;
+      kept.push(tr);
     }
+    cloned.tracks = kept;
     return cloned;
   }
+
 
   // ============ RUNTIME ============
   const npcEntities = new Map();   // id -> ent (loaded visual)
@@ -131,8 +138,30 @@
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
         if (payload.new) handleStateUpdate(payload.new);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, () => {
-        reloadForMap();
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "npc_instances" }, (payload) => {
+        const inst = payload.new;
+        if (!inst || inst.map_id !== getCurrentMapId() || !inst.active) return;
+        npcInstances.set(inst.id, inst);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "npc_instances" }, (payload) => {
+        const inst = payload.new;
+        if (!inst) return;
+        const inMap = inst.map_id === getCurrentMapId();
+        if (inMap && inst.active) {
+          npcInstances.set(inst.id, inst);
+        } else {
+          npcInstances.delete(inst.id);
+          const ent = npcEntities.get(inst.id);
+          if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
+        }
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "npc_instances" }, (payload) => {
+        const id = payload.old?.id;
+        if (!id) return;
+        npcInstances.delete(id);
+        npcStateCache.delete(id);
+        const ent = npcEntities.get(id);
+        if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
@@ -147,7 +176,14 @@
       const dt = clock.getDelta();
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
-        if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
+        if (ent.targetPos) {
+          // Aterra o alvo no chão real do mapa (segue rampas, escadas, plataformas)
+          if (window.__groundHeightAt) {
+            const gy = window.__groundHeightAt(ent.targetPos, ent.targetPos.y);
+            if (typeof gy === "number") ent.targetPos.y = gy;
+          }
+          ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 8));
+        }
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
@@ -280,12 +316,16 @@
         root.scale.setScalar(scale);
         group.add(root);
         ent.mixer = new T.AnimationMixer(root);
-        // Detecta prefixo Mixamo no esqueleto destino (pra retarget de clips externos)
+        // Detecta prefixo Mixamo e coleta nomes de bones do destino (pra retarget e filtragem)
         ent.bonePrefix = "";
+        ent.boneNames = new Set();
         root.traverse((o) => {
-          if (ent.bonePrefix || !o.isBone || !o.name) return;
-          const m = o.name.match(MIXAMO_RE);
-          if (m) ent.bonePrefix = m[0];
+          if (!o.isBone || !o.name) return;
+          ent.boneNames.add(o.name);
+          if (!ent.bonePrefix) {
+            const m = o.name.match(MIXAMO_RE);
+            if (m) ent.bonePrefix = m[0];
+          }
         });
         if (gltf.animations && gltf.animations.length) {
           for (const clip of gltf.animations) {
@@ -924,7 +964,16 @@
     if (!routeEditor || !camera()) return null;
     const T = THREE();
     routeEditor.raycaster.setFromCamera(routeEditor.pointer, camera());
-    // intersecta plano y=0
+    // 1) tenta bater nos meshes caminháveis reais (chão/escadas/objetos do mapa)
+    const sc = scene();
+    const walkables = [];
+    sc?.traverse?.((o) => { if (o.isMesh && o.visible !== false) walkables.push(o); });
+    const hits = routeEditor.raycaster.intersectObjects(walkables, false);
+    // ignora as próprias bolinhas do editor
+    const gizSet = new Set(routeEditor.gizmos.values());
+    const real = hits.find((h) => !gizSet.has(h.object));
+    if (real) return real.point;
+    // 2) fallback plano y=0
     const plane = new T.Plane(new T.Vector3(0, 1, 0), 0);
     const hit = new T.Vector3();
     routeEditor.raycaster.ray.intersectPlane(plane, hit);
@@ -960,11 +1009,11 @@
     if (routeEditor.dragWp) {
       const hit = raycastGround(); if (!hit) return;
       const giz = routeEditor.gizmos.get(routeEditor.dragWp.id);
-      if (giz) giz.position.set(hit.x, 0.5, hit.z);
+      if (giz) giz.position.set(hit.x, (hit.y || 0) + 0.5, hit.z);
       if (dragDebounceT) clearTimeout(dragDebounceT);
       dragDebounceT = setTimeout(async () => {
         const sb = SB();
-        await sb.from("npc_waypoints").update({ x: hit.x, z: hit.z }).eq("id", routeEditor.dragWp.id);
+        await sb.from("npc_waypoints").update({ x: hit.x, y: hit.y || 0, z: hit.z }).eq("id", routeEditor.dragWp.id);
       }, 200);
       e.stopPropagation(); e.stopImmediatePropagation();
     }
@@ -992,7 +1041,7 @@
     routeEditor.addingPoint = true;
     const nextSeq = ((routeEditor.wps || []).reduce((max, wp) => Math.max(max, Number(wp.seq) || 0), -1) + 1);
     const wpId = crypto.randomUUID?.() || "10000000-1000-4000-8000-" + Math.floor(Math.random() * 1e12).toString().padStart(12, "0");
-    const wp = { id: wpId, route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0, is_crosswalk: false, is_talk_spot: false, is_sit_spot: false, pause_ms: 0 };
+    const wp = { id: wpId, route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: hit.y || 0, is_crosswalk: false, is_talk_spot: false, is_sit_spot: false, pause_ms: 0 };
     const { error } = await sb.from("npc_waypoints").insert(wp);
     routeEditor.addingPoint = false;
     routeEditor.lastAddAt = Date.now();
