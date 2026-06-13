@@ -45,29 +45,55 @@
   }
 
   // ============ RUNTIME ============
-  const npcEntities = new Map();
-  const npcInstances = new Map();
+  const npcEntities = new Map();   // id -> ent (loaded visual)
+  const npcInstances = new Map();  // id -> instance row (filtered by current map)
+  const npcStateCache = new Map(); // id -> latest state row (lightweight, kept for all NPCs in map)
   const npcModels = new Map();
+  const npcLoading = new Set();    // ids currently loading GLB
+
+  function getCurrentMapId() { return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar"; }
+  function getLoadRadius() { return Number(localStorage.getItem("npcLoadRadius")) || 25; }
+  function getDespawnRadius() { return getLoadRadius() * 1.25; }
+
+  async function reloadForMap() {
+    const sb = SB();
+    const mapId = getCurrentMapId();
+    // despawn everything
+    for (const [id, ent] of npcEntities) {
+      try { scene().remove(ent.group); } catch {}
+      try { ent.bubble?.remove(); } catch {}
+    }
+    npcEntities.clear();
+    npcInstances.clear();
+    npcStateCache.clear();
+    npcLoading.clear();
+
+    const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true).eq("map_id", mapId);
+    (inst || []).forEach((i) => npcInstances.set(i.id, i));
+    if (npcInstances.size) {
+      const ids = [...npcInstances.keys()];
+      const { data: states } = await sb.from("npc_state").select("*").in("npc_id", ids);
+      (states || []).forEach((s) => { npcStateCache.set(s.npc_id, s); });
+    }
+  }
 
   async function initNpcRuntime() {
     const sb = SB();
     const { data: models } = await sb.from("npc_models").select("*");
     (models || []).forEach((m) => npcModels.set(m.id, m));
-    const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true);
-    (inst || []).forEach((i) => npcInstances.set(i.id, i));
-    const { data: states } = await sb.from("npc_state").select("*");
-    (states || []).forEach((s) => applyState(s));
+
+    await reloadForMap();
 
     loadAnimationLibrary();
 
+    window.addEventListener("map-changed", () => { reloadForMap(); });
+
     sb.channel("npc-state")
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
-        if (payload.new) applyState(payload.new);
+        if (payload.new) handleStateUpdate(payload.new);
       })
-      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, async () => {
-        const { data: inst } = await sb.from("npc_instances").select("*").eq("active", true);
-        npcInstances.clear();
-        (inst || []).forEach((i) => npcInstances.set(i.id, i));
+      .on("postgres_changes", { event: "*", schema: "public", table: "npc_instances" }, () => {
+        reloadForMap();
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
@@ -83,7 +109,6 @@
       for (const ent of npcEntities.values()) {
         if (ent.mixer) ent.mixer.update(dt);
         if (ent.targetPos) ent.group.position.lerp(ent.targetPos, Math.min(1, dt * 4));
-        // lookAt player override
         let desiredRot = ent.targetRot;
         if (ent.lockToPlayer && player()) {
           const p = player().position;
@@ -96,29 +121,63 @@
           ent.group.rotation.y += diff * Math.min(1, dt * 6);
         }
       }
+      checkLOD();
       checkNpcProximity();
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
 
-  async function applyState(s) {
-    const inst = npcInstances.get(s.npc_id);
-    if (!inst) return;
-    let ent = npcEntities.get(s.npc_id);
-    if (!ent) {
-      ent = await spawnNpc(inst);
-      if (!ent) return;
-      ent.group.position.set(s.x, s.y, s.z);
+  // Despawn far NPCs and spawn close ones (LOD)
+  let lodCheckT = 0;
+  function checkLOD() {
+    const now = performance.now();
+    if (now - lodCheckT < 500) return; // 2 Hz
+    lodCheckT = now;
+    const p = player(); if (!p) return;
+    const loadR = getLoadRadius();
+    const despawnR = getDespawnRadius();
+    for (const [id, inst] of npcInstances) {
+      const st = npcStateCache.get(id);
+      if (!st) continue;
+      const d = Math.hypot(st.x - p.position.x, st.z - p.position.z);
+      const ent = npcEntities.get(id);
+      if (!ent && !npcLoading.has(id) && d < loadR) {
+        // spawn
+        npcLoading.add(id);
+        spawnNpc(inst).then((e) => {
+          npcLoading.delete(id);
+          if (!e) return;
+          const cur = npcStateCache.get(id);
+          if (cur) {
+            e.group.position.set(cur.x, cur.y, cur.z);
+            e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
+            e.targetRot = cur.rot_y;
+            setAnim(e, cur.anim);
+          }
+        });
+      } else if (ent && d > despawnR) {
+        try { scene().remove(ent.group); } catch {}
+        try { ent.bubble?.remove(); } catch {}
+        npcEntities.delete(id);
+      }
     }
+  }
+
+  function handleStateUpdate(s) {
+    // Cache the state regardless of whether the entity is loaded
+    npcStateCache.set(s.npc_id, s);
+    if (!npcInstances.has(s.npc_id)) return; // not in current map
+    const ent = npcEntities.get(s.npc_id);
+    if (!ent) return; // LOD: not loaded
     ent.targetPos = new (THREE().Vector3)(s.x, s.y, s.z);
-    // Não sobrescreve rot/anim quando jogador está conversando
     if (!ent.lockToPlayer) {
       ent.targetRot = s.rot_y;
       setAnim(ent, s.anim);
     }
     ent.status = s.status;
   }
+
 
   function pickAnimClip(ent, name) {
     // 1) clip do próprio modelo
