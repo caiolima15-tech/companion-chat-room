@@ -17,8 +17,8 @@ const admin = createClient(
 const SPEED_WALK = 1.4;
 const SPEED_CROSS = 2.2;
 const TICK_MS = 1000;
-const SOCIAL_RADIUS = 2.0;
-const SOCIAL_CHANCE = 0.12;
+const SOCIAL_RADIUS = 1.6;
+const SOCIAL_CHANCE = 0.02;
 const GOODBYE_AFTER_MS = 25000;
 
 function dist2(a: any, b: any) { return Math.hypot(a.x - b.x, a.z - b.z); }
