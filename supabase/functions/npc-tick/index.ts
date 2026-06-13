@@ -88,7 +88,7 @@ async function runOneTick() {
       const a = stateMap[aId], b = stateMap[bId];
       const angleAB = Math.atan2(b.x - a.x, b.z - a.z);
       const angleBA = Math.atan2(a.x - b.x, a.z - b.z);
-      const ends = new Date(now + 60000 + Math.random() * 120000).toISOString();
+      const ends = new Date(now + 8000 + Math.random() * 12000).toISOString();
       updates.push({ npc_id: aId, x: a.x, y: a.y, z: a.z, rot_y: angleAB, anim: "social_a", status: "socializing", target_wp_seq: a.target_wp_seq, next_decision_at: ends, updated_at: new Date(now).toISOString() });
       updates.push({ npc_id: bId, x: b.x, y: b.y, z: b.z, rot_y: angleBA, anim: "social_b", status: "socializing", target_wp_seq: b.target_wp_seq, next_decision_at: ends, updated_at: new Date(now).toISOString() });
     }
