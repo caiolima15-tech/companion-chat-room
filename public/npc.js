@@ -942,7 +942,8 @@
     const sb = SB();
     routeEditor.addingPoint = true;
     const nextSeq = ((routeEditor.wps || []).reduce((max, wp) => Math.max(max, Number(wp.seq) || 0), -1) + 1);
-    const { data: wp, error } = await sb.from("npc_waypoints").insert({ route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0 }).select("*").single();
+    const wp = { id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`, route_id: routeEditor.routeId, seq: nextSeq, x: hit.x, z: hit.z, y: 0, is_crosswalk: false, is_talk_spot: false, is_sit_spot: false, pause_ms: 0 };
+    const { error } = await sb.from("npc_waypoints").insert(wp);
     routeEditor.addingPoint = false;
     routeEditor.lastAddAt = Date.now();
     if (error) editorToast("✗ erro: " + error.message);
