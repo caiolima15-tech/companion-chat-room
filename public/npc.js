@@ -678,8 +678,9 @@
   // ============ ADMIN ============
   function initNpcAdminButton() {
     const btn = document.createElement("button");
-    btn.textContent = "🧍 NPCs";
-    btn.style.cssText = "position:fixed;top:12px;left:12px;z-index:9998;background:#111;color:#39c5bb;border:1px solid #39c5bb;padding:8px 14px;border-radius:8px;font-weight:700;cursor:pointer";
+    btn.id = "npcAdminBtn";
+    btn.className = "hud-pill npc-pill";
+    btn.innerHTML = '<span class="hud-pill-ico">🧍</span><span class="hud-pill-label">NPCs</span>';
     btn.onclick = openNpcAdmin;
     document.body.appendChild(btn);
   }
