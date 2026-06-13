@@ -619,10 +619,11 @@
         // Resposta em TEXTO: balão na cabeça + linha no chat. Sem áudio.
         window.__addNpcLine?.(ent.name || "NPC", data.reply, false);
         showBubble(ent, data.reply);
-        // toca animação de "talk" por uma duração proporcional ao texto
+        // toca "talk" só enquanto o NPC "fala" — duração proporcional ao tamanho do texto
         if (ent._talkTimer) clearTimeout(ent._talkTimer);
         setAnim(ent, "talk");
-        const dur = Math.max(1500, Math.min(6000, (data.reply || "").length * 60));
+        const len = (data.reply || "").length;
+        const dur = Math.max(800, Math.min(9000, len * 55));
         ent._talkTimer = setTimeout(() => { setAnim(ent, "idle"); ent._talkTimer = null; }, dur);
       } else {
 
