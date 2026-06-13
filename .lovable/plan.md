@@ -1,40 +1,37 @@
-## O que muda
+# Correções de animação dos NPCs + base de história
 
-### 1. Tamanho dos NPCs (escala) — painel admin
-Na aba **Modelos** (`renderModelsTab` em `public/npc.js`):
-- adicionar um input numérico `scale` por linha (0.1–5, passo 0.05), lendo/escrevendo `npc_models.scale_mul`.
-- ao salvar, atualizar no banco e re-aplicar nos NPCs já spawnados (re-escala `ent.group.children[0]` sem precisar recarregar GLB).
-- A coluna `scale_mul` já existe e já é lida no `spawnNpc` (linha 233), só falta UI.
+## Problema raiz das animações
+A biblioteca de animações (`npc_animations`) está com arquivos **.fbx** (Idle, Walk, Talk do Mixamo), mas o código tenta carregar tudo com `GLTFLoader`. O `GLTFLoader` não consegue ler `.fbx`, então `animLib` fica **vazia**, e o NPC só toca a animação embutida no próprio `.glb` do modelo — que muitas vezes é só um idle. Por isso "nenhuma animação funciona" e os NPCs parecem teleportar sem walk.
 
-### 2. NPCs estão parados (não andam)
-Causa confirmada no banco: 2 dos 3 NPCs estão com `route_id = NULL` (foram criados antes do sistema de rotas amarrar automaticamente). O `npc-tick` pula qualquer NPC sem rota.
+Os NPCs **estão** se movendo (confirmado em `npc_state`: posições e status mudando a cada tick), mas sem a clip `walk` na biblioteca o `pickAnimClip` cai no fallback idle.
 
-Correções:
-- Na aba **Spawn**, adicionar um `<select>` por NPC com as rotas da sala atual para reatribuir/trocar a rota. Botão "Salvar" grava `route_id`.
-- Quando o NPC ganha rota, apagar o `npc_state` antigo dele (assim o tick recria o state no 1º waypoint e ele começa a andar).
-- Mostrar aviso visual ("sem rota — não anda") nos NPCs com `route_id = NULL`.
+## Mudanças
 
-### 3. Animação de "talk" durante chat de texto
-Hoje só roda `setAnim(ent, "talk")` quando a resposta vem em áudio (linha 505). No modo texto, o NPC fica em idle.
+### 1. Carregar FBX corretamente (`public/npc.js`)
+- Adicionar `FBXLoader` (CDN `three/examples/jsm/loaders/FBXLoader.js`) junto do `GLTFLoader` existente.
+- Em `loadAnimationLibrary`: detectar extensão do `model_url` (`.fbx` vs `.glb/.gltf`) e usar o loader certo.
+- Ao extrair o clip do FBX, normalizar nomes de tracks Mixamo: remover prefixo `mixamorig` se o modelo destino não tiver esse prefixo (e vice-versa) para retargeting básico por nome de bone.
+- Suportar variante por gênero: quando há `idle` male e female, `pickAnimClip` escolhe pela `ent.gender`.
 
-Correção em `sendNpcText` (`public/npc.js` ~488):
-- ao mostrar o balão (`showBubble`), tocar `setAnim(ent, "talk")` e voltar pra `idle` depois de uma duração proporcional ao tamanho do texto (ex: ~60 ms por caractere, mínimo 1.5s, máx 6s).
-- limpar timer anterior se nova mensagem chegar.
+### 2. Aplicar clip da lib com retarget seguro
+- Em `pickAnimClip`: clonar o clip (`clip.clone()`) antes de criar a action, e remapear nomes de tracks para casar com bones do modelo destino (heurística simples: igualar prefixo Mixamo).
+- Garantir que ao trocar para `walk`, a action faça `setLoop(LoopRepeat)` e `clampWhenFinished = false`.
 
-### 4. Editor de rotas não adiciona pontos com clique
-Possíveis causas no `onEditorUp` (linha 886):
-- threshold `Date.now() - downTime > 350` é curto demais (descarta cliques "normais" que demoram 400–500 ms);
-- não há feedback quando o raycast falha (ex: clicou fora do plano y=0 ou em cima de outro mesh).
+### 3. UI: base de história (backstory) no painel de edição do NPC
+- Na aba **Spawn** (lista de NPCs), por NPC:
+  - `<textarea>` "Base da história" (até 2000 chars) lendo/gravando `npc_instances.backstory`.
+  - Botão "📄 Subir .txt" que lê arquivo local (`input type=file accept=".txt"`) e preenche o textarea.
+  - Botão "Salvar história".
+- Quando o admin grava manualmente, o `npc-chat` já respeita (não regenera, pois `backstory` deixa de ser nulo).
 
-Correções:
-- aumentar threshold de clique pra 700 ms.
-- adicionar pequeno toast/log quando insere ("✔ ponto adicionado #N") e quando descarta (motivo).
-- garantir que o evento de clique no canvas não está sendo bloqueado por overlay (verificar `pointer-events` do painel admin durante o editor — se necessário, dar `pointer-events:none` no painel enquanto edita).
+### 4. Pequenos ajustes
+- Aumentar lerp de posição (linha 115) de `dt * 4` para `dt * 8` para acompanhar o tick do servidor com menos atraso visual.
+- Log curto no console quando uma clip da lib é aplicada com sucesso (debug).
 
-## Arquivos tocados
-- `public/npc.js` — UI de escala em Modelos, dropdown de rota em Spawn, `talk` no modo texto, ajustes no editor.
-- (sem migrations: `scale_mul` e `route_id` já existem.)
+## Arquivos
+- `public/npc.js` — loader FBX, retarget, seleção por gênero, UI backstory, lerp.
+- Nenhuma migração nova (coluna `backstory` já existe).
+- Nenhuma alteração em `npc-chat` nem `npc-tick`.
 
-## Não muda
-- `npc-chat` / fase de conversa / TTS.
-- LOD, cron, schema do banco.
+## Observação
+Os arquivos atuais são Mixamo, então o retarget por nome de bone funciona para qualquer modelo que também siga o esqueleto Mixamo (caso comum). Modelos com esqueleto totalmente custom continuarão tocando só o idle deles — isso é limitação dos próprios assets, não do código.
