@@ -2814,39 +2814,69 @@ body.world-ready .logout-pill { display: inline-flex; }
   .fb-joy { opacity: 0.55; transition: opacity .2s ease; }
   .fb-joy:active, .fb-joy.is-active { opacity: 0.95; }
 
-  /* Chat: painel lateral esquerdo glass — ancorado ao TOPO em landscape,
-     altura segue o visualViewport pra NÃO encolher/sumir quando o teclado abre */
-  body.mobile-show-chat .chat-panel {
-    left: calc(12px + env(safe-area-inset-left)) !important;
+  /* Chat estilo Roblox: painel transparente flutuante no canto sup. esq., sem fundo pesado.
+     Mensagens flutuam sobre o jogo; input fino no rodapé. */
+  body.mobile-show-chat .chat-panel,
+  .chat-panel {
+    left: calc(10px + env(safe-area-inset-left)) !important;
     right: auto !important;
-    top: calc(56px + env(safe-area-inset-top)) !important;
+    top: calc(48px + env(safe-area-inset-top)) !important;
     bottom: auto !important;
-    width: 340px !important;
-    max-width: calc(100vw - 24px) !important;
-    height: calc(var(--vv-height, 100dvh) - 80px - env(safe-area-inset-top)) !important;
-    max-height: calc(var(--vv-height, 100dvh) - 80px) !important;
-    min-height: 200px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(255,255,255,0.10) !important;
-    background: rgba(10, 12, 20, 0.62) !important;
-    backdrop-filter: blur(22px) saturate(180%) !important;
-    -webkit-backdrop-filter: blur(22px) saturate(180%) !important;
-    box-shadow: 0 18px 50px rgba(0,0,0,0.55) !important;
+    width: 320px !important;
+    max-width: 46vw !important;
+    height: calc(var(--vv-height, 100dvh) - 64px - env(safe-area-inset-top)) !important;
+    max-height: calc(var(--vv-height, 100dvh) - 64px) !important;
+    min-height: 180px !important;
+    border-radius: 10px !important;
+    border: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
     transform: translateY(0) !important;
     grid-template-rows: auto minmax(0, 1fr) auto !important;
+    pointer-events: auto !important;
+    overflow: hidden !important;
   }
-  body:not(.mobile-show-chat) .chat-panel { transform: translateY(-140%) !important; }
+  /* Esconder a setinha de minimizar em landscape — não combina com o estilo Roblox */
+  .chat-panel::before { display: none !important; }
 
   .chat-panel .chat-log {
-    padding: 10px 12px 6px !important;
-    gap: 8px !important;
+    padding: 6px 8px !important;
+    gap: 4px !important;
+    background: transparent !important;
+    overflow-y: auto !important;
   }
   .chat-panel .chat-form {
     position: sticky;
     bottom: 0;
-    padding: 8px 10px 8px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 6px 8px !important;
     background: rgba(0,0,0,0.45) !important;
-    border-top: 1px solid rgba(255,255,255,0.08) !important;
+    border-top: 1px solid rgba(255,255,255,0.10) !important;
+    border-radius: 8px !important;
+  }
+  .chat-panel .chat-form input {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    height: 34px !important;
+    border-radius: 6px !important;
+    padding: 0 10px !important;
+    font-size: 14px !important;
+    background: rgba(255,255,255,0.10) !important;
+    border: 1px solid rgba(255,255,255,0.16) !important;
+  }
+  .chat-panel .chat-form button {
+    flex: 0 0 auto !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+    font-size: 0 !important;
   }
 
   /* Banner de NPC entra logo abaixo das pills */
