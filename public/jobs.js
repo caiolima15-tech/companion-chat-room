@@ -557,6 +557,7 @@
       enter_vehicle: "Entre no veículo",
       drive_to: "Dirija até o destino",
       park_vehicle: "Estacione o veículo",
+      deliver_to_spawned_npc: "Entregue ao destinatário",
       play_animation: "Realizando ação…",
     })[k] || k || "";
   }
