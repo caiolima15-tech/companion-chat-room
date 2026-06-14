@@ -2740,15 +2740,16 @@ body.world-ready #moneyHud.money-pill { display: inline-flex; }
 body.world-ready .logout-pill { display: inline-flex; }
 .logout-pill .hud-pill-ico { font-weight: 900; }
 
-/* Nameplate readability boost */
+/* Nameplate: só texto branco com leve sombra (sem tarja). Esconde o do próprio usuário. */
 .nameplate {
-  background: rgba(0,0,0,0.42) !important;
-  padding: 3px 8px !important;
-  border-radius: 8px !important;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.55);
 }
+.nameplate.is-me .plate-name { display: none !important; }
 
 /* NPC conversation banner — replaces noisy chat-log system lines */
 .npc-chat-banner {
