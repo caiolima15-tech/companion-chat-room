@@ -330,6 +330,33 @@
     addMarker(arrow, () => ({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }), 1.6);
   }
 
+  // NPC temporário (cápsula com cabeça) gerado para receber entrega
+  let spawnedNpcMesh = null;
+  function spawnDeliveryNpc(step) {
+    const T = THREE(), sc = scene(); if (!T || !sc) return;
+    const cfg = step.config || {};
+    const x = cfg.x ?? 0, y = cfg.y ?? 0, z = cfg.z ?? 0;
+    const group = new T.Group();
+    const body = new T.Mesh(
+      new T.CapsuleGeometry(0.32, 0.9, 4, 8),
+      new T.MeshStandardMaterial({ color: cfg.color || 0x4477cc }),
+    );
+    body.position.y = 0.85;
+    group.add(body);
+    const head = new T.Mesh(
+      new T.SphereGeometry(0.22, 12, 10),
+      new T.MeshStandardMaterial({ color: 0xf0c98a }),
+    );
+    head.position.y = 1.65;
+    group.add(head);
+    group.position.set(x, y, z);
+    group.rotation.y = cfg.rotation_y || 0;
+    sc.add(group);
+    spawnedNpcMesh = group;
+    const arrow = makeYellowArrow();
+    addMarker(arrow, () => ({ x: group.position.x, y: group.position.y, z: group.position.z }), 2.4);
+  }
+
   function updateLiveMarkers() {
     const t = performance.now() * 0.004;
     for (const lm of liveMarkers) {
