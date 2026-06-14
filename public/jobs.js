@@ -28,7 +28,6 @@
   // markers vivos no mundo: {mesh, anchor:()=>({x,y,z}), offsetY, kind}
   let liveMarkers = [];
   let lockedGiverNpcId = null;
-  let lockedGiverNpcId = null;
 
   function tryBoot() {
     if (booted) return;
