@@ -25,6 +25,8 @@
   let bubbles = new Map();
   let cooldowns = {};
   let mapId = null;
+  // markers vivos no mundo: {mesh, anchor:()=>({x,y,z}), offsetY, kind}
+  let liveMarkers = [];
   let lockedGiverNpcId = null;
 
   function tryBoot() {
@@ -186,6 +188,8 @@
     if (step.kind === "fail") return cancelCurrent("Missão falhou");
     if (step.kind === "pickup_item") spawnPickup(step);
     if (step.kind === "goto_point" || step.kind === "deliver_item" || step.kind === "drive_to") spawnDestMarker(step.config);
+    if (step.kind === "enter_vehicle") spawnVehicleArrow(step.config);
+    if (step.kind === "park_vehicle") spawnParkMarker(step.config);
   }
 
   function runScriptedDialogue(npcId, lines, onDone) {
@@ -224,6 +228,29 @@
     return step.config?.target_npc_id || currentJob?.giver_npc_id || null;
   }
 
+  // ============ MARKERS / ARROWS ============
+  function makeYellowArrow() {
+    const T = THREE();
+    const g = new T.ConeGeometry(0.45, 1.1, 6);
+    const m = new T.MeshBasicMaterial({ color: 0xffd11a });
+    const mesh = new T.Mesh(g, m);
+    mesh.rotation.x = Math.PI; // ponta para baixo
+    return mesh;
+  }
+
+  function addMarker(mesh, anchor, offsetY) {
+    scene()?.add(mesh);
+    liveMarkers.push({ mesh, anchor, offsetY });
+  }
+
+  function getCarPos(carId) {
+    const c = window.__drivingCar;
+    if (c && c.row?.id === carId) return { x: c.group.position.x, y: c.group.position.y, z: c.group.position.z };
+    // fallback: read from world via DOM event? We don't have global cars map exposed.
+    // Use any car the player isn't driving by querying through __getMapCarPos if exposed.
+    return window.__getMapCarPos?.(carId) || null;
+  }
+
   function spawnDestMarker(cfg) {
     const T = THREE(), sc = scene(); if (!T || !sc || !cfg || cfg.x == null) return;
     const g = new T.ConeGeometry(0.7, 2, 6);
@@ -231,9 +258,29 @@
     const mesh = new T.Mesh(g, m);
     mesh.position.set(cfg.x, (cfg.y || 0) + 3, cfg.z);
     mesh.rotation.x = Math.PI;
-    mesh.userData.isJobDest = true;
     sc.add(mesh);
     currentMarker = mesh;
+  }
+
+  function spawnParkMarker(cfg) {
+    const T = THREE(), sc = scene(); if (!T || !sc || !cfg || cfg.x == null) return;
+    // anel verde no chão + seta amarela
+    const ring = new T.Mesh(
+      new T.RingGeometry(1.4, 2.0, 24),
+      new T.MeshBasicMaterial({ color: 0x33dd66, side: T.DoubleSide, transparent: true, opacity: 0.7 }),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.set(cfg.x, (cfg.y || 0) + 0.05, cfg.z);
+    sc.add(ring);
+    currentMarker = ring;
+    const arrow = makeYellowArrow();
+    addMarker(arrow, () => ({ x: cfg.x, y: (cfg.y || 0), z: cfg.z }), 2.8);
+  }
+
+  function spawnVehicleArrow(cfg) {
+    if (!cfg?.car_id) return;
+    const arrow = makeYellowArrow();
+    addMarker(arrow, () => getCarPos(cfg.car_id), 2.6);
   }
 
   function spawnPickup(step) {
@@ -247,13 +294,29 @@
     mesh.userData.isJobPickup = true;
     sc.add(mesh);
     pickupMesh = mesh;
+    const arrow = makeYellowArrow();
+    addMarker(arrow, () => ({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }), 1.6);
+  }
+
+  function updateLiveMarkers() {
+    const t = performance.now() * 0.004;
+    for (const lm of liveMarkers) {
+      const p = lm.anchor?.();
+      if (!p) { lm.mesh.visible = false; continue; }
+      lm.mesh.visible = true;
+      const bob = Math.sin(t) * 0.15;
+      lm.mesh.position.set(p.x, p.y + lm.offsetY + bob, p.z);
+      lm.mesh.rotation.z = t * 0.5;
+    }
   }
 
   function tickStep() {
     if (dialogueActive) return;
+    updateLiveMarkers();
     const p = player(); if (!p || !currentStep) return;
     const cfg = currentStep.config || {};
     const kind = currentStep.kind;
+    const dc = window.__drivingCar;
 
     if (kind === "talk_to_giver" || kind === "talk_to_npc") {
       const pos = npcPos(stepNpcId(currentStep));
@@ -267,13 +330,34 @@
       else hidePrompt();
     } else if (kind === "deliver_item" || kind === "goto_point" || kind === "drive_to") {
       if (cfg.x == null) return;
-      const d = Math.hypot(cfg.x - p.position.x, cfg.z - p.position.z);
-      if (d < (cfg.radius || 3)) {
-        if (kind === "drive_to" && !window.__playerInVehicle) return;
-        advance("on_success");
+      // se exige carro específico, garante que está dirigindo ele
+      if (kind === "drive_to") {
+        if (cfg.car_id && dc?.row?.id !== cfg.car_id) return;
+        if (!cfg.car_id && !dc) return;
       }
+      const d = Math.hypot(cfg.x - p.position.x, cfg.z - p.position.z);
+      if (d < (cfg.radius || 3)) advance("on_success");
     } else if (kind === "enter_vehicle") {
-      if (window.__playerInVehicle) advance("on_success");
+      if (cfg.car_id) {
+        if (dc?.row?.id === cfg.car_id) advance("on_success");
+      } else if (dc) advance("on_success");
+    } else if (kind === "park_vehicle") {
+      if (!dc) return;
+      if (cfg.car_id && dc.row?.id !== cfg.car_id) return;
+      const vel = Math.abs(dc.state?.vel || 0);
+      if (vel > 0.06) { showPrompt("Pare o veículo para estacionar"); return; }
+      const d = Math.hypot((cfg.x ?? 0) - dc.group.position.x, (cfg.z ?? 0) - dc.group.position.z);
+      if (d < (cfg.radius || 3.5)) {
+        hidePrompt();
+        // sai do carro automaticamente e (opcional) some o veículo
+        try { window.__exitDrivingCar?.(true); } catch {}
+        if (cfg.despawn_on_complete) {
+          try { SB().from("map_cars").delete().eq("id", cfg.car_id).then(() => {}); } catch {}
+        }
+        advance("on_success");
+      } else {
+        hidePrompt();
+      }
     } else if (kind === "play_animation") {
       if (!currentStep._animStartedAt) {
         currentStep._animStartedAt = Date.now();
@@ -282,6 +366,7 @@
       if (Date.now() - currentStep._animStartedAt > (cfg.duration_ms || 2000)) advance("on_success");
     }
   }
+
 
   function showContinue() {
     if (promptEl?.dataset?.kind === "continue") return;
@@ -364,6 +449,8 @@
     const sc = scene();
     if (currentMarker && sc) { sc.remove(currentMarker); currentMarker = null; }
     if (pickupMesh && sc) { sc.remove(pickupMesh); pickupMesh = null; }
+    for (const lm of liveMarkers) { try { sc?.remove(lm.mesh); } catch {} }
+    liveMarkers = [];
     hidePrompt();
     closeScriptedDialog();
     for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
@@ -392,6 +479,7 @@
       talk_to_npc: "Fale com o NPC",
       enter_vehicle: "Entre no veículo",
       drive_to: "Dirija até o destino",
+      park_vehicle: "Estacione o veículo",
       play_animation: "Realizando ação…",
     })[k] || k || "";
   }
