@@ -2865,19 +2865,27 @@ body.world-ready .logout-pill { display: inline-flex; }
 html, body { background: #000; }
 @media (max-width: 900px), (max-height: 600px) and (pointer: coarse) {
   body { background: #000; }
-  .app-shell { padding: 0 !important; gap: 0 !important; }
+  .app-shell {
+    padding: 0 !important;
+    gap: 0 !important;
+    width: 100vw !important;
+    min-height: 100dvh !important;
+  }
   .stage-panel {
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #000 !important;
-  }
-  .world-shell { background: #000 !important; }
-  #worldCanvas {
     width: 100vw !important;
-    height: 100vh !important;
     height: 100dvh !important;
   }
+  .world-shell {
+    background: #000 !important;
+    width: 100% !important;
+    height: 100% !important;
+  }
+  /* NÃO forçar tamanho do #worldCanvas — o renderer.setSize define o tamanho
+     real do framebuffer com base no world-shell; forçar 100vw/100vh estica a imagem. */
   /* Garante que a mobile-bar fica acima de tudo e clicável em landscape */
   .mobile-bar { z-index: 1300 !important; }
 }
