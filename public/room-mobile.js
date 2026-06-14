@@ -50,32 +50,10 @@
     return window.matchMedia('(orientation: portrait)').matches;
   }
 
-  // ---------- "Gire o celular" overlay (fallback iOS / quando lock falha) ----------
-  function ensureRotateOverlay() {
-    let el = document.getElementById('rotateOverlay');
-    if (el) return el;
-    el = document.createElement('div');
-    el.id = 'rotateOverlay';
-    el.setAttribute('aria-hidden', 'true');
-    el.innerHTML = `
-      <div class="rotate-inner">
-        <div class="rotate-icon" aria-hidden="true">📱↻</div>
-        <div class="rotate-title">Gire o celular</div>
-        <div class="rotate-sub">Esta sala só funciona em modo paisagem.</div>
-      </div>`;
-    document.body.appendChild(el);
-    return el;
-  }
-
+  // ---------- "Gire o celular" overlay: DESATIVADO (orientação trava automática) ----------
   function syncRotateOverlay() {
-    const inRoom = body.classList.contains('world-ready');
-    if (!inRoom || !isCoarsePointer()) {
-      const el = document.getElementById('rotateOverlay');
-      if (el) el.hidden = true;
-      return;
-    }
-    const el = ensureRotateOverlay();
-    el.hidden = !isPortrait();
+    const el = document.getElementById('rotateOverlay');
+    if (el) el.hidden = true;
   }
 
   async function onEnterRoom() {
