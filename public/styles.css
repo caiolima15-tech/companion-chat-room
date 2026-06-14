@@ -2444,7 +2444,7 @@ body:not(.world-ready) #voicePttBtn { display:none !important; }
 #carsAdminPanel .ct-section h5 { margin:0 0 4px; font-size:11px; color:#9aa; text-transform:uppercase; letter-spacing:0.06em; }
 
 /* ============ Desktop chat fix (faixa fixa, transparente, acima do mobile-bar) ============ */
-@media (min-width: 601px) {
+@media (min-width: 901px) and (min-height: 601px) and (pointer: fine) {
   .chat-panel {
     bottom: calc(120px + env(safe-area-inset-bottom)) !important;
     width: 380px !important;
