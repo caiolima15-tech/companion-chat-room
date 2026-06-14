@@ -700,6 +700,235 @@ export type Database = {
         }
         Relationships: []
       }
+      job_cooldowns: {
+        Row: {
+          available_at: string
+          job_id: string
+          user_id: string
+        }
+        Insert: {
+          available_at: string
+          job_id: string
+          user_id: string
+        }
+        Update: {
+          available_at?: string
+          job_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_cooldowns_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_progress: {
+        Row: {
+          completed_at: string | null
+          current_step_id: string | null
+          id: string
+          job_id: string
+          started_at: string
+          state: Json
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          current_step_id?: string | null
+          id?: string
+          job_id: string
+          started_at?: string
+          state?: Json
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          current_step_id?: string | null
+          id?: string
+          job_id?: string
+          started_at?: string
+          state?: Json
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_progress_current_step_id_fkey"
+            columns: ["current_step_id"]
+            isOneToOne: false
+            referencedRelation: "job_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_progress_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_step_transitions: {
+        Row: {
+          condition: string
+          created_at: string
+          from_step_id: string
+          id: string
+          order_idx: number
+          to_step_id: string
+        }
+        Insert: {
+          condition?: string
+          created_at?: string
+          from_step_id: string
+          id?: string
+          order_idx?: number
+          to_step_id: string
+        }
+        Update: {
+          condition?: string
+          created_at?: string
+          from_step_id?: string
+          id?: string
+          order_idx?: number
+          to_step_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_step_transitions_from_step_id_fkey"
+            columns: ["from_step_id"]
+            isOneToOne: false
+            referencedRelation: "job_steps"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_step_transitions_to_step_id_fkey"
+            columns: ["to_step_id"]
+            isOneToOne: false
+            referencedRelation: "job_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_steps: {
+        Row: {
+          config: Json
+          created_at: string
+          dialogue: Json
+          id: string
+          job_id: string
+          kind: string
+          label: string | null
+          position_x: number | null
+          position_y: number | null
+        }
+        Insert: {
+          config?: Json
+          created_at?: string
+          dialogue?: Json
+          id?: string
+          job_id: string
+          kind: string
+          label?: string | null
+          position_x?: number | null
+          position_y?: number | null
+        }
+        Update: {
+          config?: Json
+          created_at?: string
+          dialogue?: Json
+          id?: string
+          job_id?: string
+          kind?: string
+          label?: string | null
+          position_x?: number | null
+          position_y?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_steps_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "job_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      job_templates: {
+        Row: {
+          active: boolean
+          cooldown_seconds: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          giver_npc_id: string | null
+          id: string
+          map_id: string
+          min_level: number
+          payout_cents: number
+          start_step_id: string | null
+          title: string
+          updated_at: string
+          xp_reward: number
+        }
+        Insert: {
+          active?: boolean
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          giver_npc_id?: string | null
+          id?: string
+          map_id: string
+          min_level?: number
+          payout_cents?: number
+          start_step_id?: string | null
+          title: string
+          updated_at?: string
+          xp_reward?: number
+        }
+        Update: {
+          active?: boolean
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          giver_npc_id?: string | null
+          id?: string
+          map_id?: string
+          min_level?: number
+          payout_cents?: number
+          start_step_id?: string | null
+          title?: string
+          updated_at?: string
+          xp_reward?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_templates_giver_npc_id_fkey"
+            columns: ["giver_npc_id"]
+            isOneToOne: false
+            referencedRelation: "npc_instances"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_templates_start_step_fk"
+            columns: ["start_step_id"]
+            isOneToOne: false
+            referencedRelation: "job_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       map_asset_interactions: {
         Row: {
           animation_key: string
@@ -1748,6 +1977,7 @@ export type Database = {
         Args: { _job_id: string; _player_x: number; _player_z: number }
         Returns: Json
       }
+      complete_job: { Args: { _progress_id: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
