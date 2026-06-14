@@ -480,6 +480,7 @@
       talk_to_npc: "Fale com o NPC",
       enter_vehicle: "Entre no veículo",
       drive_to: "Dirija até o destino",
+      park_vehicle: "Estacione o veículo",
       play_animation: "Realizando ação…",
     })[k] || k || "";
   }
