@@ -3040,3 +3040,63 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
 @media (max-width: 600px) and (orientation: portrait) {
   .cam-toggle-pill { width: 40px; height: 40px; top: calc(60px + env(safe-area-inset-top)); }
 }
+
+/* ====== Jobs / Missões ====== */
+.job-prompt {
+  position: fixed; bottom: 160px; left: 50%; transform: translateX(-50%);
+  background: rgba(0,0,0,.85); color: #33dd66;
+  padding: 10px 22px; border-radius: 24px;
+  font: 700 14px system-ui; z-index: 9999;
+  border: 1px solid #33dd66; cursor: pointer;
+}
+#jobHud {
+  position: fixed; top: 110px; right: 12px;
+  background: rgba(0,0,0,.85); color: #fff;
+  border: 1px solid #33dd66; padding: 10px 14px; border-radius: 10px;
+  font: 600 13px/1.4 system-ui; z-index: 9998; min-width: 220px; max-width: 280px;
+}
+#jobHud .job-hud-title { font-size: 14px; color: #33dd66; margin-bottom: 4px; }
+#jobHud .job-hud-step { opacity: .9; }
+#jobHud .job-hud-foot { margin-top: 6px; font-size: 11px; opacity: .55; }
+
+.npc-bubble {
+  position: fixed; top: 0; left: 0;
+  background: #fff; color: #111;
+  padding: 8px 12px; border-radius: 14px;
+  font: 600 13px/1.3 system-ui; max-width: 240px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+  z-index: 9997; pointer-events: none;
+  transition: opacity .4s ease;
+  white-space: pre-wrap;
+}
+.npc-bubble::after {
+  content: ""; position: absolute; bottom: -6px; left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #fff; border-bottom: 0;
+}
+
+.job-card {
+  background: rgba(255,255,255,0.04); border: 1px solid #222;
+  border-radius: 10px; padding: 12px;
+}
+.job-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.job-card-meta { font-size: 12px; opacity: .7; margin: 4px 0 10px; }
+.job-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.job-card-actions button { padding: 6px 10px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; cursor: pointer; font-size: 12px; }
+.job-card-actions button.danger { border-color: #a44; color: #f99; }
+.job-pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+.job-pill.on { background: rgba(51,221,102,.18); color: #33dd66; }
+.job-pill.off { background: rgba(255,255,255,.08); color: #999; }
+
+.job-step-row {
+  background: rgba(255,255,255,0.03); border: 1px solid #222;
+  border-radius: 8px; padding: 10px;
+}
+.job-step-head { display: flex; justify-content: space-between; align-items: center; }
+.job-step-kind { font-size: 11px; opacity: .55; font-family: monospace; }
+.job-step-cfg { font: 11px/1.3 monospace; opacity: .7; margin: 6px 0; word-break: break-all; }
+.job-step-transitions { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; margin-bottom: 8px; }
+.job-step-transitions span { background: rgba(51,221,102,.12); padding: 2px 6px; border-radius: 4px; }
+.job-step-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.job-step-actions button { padding: 4px 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; cursor: pointer; font-size: 11px; }
+.job-step-actions button.danger { border-color: #a44; color: #f99; }
