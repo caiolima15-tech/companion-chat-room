@@ -89,6 +89,11 @@
 
   // ============ RUNTIME ============
   const npcEntities = new Map();   // id -> ent (loaded visual)
+  window.__npcEntities = npcEntities;
+  // API pra outros sistemas (ex: jobs.js) controlarem NPCs:
+  window.__setNpcAnim = (id, name) => { const e = npcEntities.get(id); if (e) { e.currentAnimName = name; try { setAnim(e, name); } catch {} } };
+  window.__setNpcFacePlayer = (id, on) => { const e = npcEntities.get(id); if (e) { e.lockToPlayer = !!on; e._talkLock = !!on; if (on) e.targetPos = null; } };
+  window.__getNpcPos = (id) => { const e = npcEntities.get(id); return e?.group?.position || null; };
   const npcInstances = new Map();  // id -> instance row (filtered by current map)
   const npcStateCache = new Map(); // id -> latest state row (lightweight, kept for all NPCs in map)
   const npcModels = new Map();

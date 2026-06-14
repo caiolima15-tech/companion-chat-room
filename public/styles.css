@@ -3063,7 +3063,7 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   position: fixed; top: 0; left: 0;
   background: #fff; color: #111;
   padding: 8px 12px; border-radius: 14px;
-  font: 600 13px/1.3 system-ui; max-width: 240px;
+  font: 600 13px/1.3 system-ui; max-width: 260px;
   box-shadow: 0 4px 16px rgba(0,0,0,.4);
   z-index: 9997; pointer-events: none;
   transition: opacity .4s ease;
@@ -3074,6 +3074,22 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   transform: translateX(-50%);
   border: 6px solid transparent; border-top-color: #fff; border-bottom: 0;
 }
+.npc-bubble.interactive {
+  pointer-events: auto;
+  padding: 10px 14px 12px;
+  max-width: 280px;
+  border: 2px solid #33dd66;
+}
+.npc-bubble .npc-bubble-text { margin-bottom: 8px; font-weight: 600; }
+.npc-bubble .npc-bubble-meta { font-size: 11px; opacity: .55; margin-bottom: 8px; }
+.npc-bubble .npc-bubble-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.npc-bubble .npc-bubble-btn {
+  padding: 7px 12px; border-radius: 8px;
+  border: 1px solid #bbb; background: #f3f3f3; color: #222;
+  font: 600 12px system-ui; cursor: pointer;
+}
+.npc-bubble .npc-bubble-btn.primary { background: #33dd66; border-color: #2bb854; color: #062812; }
+.npc-bubble .npc-bubble-btn:hover { filter: brightness(.95); }
 
 .job-card {
   background: rgba(255,255,255,0.04); border: 1px solid #222;

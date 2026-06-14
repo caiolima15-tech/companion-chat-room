@@ -80,11 +80,19 @@
   async function createJob() {
     const sb = SB();
     const title = prompt("Título do emprego:"); if (!title) return;
+    const description = prompt("Mensagem do balão (ex: Olá! Posso te ajudar?):", "Olá! Posso te ajudar?") || "";
     const { data: { user } } = await sb.auth.getUser();
     const npcs = await loadGivers();
     const giverId = npcs.length ? promptSelect("Escolha o NPC dador:", npcs) : null;
+    const anims = await loadAnims();
+    let idleAnim = "idle";
+    if (anims.length) {
+      const chosen = promptSelect("Animação ociosa do NPC (idle, sit, lean…):", anims);
+      if (chosen) idleAnim = chosen;
+    }
     const { data, error } = await sb.from("job_templates").insert({
-      map_id: window.__currentMapId, title, giver_npc_id: giverId,
+      map_id: window.__currentMapId, title, description, giver_npc_id: giverId,
+      idle_animation: idleAnim, face_player_radius: 4,
       payout_cents: 500, xp_reward: 20, cooldown_seconds: 60, created_by: user.id,
     }).select().single();
     if (error) return alert(error.message);
@@ -98,6 +106,19 @@
     return (npcs || []).map(n => ({ id: n.id, label: n.name || n.id.slice(0, 8) }));
   }
 
+  async function loadAnims() {
+    const sb = SB();
+    const { data } = await sb.from("npc_animations").select("slug,name").order("slug");
+    const seen = new Set();
+    const out = [];
+    for (const a of data || []) {
+      if (seen.has(a.slug)) continue;
+      seen.add(a.slug);
+      out.push({ id: a.slug, label: `${a.slug}${a.name ? ' — ' + a.name : ''}` });
+    }
+    return out;
+  }
+
   function promptSelect(msg, opts) {
     const lines = opts.map((o, i) => `${i + 1}. ${o.label}`).join("\n");
     const choice = parseInt(prompt(`${msg}\n${lines}\n\nDigite o número:`), 10);
@@ -106,15 +127,27 @@
 
   async function editJob(j) {
     const title = prompt("Título:", j.title); if (title == null) return;
-    const description = prompt("Descrição:", j.description || "") || "";
+    const description = prompt("Mensagem do balão do NPC:", j.description || "") || "";
     const payout = parseInt(prompt("Pagamento (R$):", (j.payout_cents / 100).toFixed(2)) || "0", 10) * 100;
     const cooldown = parseInt(prompt("Cooldown (segundos):", String(j.cooldown_seconds)) || "0", 10);
     const xp = parseInt(prompt("XP de recompensa:", String(j.xp_reward)) || "0", 10);
     const npcs = await loadGivers();
     let giverId = j.giver_npc_id;
     if (npcs.length && confirm("Trocar NPC dador?")) giverId = promptSelect("NPC dador:", npcs);
+    let idleAnim = j.idle_animation || "idle";
+    if (confirm("Trocar animação ociosa do NPC?")) {
+      const anims = await loadAnims();
+      if (anims.length) {
+        const chosen = promptSelect("Animação ociosa (idle, sit, lean…):", anims);
+        if (chosen) idleAnim = chosen;
+      } else {
+        const v = prompt("Slug da animação:", idleAnim);
+        if (v) idleAnim = v;
+      }
+    }
     await SB().from("job_templates").update({
-      title, description, payout_cents: payout, cooldown_seconds: cooldown, xp_reward: xp, giver_npc_id: giverId,
+      title, description, payout_cents: payout, cooldown_seconds: cooldown,
+      xp_reward: xp, giver_npc_id: giverId, idle_animation: idleAnim,
     }).eq("id", j.id);
     refreshList();
   }

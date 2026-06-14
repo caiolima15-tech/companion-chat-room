@@ -870,8 +870,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          face_player_radius: number | null
           giver_npc_id: string | null
           id: string
+          idle_animation: string | null
           map_id: string
           min_level: number
           payout_cents: number
@@ -886,8 +888,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          face_player_radius?: number | null
           giver_npc_id?: string | null
           id?: string
+          idle_animation?: string | null
           map_id: string
           min_level?: number
           payout_cents?: number
@@ -902,8 +906,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          face_player_radius?: number | null
           giver_npc_id?: string | null
           id?: string
+          idle_animation?: string | null
           map_id?: string
           min_level?: number
           payout_cents?: number
