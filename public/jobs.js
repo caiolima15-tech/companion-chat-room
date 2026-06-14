@@ -190,7 +190,39 @@
     if (step.kind === "goto_point" || step.kind === "deliver_item" || step.kind === "drive_to") spawnDestMarker(step.config);
     if (step.kind === "enter_vehicle") spawnVehicleArrow(step.config);
     if (step.kind === "park_vehicle") spawnParkMarker(step.config);
+    if (step.kind === "deliver_to_spawned_npc") spawnDeliveryNpc(step);
+    updateGpsTarget(step);
   }
+
+  // ============ GPS ============
+  function updateGpsTarget(step) {
+    const cfg = step?.config || {};
+    let label = step?.label || "";
+    if (step?.kind === "pickup_item") {
+      window.__jobGpsTarget = { x: cfg.spawn_x ?? cfg.x ?? 0, z: cfg.spawn_z ?? cfg.z ?? 0, label: label || "Pegar caixa" };
+    } else if (step?.kind === "enter_vehicle" && cfg.car_id) {
+      const p = window.__getMapCarPos?.(cfg.car_id);
+      if (p) window.__jobGpsTarget = { x: p.x, z: p.z, label: label || "Entrar na van", _carId: cfg.car_id };
+      else window.__jobGpsTarget = null;
+    } else if (cfg.x != null && cfg.z != null) {
+      window.__jobGpsTarget = { x: cfg.x, z: cfg.z, label: label || "Destino" };
+    } else {
+      // alvo = NPC dador/alvo
+      const id = stepNpcId(step);
+      const pos = id ? npcPos(id) : null;
+      window.__jobGpsTarget = pos ? { x: pos.x, z: pos.z, label: label || "Falar com NPC" } : null;
+    }
+  }
+
+  function refreshGpsLive() {
+    // mantém o alvo seguindo van quando aplicável
+    const t = window.__jobGpsTarget;
+    if (t?._carId) {
+      const p = window.__getMapCarPos?.(t._carId);
+      if (p) { t.x = p.x; t.z = p.z; }
+    }
+  }
+
 
   function runScriptedDialogue(npcId, lines, onDone) {
     dialogueActive = true;
