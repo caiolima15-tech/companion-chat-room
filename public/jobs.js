@@ -450,6 +450,8 @@
     const sc = scene();
     if (currentMarker && sc) { sc.remove(currentMarker); currentMarker = null; }
     if (pickupMesh && sc) { sc.remove(pickupMesh); pickupMesh = null; }
+    for (const lm of liveMarkers) { try { sc?.remove(lm.mesh); } catch {} }
+    liveMarkers = [];
     hidePrompt();
     closeScriptedDialog();
     for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
