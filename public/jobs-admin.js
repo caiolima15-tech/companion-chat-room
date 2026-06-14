@@ -183,6 +183,7 @@
           <button data-add="enter_vehicle">+ Entrar veículo</button>
           <button data-add="drive_to">+ Dirigir até</button>
           <button data-add="park_vehicle">+ Estacionar veículo</button>
+          <button data-add="deliver_to_spawned_npc">+ Entregar a NPC (spawn)</button>
           <button data-add="play_animation">+ Animação</button>
           <button data-add="complete">+ Concluir</button>
           <button data-add="fail">+ Falhar</button>
