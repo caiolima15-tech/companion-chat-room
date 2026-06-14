@@ -2814,6 +2814,9 @@ body.world-ready .logout-pill { display: inline-flex; }
   .fb-joy { opacity: 0.55; transition: opacity .2s ease; }
   .fb-joy:active, .fb-joy.is-active { opacity: 0.95; }
 
+  /* Backdrop não faz sentido em landscape (chat sempre visível) */
+  .mobile-backdrop { display: none !important; }
+
   /* Chat estilo Roblox: painel transparente flutuante no canto sup. esq., sem fundo pesado.
      Mensagens flutuam sobre o jogo; input fino no rodapé. */
   body.mobile-show-chat .chat-panel,
