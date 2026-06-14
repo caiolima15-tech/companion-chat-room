@@ -372,6 +372,7 @@
   function tickStep() {
     if (dialogueActive) return;
     updateLiveMarkers();
+    refreshGpsLive();
     const p = player(); if (!p || !currentStep) return;
     const cfg = currentStep.config || {};
     const kind = currentStep.kind;
