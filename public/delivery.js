@@ -48,6 +48,7 @@
   let hubs = [], destinations = {};
   async function renderHubs() {
     const sb = SB();
+    if (!sb) return;
     const { data: h } = await sb.from("delivery_hubs").select("*").eq("active", true);
     hubs = h || [];
     const { data: d } = await sb.from("delivery_destinations").select("*");

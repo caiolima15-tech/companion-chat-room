@@ -34,11 +34,18 @@
     if (!body) return;
     body.innerHTML = "Carregando…";
     const sb = SB();
+    if (!sb) { body.innerHTML = "<div class='users-admin-empty'>Backend ainda inicializando. Tente novamente em 2s.</div>"; return; }
     const mapId = window.__currentMapId;
-    const { data: jobs } = await sb.from("job_templates").select("*").eq("map_id", mapId).order("created_at", { ascending: false });
-    if (!jobs?.length) { body.innerHTML = "<div class='users-admin-empty'>Nenhum emprego neste mapa. Clique em + Novo emprego.</div>"; return; }
-    body.innerHTML = "";
-    for (const j of jobs) body.appendChild(renderJobCard(j));
+    if (!mapId) { body.innerHTML = "<div class='users-admin-empty'>Entre numa sala primeiro para gerenciar empregos.</div>"; return; }
+    try {
+      const { data: jobs, error } = await sb.from("job_templates").select("*").eq("map_id", mapId).order("created_at", { ascending: false });
+      if (error) throw error;
+      if (!jobs?.length) { body.innerHTML = "<div class='users-admin-empty'>Nenhum emprego neste mapa. Clique em + Novo emprego.</div>"; return; }
+      body.innerHTML = "";
+      for (const j of jobs) body.appendChild(renderJobCard(j));
+    } catch (e) {
+      body.innerHTML = `<div class='users-admin-empty'>Erro ao carregar: ${escapeHtml(e?.message || String(e))}</div>`;
+    }
   }
 
   function renderJobCard(j) {
@@ -300,11 +307,16 @@
 
   function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
-  // Boot: liga o botão do dock
-  function attach() {
-    const btn = document.getElementById("adminDockJobs");
-    if (btn) { btn.addEventListener("click", openPanel); return; }
-    setTimeout(attach, 800);
-  }
-  attach();
+  // Expor globalmente p/ qualquer ponto do app abrir o painel
+  window.openJobsAdmin = openPanel;
+
+  // Delegação global: funciona mesmo se o botão for re-renderizado depois
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target?.closest?.("#adminDockJobs");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    try { openPanel(); }
+    catch (e) { console.error("[jobs-admin] erro ao abrir painel:", e); alert("Erro ao abrir painel de empregos: " + (e?.message || e)); }
+  }, true); // capture phase — roda antes do handler do #adminDock
 })();
