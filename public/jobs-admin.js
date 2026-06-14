@@ -224,6 +224,7 @@
       talk_to_npc: "Falar com NPC",
       enter_vehicle: "Entrar no veículo",
       drive_to: "Dirigir até",
+      park_vehicle: "Estacionar veículo",
       play_animation: "Animação",
       complete: "✅ Concluir",
       fail: "❌ Falhar",
