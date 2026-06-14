@@ -3116,3 +3116,34 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
 .job-step-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .job-step-actions button { padding: 4px 8px; border-radius: 6px; border: 1px solid #444; background: #222; color: #eee; cursor: pointer; font-size: 11px; }
 .job-step-actions button.danger { border-color: #a44; color: #f99; }
+
+/* ============ MINIMAPA ============ */
+#miniMap {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  width: 170px;
+  z-index: 950;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 6px 18px rgba(0,0,0,.5));
+  transition: opacity .25s ease;
+}
+#miniMap canvas { display: block; }
+#miniMapLabel {
+  position: absolute;
+  left: 50%;
+  bottom: -22px;
+  transform: translateX(-50%);
+  background: rgba(10,14,22,0.85);
+  color: #ffd11a;
+  font: 700 11px/1 system-ui, sans-serif;
+  padding: 4px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+@media (max-width: 720px) {
+  #miniMap { width: 130px; left: 10px; bottom: 110px; }
+  #miniMap canvas { width: 130px; height: 130px; }
+}

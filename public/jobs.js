@@ -190,7 +190,39 @@
     if (step.kind === "goto_point" || step.kind === "deliver_item" || step.kind === "drive_to") spawnDestMarker(step.config);
     if (step.kind === "enter_vehicle") spawnVehicleArrow(step.config);
     if (step.kind === "park_vehicle") spawnParkMarker(step.config);
+    if (step.kind === "deliver_to_spawned_npc") spawnDeliveryNpc(step);
+    updateGpsTarget(step);
   }
+
+  // ============ GPS ============
+  function updateGpsTarget(step) {
+    const cfg = step?.config || {};
+    let label = step?.label || "";
+    if (step?.kind === "pickup_item") {
+      window.__jobGpsTarget = { x: cfg.spawn_x ?? cfg.x ?? 0, z: cfg.spawn_z ?? cfg.z ?? 0, label: label || "Pegar caixa" };
+    } else if (step?.kind === "enter_vehicle" && cfg.car_id) {
+      const p = window.__getMapCarPos?.(cfg.car_id);
+      if (p) window.__jobGpsTarget = { x: p.x, z: p.z, label: label || "Entrar na van", _carId: cfg.car_id };
+      else window.__jobGpsTarget = null;
+    } else if (cfg.x != null && cfg.z != null) {
+      window.__jobGpsTarget = { x: cfg.x, z: cfg.z, label: label || "Destino" };
+    } else {
+      // alvo = NPC dador/alvo
+      const id = stepNpcId(step);
+      const pos = id ? npcPos(id) : null;
+      window.__jobGpsTarget = pos ? { x: pos.x, z: pos.z, label: label || "Falar com NPC" } : null;
+    }
+  }
+
+  function refreshGpsLive() {
+    // mantém o alvo seguindo van quando aplicável
+    const t = window.__jobGpsTarget;
+    if (t?._carId) {
+      const p = window.__getMapCarPos?.(t._carId);
+      if (p) { t.x = p.x; t.z = p.z; }
+    }
+  }
+
 
   function runScriptedDialogue(npcId, lines, onDone) {
     dialogueActive = true;
@@ -298,6 +330,33 @@
     addMarker(arrow, () => ({ x: mesh.position.x, y: mesh.position.y, z: mesh.position.z }), 1.6);
   }
 
+  // NPC temporário (cápsula com cabeça) gerado para receber entrega
+  let spawnedNpcMesh = null;
+  function spawnDeliveryNpc(step) {
+    const T = THREE(), sc = scene(); if (!T || !sc) return;
+    const cfg = step.config || {};
+    const x = cfg.x ?? 0, y = cfg.y ?? 0, z = cfg.z ?? 0;
+    const group = new T.Group();
+    const body = new T.Mesh(
+      new T.CapsuleGeometry(0.32, 0.9, 4, 8),
+      new T.MeshStandardMaterial({ color: cfg.color || 0x4477cc }),
+    );
+    body.position.y = 0.85;
+    group.add(body);
+    const head = new T.Mesh(
+      new T.SphereGeometry(0.22, 12, 10),
+      new T.MeshStandardMaterial({ color: 0xf0c98a }),
+    );
+    head.position.y = 1.65;
+    group.add(head);
+    group.position.set(x, y, z);
+    group.rotation.y = cfg.rotation_y || 0;
+    sc.add(group);
+    spawnedNpcMesh = group;
+    const arrow = makeYellowArrow();
+    addMarker(arrow, () => ({ x: group.position.x, y: group.position.y, z: group.position.z }), 2.4);
+  }
+
   function updateLiveMarkers() {
     const t = performance.now() * 0.004;
     for (const lm of liveMarkers) {
@@ -313,6 +372,7 @@
   function tickStep() {
     if (dialogueActive) return;
     updateLiveMarkers();
+    refreshGpsLive();
     const p = player(); if (!p || !currentStep) return;
     const cfg = currentStep.config || {};
     const kind = currentStep.kind;
@@ -358,6 +418,11 @@
       } else {
         hidePrompt();
       }
+    } else if (kind === "deliver_to_spawned_npc") {
+      if (!spawnedNpcMesh) return;
+      const d = Math.hypot(spawnedNpcMesh.position.x - p.position.x, spawnedNpcMesh.position.z - p.position.z);
+      if (d < (cfg.radius || 2.2)) showPrompt("[E] Entregar");
+      else hidePrompt();
     } else if (kind === "play_animation") {
       if (!currentStep._animStartedAt) {
         currentStep._animStartedAt = Date.now();
@@ -399,6 +464,16 @@
       sb.from("job_progress").update({ state: { ...(currentProgress.state || {}), carrying: pickupItemKey } }).eq("id", currentProgress.id).then(() => {});
       currentProgress.state = { ...(currentProgress.state || {}), carrying: pickupItemKey };
       scene()?.remove(pickupMesh); pickupMesh = null;
+      hidePrompt();
+      advance("on_success");
+    } else if (currentStep.kind === "deliver_to_spawned_npc" && spawnedNpcMesh) {
+      const p = player();
+      const d = Math.hypot(spawnedNpcMesh.position.x - p.position.x, spawnedNpcMesh.position.z - p.position.z);
+      if (d > (currentStep.config?.radius || 2.2)) return;
+      // remove caixa do inventário
+      currentProgress.state = { ...(currentProgress.state || {}), carrying: null };
+      SB().from("job_progress").update({ state: currentProgress.state }).eq("id", currentProgress.id).then(() => {});
+      scene()?.remove(spawnedNpcMesh); spawnedNpcMesh = null;
       hidePrompt();
       advance("on_success");
     }
@@ -449,8 +524,10 @@
     const sc = scene();
     if (currentMarker && sc) { sc.remove(currentMarker); currentMarker = null; }
     if (pickupMesh && sc) { sc.remove(pickupMesh); pickupMesh = null; }
+    if (spawnedNpcMesh && sc) { sc.remove(spawnedNpcMesh); spawnedNpcMesh = null; }
     for (const lm of liveMarkers) { try { sc?.remove(lm.mesh); } catch {} }
     liveMarkers = [];
+    window.__jobGpsTarget = null;
     hidePrompt();
     closeScriptedDialog();
     for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
@@ -480,6 +557,7 @@
       enter_vehicle: "Entre no veículo",
       drive_to: "Dirija até o destino",
       park_vehicle: "Estacione o veículo",
+      deliver_to_spawned_npc: "Entregue ao destinatário",
       play_animation: "Realizando ação…",
     })[k] || k || "";
   }
