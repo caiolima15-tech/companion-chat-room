@@ -535,7 +535,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.maxPolarAngle = Math.PI * 0.47;
-controls.minDistance = 2.5;
+controls.minDistance = 0.35;
 controls.maxDistance = 60;
 controls.enablePan = false; // shift+drag continua girando a câmera (sem panorâmica)
 const BASE_MAX_DISTANCE = 60;
@@ -4998,6 +4998,49 @@ cameraButton.addEventListener("click", () => {
   followCamera = !followCamera;
   cameraButton.textContent = followCamera ? "Câmera" : "Livre";
 });
+
+// ===== Toggle 1ª / 3ª pessoa (botão flutuante + tecla C) =====
+// - Aproximar com zoom (distância < 1.2m) entra automaticamente em 1ª pessoa
+// - Dar zoom out (distância > 1.8m) volta pra 3ª pessoa
+// - Tecla C força alternância
+window.__firstPerson = false;
+const cameraToggleBtn = document.getElementById("cameraToggleBtn");
+function setFirstPerson(on) {
+  if (window.__firstPerson === on) return;
+  window.__firstPerson = !!on;
+  cameraToggleBtn?.classList.toggle("is-first-person", window.__firstPerson);
+  // Esconde o próprio avatar quando em 1ª pessoa pra não bloquear visão
+  try {
+    const meEnt = window.__me?.entity || window.__playerEntity;
+    const grp = meEnt?.group || window.__player;
+    if (grp) grp.visible = !window.__firstPerson;
+  } catch {}
+  if (on) {
+    // puxa câmera bem perto do alvo (cabeça)
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+    camera.position.copy(controls.target).addScaledVector(dir, 0.4);
+    controls.update();
+  } else {
+    // afasta um pouco pra 3ª pessoa confortável
+    const dir = new THREE.Vector3().subVectors(camera.position, controls.target);
+    const cur = dir.length();
+    if (cur < 2.5) { dir.setLength(3.2); camera.position.copy(controls.target).add(dir); controls.update(); }
+  }
+}
+cameraToggleBtn?.addEventListener("click", () => setFirstPerson(!window.__firstPerson));
+window.addEventListener("keydown", (e) => {
+  if (e.key && e.key.toLowerCase() === "c" && !(e.target.matches && e.target.matches("input,textarea"))) {
+    setFirstPerson(!window.__firstPerson);
+  }
+});
+// Auto-switch ao dar zoom: observa distância da câmera continuamente
+setInterval(() => {
+  try {
+    const d = camera.position.distanceTo(controls.target);
+    if (!window.__firstPerson && d < 1.1) setFirstPerson(true);
+    else if (window.__firstPerson && d > 1.9) setFirstPerson(false);
+  } catch {}
+}, 200);
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();

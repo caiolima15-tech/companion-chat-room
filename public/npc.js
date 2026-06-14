@@ -699,6 +699,9 @@
     btn.innerHTML = '<span class="hud-pill-ico">🧍</span><span class="hud-pill-label">NPCs</span>';
     btn.onclick = openNpcAdmin;
     document.body.appendChild(btn);
+    // Permite que o item do #adminDock abra o painel
+    const dockBtn = document.getElementById("adminDockNpcs");
+    if (dockBtn) dockBtn.addEventListener("click", openNpcAdmin);
   }
 
   async function openNpcAdmin() {
