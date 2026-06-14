@@ -310,6 +310,7 @@
       drive_to: "{ x, y, z, radius, car_id }",
       enter_vehicle: "{ car_id }",
       park_vehicle: "{ x, y, z, radius, car_id, despawn_on_complete }",
+      deliver_to_spawned_npc: "{ x, y, z, radius, color, rotation_y }",
       interact_asset: "{ asset_interaction_id, animation_key }",
       talk_to_npc: "{ target_npc_id, radius }",
       play_animation: "{ animation_key, duration_ms }",
