@@ -465,6 +465,16 @@
       scene()?.remove(pickupMesh); pickupMesh = null;
       hidePrompt();
       advance("on_success");
+    } else if (currentStep.kind === "deliver_to_spawned_npc" && spawnedNpcMesh) {
+      const p = player();
+      const d = Math.hypot(spawnedNpcMesh.position.x - p.position.x, spawnedNpcMesh.position.z - p.position.z);
+      if (d > (currentStep.config?.radius || 2.2)) return;
+      // remove caixa do inventário
+      currentProgress.state = { ...(currentProgress.state || {}), carrying: null };
+      SB().from("job_progress").update({ state: currentProgress.state }).eq("id", currentProgress.id).then(() => {});
+      scene()?.remove(spawnedNpcMesh); spawnedNpcMesh = null;
+      hidePrompt();
+      advance("on_success");
     }
   }
 
