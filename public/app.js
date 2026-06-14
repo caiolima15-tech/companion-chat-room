@@ -1841,7 +1841,13 @@ confirmMapButton?.addEventListener("click", async () => {
 
   if (switching && !alreadyInRoom) {
     currentMapId = selectedMapId;
+    window.__currentMapId = selectedMapId;
     localStorage.setItem("neon-tap-room-map", selectedMapId);
+    window.dispatchEvent(new CustomEvent("map-changed", { detail: selectedMapId }));
+  } else if (!alreadyInRoom) {
+    // Mesma sala que estava em cache — força NPCs a recarregarem para o map atual.
+    window.__currentMapId = currentMapId;
+    window.dispatchEvent(new CustomEvent("map-changed", { detail: currentMapId }));
   }
   closeMapSelect();
   if (!alreadyInRoom) {
@@ -3610,6 +3616,7 @@ function createPlayerEntity(player) {
   const plate = document.createElement("div");
   plate.className = "nameplate";
   plate.dataset.user = player.id;
+  if (player.id === myId) plate.classList.add("is-me");
   if (player.id !== myId) plate.classList.add("is-clickable");
   nameplatesLayer.appendChild(plate);
 
@@ -4779,9 +4786,9 @@ window.addEventListener("orientationchange", () => {
   setTimeout(resize, 50);
   setTimeout(resize, 350);
 });
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => setTimeout(resize, 30));
-}
+// Não rodar resize() em visualViewport changes — isso encolhe o canvas quando o
+// teclado virtual abre (faz a tela do jogo "subir" e deixa tarja preta).
+// O resize via window.resize/orientationchange é suficiente.
 
 // Teclado mobile: mantém o jogo ancorado e sobe APENAS o chat usando --kb-offset.
 // O visualViewport encolhe quando o teclado aparece (iOS Safari, Chrome Android).

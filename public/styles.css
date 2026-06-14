@@ -2740,15 +2740,16 @@ body.world-ready #moneyHud.money-pill { display: inline-flex; }
 body.world-ready .logout-pill { display: inline-flex; }
 .logout-pill .hud-pill-ico { font-weight: 900; }
 
-/* Nameplate readability boost */
+/* Nameplate: só texto branco com leve sombra (sem tarja). Esconde o do próprio usuário. */
 .nameplate {
-  background: rgba(0,0,0,0.42) !important;
-  padding: 3px 8px !important;
-  border-radius: 8px !important;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.85), 0 0 6px rgba(0,0,0,0.55);
 }
+.nameplate.is-me .plate-name { display: none !important; }
 
 /* NPC conversation banner — replaces noisy chat-log system lines */
 .npc-chat-banner {
@@ -2817,25 +2818,25 @@ body.world-ready .logout-pill { display: inline-flex; }
   /* Backdrop não faz sentido em landscape (chat sempre visível) */
   .mobile-backdrop { display: none !important; }
 
-  /* Chat estilo Roblox: painel transparente flutuante no canto sup. esq., sem fundo pesado.
-     Mensagens flutuam sobre o jogo; input fino no rodapé. */
+  /* Chat estilo Roblox: caixinha compacta no canto superior-esquerdo,
+     fundo preto translúcido (~60%), NÃO ocupa a tela toda. */
   body.mobile-show-chat .chat-panel,
   .chat-panel {
     left: calc(10px + env(safe-area-inset-left)) !important;
     right: auto !important;
-    top: calc(48px + env(safe-area-inset-top)) !important;
+    top: calc(10px + env(safe-area-inset-top)) !important;
     bottom: auto !important;
-    width: 320px !important;
+    width: 360px !important;
     max-width: 46vw !important;
-    height: calc(var(--vv-height, 100dvh) - 64px - env(safe-area-inset-top)) !important;
-    max-height: calc(var(--vv-height, 100dvh) - 64px) !important;
-    min-height: 180px !important;
+    height: 210px !important;
+    max-height: 42vh !important;
+    min-height: 160px !important;
     border-radius: 10px !important;
-    border: 0 !important;
-    background: transparent !important;
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    box-shadow: none !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    background: rgba(0,0,0,0.60) !important;
+    backdrop-filter: blur(6px) !important;
+    -webkit-backdrop-filter: blur(6px) !important;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4) !important;
     transform: translateY(0) !important;
     grid-template-rows: auto minmax(0, 1fr) auto !important;
     pointer-events: auto !important;
@@ -2845,10 +2846,22 @@ body.world-ready .logout-pill { display: inline-flex; }
   .chat-panel::before { display: none !important; }
 
   .chat-panel .chat-log {
-    padding: 6px 8px !important;
+    padding: 6px 10px !important;
     gap: 4px !important;
     background: transparent !important;
     overflow-y: auto !important;
+    font-size: 13px !important;
+  }
+  /* Compactar mensagens: ocultar avatares grandes, deixar só texto */
+  .chat-panel .chat-log .chat-avatar,
+  .chat-panel .chat-log img.avatar { display: none !important; }
+  .chat-panel .chat-log .chat-message { padding: 2px 0 !important; gap: 4px !important; }
+  .chat-panel .chat-log .chat-bubble {
+    background: transparent !important;
+    color: #fff !important;
+    padding: 0 !important;
+    font-size: 13px !important;
+    line-height: 1.25 !important;
   }
   .chat-panel .chat-form {
     position: sticky;
@@ -2858,29 +2871,33 @@ body.world-ready .logout-pill { display: inline-flex; }
     align-items: center !important;
     gap: 6px !important;
     padding: 6px 8px !important;
-    background: rgba(0,0,0,0.45) !important;
-    border-top: 1px solid rgba(255,255,255,0.10) !important;
-    border-radius: 8px !important;
+    background: rgba(0,0,0,0.35) !important;
+    border-top: 1px solid rgba(255,255,255,0.08) !important;
+    border-radius: 0 0 10px 10px !important;
   }
   .chat-panel .chat-form input {
     flex: 1 1 auto !important;
     min-width: 0 !important;
-    height: 34px !important;
+    height: 30px !important;
     border-radius: 6px !important;
     padding: 0 10px !important;
-    font-size: 14px !important;
+    font-size: 13px !important;
     background: rgba(255,255,255,0.10) !important;
-    border: 1px solid rgba(255,255,255,0.16) !important;
+    border: 1px solid rgba(255,255,255,0.14) !important;
+    color: #fff !important;
   }
   .chat-panel .chat-form button {
     flex: 0 0 auto !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
     padding: 0 !important;
     border-radius: 50% !important;
     font-size: 0 !important;
   }
+
+  .chat-tabs { padding: 4px 6px 0 !important; }
+  .chat-tab { padding: 8px 6px !important; font-size: 12px !important; }
 
   /* Banner de NPC entra logo abaixo das pills */
   .npc-chat-banner { top: calc(64px + env(safe-area-inset-top)); }
