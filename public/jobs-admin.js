@@ -300,11 +300,16 @@
 
   function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m])); }
 
-  // Boot: liga o botão do dock
-  function attach() {
-    const btn = document.getElementById("adminDockJobs");
-    if (btn) { btn.addEventListener("click", openPanel); return; }
-    setTimeout(attach, 800);
-  }
-  attach();
+  // Expor globalmente p/ qualquer ponto do app abrir o painel
+  window.openJobsAdmin = openPanel;
+
+  // Delegação global: funciona mesmo se o botão for re-renderizado depois
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target?.closest?.("#adminDockJobs");
+    if (!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    try { openPanel(); }
+    catch (e) { console.error("[jobs-admin] erro ao abrir painel:", e); alert("Erro ao abrir painel de empregos: " + (e?.message || e)); }
+  }, true); // capture phase — roda antes do handler do #adminDock
 })();
