@@ -2722,15 +2722,22 @@ body:not(.is-admin) #npcAdminBtn.npc-pill { display: none !important; }
   color: #7be37b;
   text-shadow: 0 2px 0 rgba(0,0,0,0.55), 0 0 12px rgba(123,227,123,0.35);
   padding: 0 18px;
+  display: none;
 }
+body.world-ready #moneyHud.money-pill { display: inline-flex; }
 
-/* Logout pill in topbar status — only restyle, keep in flow */
+/* Logout pill — flutuante fora da topbar, sempre visível em-jogo */
 .logout-pill {
-  position: static !important;
-  height: 36px !important;
+  position: fixed !important;
+  top: calc(12px + env(safe-area-inset-top));
+  right: calc(76px + env(safe-area-inset-right));
+  height: 44px !important;
   padding: 0 14px !important;
   color: #ffb4b4;
+  z-index: 1100;
+  display: none;
 }
+body.world-ready .logout-pill { display: inline-flex; }
 .logout-pill .hud-pill-ico { font-weight: 900; }
 
 /* Nameplate readability boost */
