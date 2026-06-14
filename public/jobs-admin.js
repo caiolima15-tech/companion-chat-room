@@ -226,6 +226,7 @@
       enter_vehicle: "Entrar no veículo",
       drive_to: "Dirigir até",
       park_vehicle: "Estacionar veículo",
+      deliver_to_spawned_npc: "Entregar a NPC (spawn)",
       play_animation: "Animação",
       complete: "✅ Concluir",
       fail: "❌ Falhar",
