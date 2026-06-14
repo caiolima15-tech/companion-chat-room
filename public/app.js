@@ -3616,6 +3616,7 @@ function createPlayerEntity(player) {
   const plate = document.createElement("div");
   plate.className = "nameplate";
   plate.dataset.user = player.id;
+  if (player.id === myId) plate.classList.add("is-me");
   if (player.id !== myId) plate.classList.add("is-clickable");
   nameplatesLayer.appendChild(plate);
 
