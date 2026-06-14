@@ -802,19 +802,9 @@
         chatBtn.addEventListener('click', () => toggleMode('chat'));
         backdrop.addEventListener('click', () => setMode(null));
 
-        // Tap the small arrow above the chat top to collapse
-        const chatPanel = document.querySelector('.chat-panel');
-        if (chatPanel) {
-          chatPanel.addEventListener('click', (e) => {
-            if (currentMode() !== 'chat') return;
-            const rect = chatPanel.getBoundingClientRect();
-            // Arrow lives ~34px above panel top, ~36px wide centered
-            if (e.clientY < rect.top && e.clientY > rect.top - 40) {
-              const cx = rect.left + rect.width / 2;
-              if (Math.abs(e.clientX - cx) <= 24) setMode(null);
-            }
-          });
-        }
+        // (Removido) handler de "tocar na setinha para minimizar" — em landscape o chat
+        // fica sempre visível (estilo Roblox), então qualquer toque dentro do painel
+        // NÃO deve minimizar. Em portrait o usuário usa o botão da barra inferior.
 
         document.getElementById('emoteCluster').addEventListener('click', (e) => {
           if (e.target.tagName === 'BUTTON' && currentMode() === 'emotes') {
