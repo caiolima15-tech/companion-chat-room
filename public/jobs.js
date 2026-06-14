@@ -1,5 +1,4 @@
 // Sistema de empregos / missões — runtime do jogador
-// Detecta NPCs dadores, executa etapas, mostra balões e HUD.
 (function () {
   const SB = () => window.__supabase || window.supabase;
   const player = () => window.__player;
@@ -8,21 +7,25 @@
 
   let booted = false;
   let userId = null;
-  let templates = [];          // job_templates ativos do mapa atual
-  let stepsByJob = {};         // { job_id: [steps] }
-  let transitionsByStep = {};  // { from_step_id: [transitions] }
-  let currentProgress = null;  // job_progress ativo
+  let templates = [];
+  let stepsByJob = {};
+  let transitionsByStep = {};
+  let currentProgress = null;
   let currentJob = null;
   let currentStep = null;
   let currentMarker = null;
   let pickupMesh = null;
-  let pickupItemKey = null;    // chave do item carregado pelo player
+  let pickupItemKey = null;
   let hudEl = null;
   let promptEl = null;
-  let nearGiver = null;
-  let bubbles = new Map();     // npcId -> el
-  let cooldowns = {};          // { job_id: available_at_ms }
+  let nearGiver = null;          // template
+  let giverDialogEl = null;      // bubble interativa com "Pedir / Cancelar"
+  let scriptedDialogEl = null;   // bubble com Próximo/Iniciar
+  let dialogueActive = false;    // bloqueia lógica do step enquanto fala
+  let bubbles = new Map();
+  let cooldowns = {};
   let mapId = null;
+  let lockedGiverNpcId = null;
 
   function tryBoot() {
     if (booted) return;
@@ -36,11 +39,9 @@
     const { data: { user } } = await sb.auth.getUser();
     if (!user) return setTimeout(init, 2000);
     userId = user.id;
-
     window.addEventListener("map-changed", () => loadForMap());
     await loadForMap();
-
-    setInterval(loop, 600);
+    setInterval(loop, 400);
     window.addEventListener("keydown", onKey);
   }
 
@@ -53,23 +54,17 @@
     const { data: t } = await sb.from("job_templates").select("*").eq("map_id", mapId).eq("active", true);
     templates = t || [];
     if (!templates.length) return;
-
     const jobIds = templates.map(x => x.id);
     const { data: steps } = await sb.from("job_steps").select("*").in("job_id", jobIds);
     for (const s of steps || []) (stepsByJob[s.job_id] ||= []).push(s);
-
     const stepIds = (steps || []).map(s => s.id);
     if (stepIds.length) {
       const { data: trs } = await sb.from("job_step_transitions").select("*").in("from_step_id", stepIds).order("order_idx");
       for (const tr of trs || []) (transitionsByStep[tr.from_step_id] ||= []).push(tr);
     }
-
-    // carrega cooldowns
     const { data: cds } = await sb.from("job_cooldowns").select("*").eq("user_id", userId).in("job_id", jobIds);
     cooldowns = {};
     for (const c of cds || []) cooldowns[c.job_id] = new Date(c.available_at).getTime();
-
-    // procura progresso ativo
     const { data: prog } = await sb.from("job_progress").select("*").eq("user_id", userId).eq("status", "active").in("job_id", jobIds).maybeSingle();
     if (prog) {
       currentProgress = prog;
@@ -77,73 +72,73 @@
       currentStep = (stepsByJob[prog.job_id] || []).find(s => s.id === prog.current_step_id);
       if (currentStep) enterStep(currentStep, true);
     }
-
-    renderGiverMarkers();
+    applyIdleAnimations();
   }
 
-  function renderGiverMarkers() {
-    const T = THREE(), sc = scene(); if (!T || !sc) return;
-    sc.children.filter(c => c.userData?.isJobGiverMarker).forEach(c => sc.remove(c));
-    // marcador depende da posição do NPC; o npc.js mantém __npcMeshes
+  // Aplica animação ociosa dos givers (e re-aplica quando NPC entra no LOD)
+  function applyIdleAnimations() {
     for (const tpl of templates) {
-      if (!tpl.giver_npc_id) continue;
-      const mesh = makeMarker(0x33dd66, "💼");
-      mesh.userData = { isJobGiverMarker: true, jobId: tpl.id, npcId: tpl.giver_npc_id };
-      sc.add(mesh);
+      if (tpl.giver_npc_id && tpl.idle_animation) {
+        try { window.__setNpcAnim?.(tpl.giver_npc_id, tpl.idle_animation); } catch {}
+      }
     }
   }
 
-  function makeMarker(color, _emoji) {
-    const T = THREE();
-    const g = new T.ConeGeometry(0.5, 1.3, 6);
-    const m = new T.MeshBasicMaterial({ color });
-    const mesh = new T.Mesh(g, m);
-    mesh.rotation.x = Math.PI;
-    return mesh;
-  }
-
   function npcPos(npcId) {
-    // tenta achar a malha do NPC
-    const map = window.__npcMeshes || window.__npcs;
-    if (!map) return null;
-    const e = map.get ? map.get(npcId) : map[npcId];
-    if (!e) return null;
-    return e.position || e.group?.position || e.mesh?.position || null;
+    return window.__getNpcPos?.(npcId) || null;
   }
 
   function loop() {
     const T = THREE(), sc = scene(), p = player(); if (!T || !sc || !p) return;
 
-    // posiciona marcadores dos NPCs dadores
-    sc.children.filter(c => c.userData?.isJobGiverMarker).forEach(c => {
-      const pos = npcPos(c.userData.npcId);
-      if (pos) c.position.set(pos.x, (pos.y || 0) + 2.6, pos.z);
-    });
+    // re-aplica animação ociosa periodicamente (NPCs podem ser despawn/spawn pelo LOD)
+    applyIdleAnimations();
 
     if (currentProgress) return tickStep();
 
-    // procura giver próximo
-    let best = null, bestD = 3.5;
+    let best = null, bestD = 4;
     for (const tpl of templates) {
       if (cooldowns[tpl.id] && cooldowns[tpl.id] > Date.now()) continue;
+      if (!tpl.giver_npc_id) continue;
       const pos = npcPos(tpl.giver_npc_id);
       if (!pos) continue;
       const d = Math.hypot(pos.x - p.position.x, pos.z - p.position.z);
-      if (d < bestD) { bestD = d; best = tpl; }
+      const facer = tpl.face_player_radius || 4;
+      const r = Math.max(facer, bestD);
+      if (d < r && d < bestD + 0.0001) { bestD = d; best = tpl; }
     }
+
+    // gerencia face-player: trava no giver mais próximo
+    const wantLockId = best?.giver_npc_id || null;
+    if (wantLockId !== lockedGiverNpcId) {
+      if (lockedGiverNpcId) window.__setNpcFacePlayer?.(lockedGiverNpcId, false);
+      if (wantLockId) window.__setNpcFacePlayer?.(wantLockId, true);
+      lockedGiverNpcId = wantLockId;
+    }
+
     nearGiver = best;
-    syncGiverPrompt();
+    syncGiverDialog();
   }
 
-  function syncGiverPrompt() {
-    if (nearGiver && !promptEl) {
-      promptEl = document.createElement("div");
-      promptEl.className = "job-prompt";
-      promptEl.onclick = () => acceptJob(nearGiver);
-      document.body.appendChild(promptEl);
-    }
-    if (!nearGiver && promptEl) { promptEl.remove(); promptEl = null; }
-    if (nearGiver && promptEl) promptEl.textContent = `💼 [J] ${nearGiver.title}`;
+  // ============ DIÁLOGO INTERATIVO DO DADOR ============
+  function syncGiverDialog() {
+    if (!nearGiver) { closeGiverDialog(); return; }
+    if (giverDialogEl && giverDialogEl.dataset.jobId === nearGiver.id) return;
+    closeGiverDialog();
+    giverDialogEl = makeBubble(nearGiver.giver_npc_id, "interactive");
+    giverDialogEl.dataset.jobId = nearGiver.id;
+    giverDialogEl.innerHTML = `
+      <div class="npc-bubble-text">${escapeHtml(nearGiver.description || "Posso te ajudar com algo?")}</div>
+      <div class="npc-bubble-actions">
+        <button type="button" class="npc-bubble-btn primary" data-act="accept">💼 Pedir emprego</button>
+        <button type="button" class="npc-bubble-btn" data-act="cancel">Cancelar</button>
+      </div>`;
+    giverDialogEl.querySelector('[data-act="accept"]').onclick = () => acceptJob(nearGiver);
+    giverDialogEl.querySelector('[data-act="cancel"]').onclick = () => { nearGiver = null; closeGiverDialog(); };
+  }
+
+  function closeGiverDialog() {
+    if (giverDialogEl) { giverDialogEl._dispose?.(); giverDialogEl.remove(); giverDialogEl = null; }
   }
 
   function onKey(e) {
@@ -151,7 +146,7 @@
     if (tag === "input" || tag === "textarea") return;
     const k = e.key.toLowerCase();
     if (k === "j" && nearGiver && !currentProgress) acceptJob(nearGiver);
-    if (k === "e" && currentStep) tryInteract();
+    if (k === "e" && currentStep && !dialogueActive) tryInteract();
     if (k === "x" && currentProgress) cancelCurrent();
   }
 
@@ -159,6 +154,7 @@
     const sb = SB();
     const startId = tpl.start_step_id;
     if (!startId) return toast({ ok: false, error: "Emprego sem etapa inicial" });
+    closeGiverDialog();
     const { data: prog, error } = await sb.from("job_progress").insert({
       user_id: userId, job_id: tpl.id, current_step_id: startId, state: {},
     }).select().single();
@@ -166,26 +162,66 @@
     currentProgress = prog;
     currentJob = tpl;
     currentStep = (stepsByJob[tpl.id] || []).find(s => s.id === startId);
-    promptEl?.remove(); promptEl = null;
     enterStep(currentStep, false);
   }
 
+  // ============ STEP ENTER + SCRIPTED DIALOGUE ============
   function enterStep(step, resume) {
     cleanupStepArtifacts();
     currentStep = step;
     if (!step) return finishJob();
     renderHud();
-    speak(stepNpcId(step), step.dialogue?.on_enter);
+    const npcId = stepNpcId(step);
+    const lines = step.dialogue?.on_enter || [];
+    if (lines.length && npcId) {
+      runScriptedDialogue(npcId, lines, () => kickoffStepLogic(step));
+    } else {
+      kickoffStepLogic(step);
+    }
+  }
+
+  function kickoffStepLogic(step) {
+    dialogueActive = false;
     if (step.kind === "complete") return finishJob();
     if (step.kind === "fail") return cancelCurrent("Missão falhou");
     if (step.kind === "pickup_item") spawnPickup(step);
     if (step.kind === "goto_point" || step.kind === "deliver_item" || step.kind === "drive_to") spawnDestMarker(step.config);
   }
 
+  function runScriptedDialogue(npcId, lines, onDone) {
+    dialogueActive = true;
+    let i = 0;
+    const total = lines.length;
+    const el = makeBubble(npcId, "interactive");
+    scriptedDialogEl = el;
+
+    function render() {
+      const isLast = i === total - 1;
+      const labelNext = isLast ? "▶ Iniciar" : "Próximo →";
+      el.innerHTML = `
+        <div class="npc-bubble-text">${escapeHtml(lines[i] || "")}</div>
+        <div class="npc-bubble-meta">${i + 1}/${total}</div>
+        <div class="npc-bubble-actions">
+          <button type="button" class="npc-bubble-btn primary" data-act="next">${labelNext}</button>
+          <button type="button" class="npc-bubble-btn" data-act="skip">Pular</button>
+        </div>`;
+      el.querySelector('[data-act="next"]').onclick = () => {
+        if (i < total - 1) { i++; render(); }
+        else { closeScriptedDialog(); onDone?.(); }
+      };
+      el.querySelector('[data-act="skip"]').onclick = () => { closeScriptedDialog(); onDone?.(); };
+    }
+    render();
+  }
+
+  function closeScriptedDialog() {
+    if (scriptedDialogEl) { scriptedDialogEl._dispose?.(); scriptedDialogEl.remove(); scriptedDialogEl = null; }
+  }
+
   function stepNpcId(step) {
     if (!step) return null;
     if (step.kind === "talk_to_giver") return currentJob?.giver_npc_id;
-    return step.config?.target_npc_id || null;
+    return step.config?.target_npc_id || currentJob?.giver_npc_id || null;
   }
 
   function spawnDestMarker(cfg) {
@@ -214,6 +250,7 @@
   }
 
   function tickStep() {
+    if (dialogueActive) return;
     const p = player(); if (!p || !currentStep) return;
     const cfg = currentStep.config || {};
     const kind = currentStep.kind;
@@ -256,7 +293,6 @@
     promptEl.onclick = () => advance("on_success");
     document.body.appendChild(promptEl);
   }
-
   function showPrompt(text) {
     if (promptEl?.textContent === text) return;
     hidePrompt();
@@ -269,8 +305,7 @@
 
   function tryInteract() {
     if (!currentStep) return;
-    const kind = currentStep.kind;
-    if (kind === "pickup_item" && pickupMesh) {
+    if (currentStep.kind === "pickup_item" && pickupMesh) {
       const p = player();
       const d = Math.hypot(pickupMesh.position.x - p.position.x, pickupMesh.position.z - p.position.z);
       if (d > (currentStep.config?.radius || 2)) return;
@@ -317,8 +352,12 @@
 
   function cancelLocalProgress() {
     cleanupStepArtifacts();
+    closeScriptedDialog();
+    closeGiverDialog();
+    dialogueActive = false;
     currentProgress = null; currentJob = null; currentStep = null; pickupItemKey = null;
     hudEl?.remove(); hudEl = null;
+    if (lockedGiverNpcId) { window.__setNpcFacePlayer?.(lockedGiverNpcId, false); lockedGiverNpcId = null; }
   }
 
   function cleanupStepArtifacts() {
@@ -326,7 +365,8 @@
     if (currentMarker && sc) { sc.remove(currentMarker); currentMarker = null; }
     if (pickupMesh && sc) { sc.remove(pickupMesh); pickupMesh = null; }
     hidePrompt();
-    for (const [, el] of bubbles) el.remove();
+    closeScriptedDialog();
+    for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
     bubbles.clear();
   }
 
@@ -356,40 +396,26 @@
     })[k] || k || "";
   }
 
-  function speak(npcId, lines) {
-    if (!npcId || !lines || !lines.length) return;
-    const line = lines[Math.floor(Math.random() * lines.length)];
-    showBubble(npcId, line);
-  }
-
-  function showBubble(npcId, text) {
-    let el = bubbles.get(npcId);
-    if (!el) {
-      el = document.createElement("div");
-      el.className = "npc-bubble";
-      document.body.appendChild(el);
-      bubbles.set(npcId, el);
-    }
-    el.textContent = text;
-    el.style.opacity = "1";
-    clearTimeout(el._t);
-    el._t = setTimeout(() => { el.style.opacity = "0"; setTimeout(() => { el.remove(); bubbles.delete(npcId); }, 600); }, 5000);
-
-    if (!el._raf) {
-      const tick = () => {
-        const T = THREE(), sc = scene();
-        const pos = npcPos(npcId);
-        const cam = window.__camera;
-        if (T && sc && pos && cam && el.isConnected) {
-          const v = new T.Vector3(pos.x, (pos.y || 0) + 2.4, pos.z).project(cam);
-          const x = (v.x * 0.5 + 0.5) * window.innerWidth;
-          const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
-          el.style.transform = `translate(-50%,-100%) translate(${x}px, ${y}px)`;
-        }
-        if (el.isConnected) el._raf = requestAnimationFrame(tick);
-      };
-      tick();
-    }
+  // ============ BUBBLE PROJEÇÃO 3D → 2D ============
+  function makeBubble(npcId, variant) {
+    const el = document.createElement("div");
+    el.className = "npc-bubble" + (variant === "interactive" ? " interactive" : "");
+    document.body.appendChild(el);
+    const tick = () => {
+      const T = THREE(), sc = scene(), cam = window.__camera;
+      const pos = npcPos(npcId);
+      if (T && sc && pos && cam && el.isConnected) {
+        const v = new T.Vector3(pos.x, (pos.y || 0) + 2.4, pos.z).project(cam);
+        const x = (v.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-v.y * 0.5 + 0.5) * window.innerHeight;
+        el.style.transform = `translate(-50%,-100%) translate(${x}px, ${y}px)`;
+        el.style.display = (v.z > 1) ? "none" : "";
+      }
+      if (el.isConnected) el._raf = requestAnimationFrame(tick);
+    };
+    el._dispose = () => { try { cancelAnimationFrame(el._raf); } catch {} };
+    tick();
+    return el;
   }
 
   function toast(data) {
