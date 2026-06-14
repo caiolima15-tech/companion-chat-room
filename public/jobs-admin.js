@@ -256,6 +256,7 @@
         <button data-a="connect">+ Conexão</button>
         ${!isStart ? '<button data-a="start">Marcar início</button>' : ""}
         <button data-a="capture" title="Capturar posição do player">📍 Capturar pos</button>
+        ${["enter_vehicle","drive_to","park_vehicle"].includes(s.kind) ? '<button data-a="link-car">🚗 Vincular carro</button>' : ""}
         <button data-a="delete" class="danger">Excluir</button>
       </div>`;
 
@@ -268,6 +269,8 @@
     row.querySelector('[data-a="dialogue"]').onclick = () => editDialogue(j, s);
     row.querySelector('[data-a="connect"]').onclick = () => addTransition(j, s, allSteps);
     row.querySelector('[data-a="capture"]').onclick = () => captureCurrentPos(j, s);
+    const linkCarBtn = row.querySelector('[data-a="link-car"]');
+    if (linkCarBtn) linkCarBtn.onclick = () => linkCar(j, s);
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Excluir etapa?")) return;
       await SB().from("job_steps").delete().eq("id", s.id);
@@ -280,6 +283,21 @@
       openStepsEditor(j);
     };
     return row;
+  }
+
+  async function linkCar(j, s) {
+    const sb = SB();
+    const { data: cars } = await sb.from("map_cars").select("id,name").eq("map_id", window.__currentMapId);
+    if (!cars?.length) return alert("Nenhum carro no mapa. Adicione um no editor de carros antes.");
+    const opts = cars.map(c => ({ id: c.id, label: c.name || c.id.slice(0, 8) }));
+    const carId = promptSelect("Carro vinculado a esta etapa:", opts);
+    if (!carId) return;
+    const cfg = { ...(s.config || {}), car_id: carId };
+    if (s.kind === "park_vehicle" && !confirm("Manter o veículo no mapa após estacionar? (Cancelar = veículo some)")) {
+      cfg.despawn_on_complete = true;
+    }
+    await sb.from("job_steps").update({ config: cfg }).eq("id", s.id);
+    openStepsEditor(j);
   }
 
   async function editConfig(j, s) {
