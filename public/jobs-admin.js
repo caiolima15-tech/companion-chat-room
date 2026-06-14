@@ -182,6 +182,7 @@
           <button data-add="interact_asset">+ Interagir asset</button>
           <button data-add="enter_vehicle">+ Entrar veículo</button>
           <button data-add="drive_to">+ Dirigir até</button>
+          <button data-add="park_vehicle">+ Estacionar veículo</button>
           <button data-add="play_animation">+ Animação</button>
           <button data-add="complete">+ Concluir</button>
           <button data-add="fail">+ Falhar</button>
