@@ -523,8 +523,10 @@
     const sc = scene();
     if (currentMarker && sc) { sc.remove(currentMarker); currentMarker = null; }
     if (pickupMesh && sc) { sc.remove(pickupMesh); pickupMesh = null; }
+    if (spawnedNpcMesh && sc) { sc.remove(spawnedNpcMesh); spawnedNpcMesh = null; }
     for (const lm of liveMarkers) { try { sc?.remove(lm.mesh); } catch {} }
     liveMarkers = [];
+    window.__jobGpsTarget = null;
     hidePrompt();
     closeScriptedDialog();
     for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
