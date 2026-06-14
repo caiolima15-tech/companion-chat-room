@@ -25,6 +25,8 @@
   let bubbles = new Map();
   let cooldowns = {};
   let mapId = null;
+  // markers vivos no mundo: {mesh, anchor:()=>({x,y,z}), offsetY, kind}
+  let liveMarkers = [];
   let lockedGiverNpcId = null;
 
   function tryBoot() {
