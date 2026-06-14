@@ -1,75 +1,120 @@
+# Sistema de Empregos / Missões
 
-## O que está ruim hoje (modo paisagem)
+Objetivo: você cria empregos inteiros pelo painel admin (NPC dador → etapas → recompensa) sem precisar mexer em código. Etapas reutilizam blocos prontos (pegar caixa, ir até ponto, dirigir, falar com NPC, interagir com asset) que podem ser encadeados em grafo com ramificações.
 
-Olhando o print:
-- A **tarja roxa do topo** ("Cidade BR · Limites · Câmera Livre · SAIR") corta o mapa e ocupa altura preciosa em landscape.
-- Os **botões inferiores** (chat, perfil, comentário) ficam quase encostados na borda de baixo — sem respiro com a safe-area.
-- O **saldo `R$ 0,00`** usa uma fonte Courier genérica, fica com cara de terminal e não conversa com o resto.
-- Os pills "NPCs" (canto sup. esq.) e "R$" (canto sup. dir.) **não combinam** visualmente: cores diferentes (ciano x verde), bordas diferentes, posicionamentos inconsistentes.
-- O **chat** abre como uma caixa cinza cortando o personagem, sem cabeçalho claro, com bolhas pequenas e o input desaparece atrás da safe-area; "Saiu da conversa" fica empilhado dentro do chat.
-- O botão **SAIR** com escudo no canto direito está estilizado diferente de tudo.
+---
 
-## O que vamos mudar
+## 1. Modelo de dados (novas tabelas)
 
-### 1. Remover a tarja superior em landscape
-- A `.topbar` (faixa roxa com "Cidade BR" + toggles de Limites/Câmera Livre) **desaparece** no layout mobile/landscape; vira só um título discreto opcional.
-- Os toggles `#boundsToggleBtn` e `#freeCamToggleBtn` (admin) saem do topo central e voltam a ser controlados só pelo `#adminDock` lateral — não poluem o jogo.
+```text
+job_templates
+  id, map_id, giver_npc_id (FK npc_instances), title, description,
+  payout_cents, xp_reward, cooldown_seconds, min_level, active,
+  start_step_id (FK job_steps), created_by, created_at
 
-### 2. Botões flutuantes consistentes (top + bottom)
-Criar um **sistema visual único** de "pill flutuante" usado por:
-- Pill `🧍 NPCs` (top-left)
-- Pill saldo `R$ 0,00` (top-right)
-- Botão `SAIR` (vira pill com ícone, top-right, ao lado do saldo)
-- Barra de ações inferior (chat / perfil / emote) — já flutuante, só padroniza o estilo
+job_steps                      ← nó do grafo
+  id, job_id, kind, label, config (jsonb), dialogue (jsonb),
+  position_x, position_y       ← só p/ layout no editor visual
 
-Padrão único:
-- fundo: `rgba(10,14,22,0.55)` + `backdrop-filter: blur(18px) saturate(160%)`
-- borda sutil branca 10%
-- raio 999px (pill) ou 18px (botão grande)
-- sombra suave
-- altura consistente (44px)
+  kind ∈
+    talk_to_giver       (abre balão inicial do NPC dador)
+    pickup_item         (config: item_slug, spawn_x/y/z OU asset_id)
+    deliver_item        (config: target_x/y/z, radius, item_slug)
+    goto_point          (config: x/y/z, radius, prompt_text)
+    interact_asset      (config: asset_interaction_id, animation_key)
+    talk_to_npc         (config: target_npc_id, radius)
+    enter_vehicle       (config: car_id OU car_template, spawn_point)
+    drive_to            (config: x/y/z, radius, must_be_in_vehicle)
+    play_animation      (config: animation_key, duration_ms)
+    complete            (terminal — paga recompensa)
+    fail                (terminal — cancela)
 
-### 3. Descer os botões inferiores
-- Adicionar `bottom: calc(28px + env(safe-area-inset-bottom))` na barra inferior (`.mobile-bar`) em landscape, para sair de cima da borda.
-- O joystick e o microfone ganham o mesmo respeito de safe-area (hoje só portrait recebe).
-- O badge "3" no chat fica posicionado corretamente sobre o pill.
+job_step_transitions           ← arestas do grafo
+  id, from_step_id, to_step_id, condition, order_idx
+  condition ∈ on_success | on_fail | on_timeout | on_choice:<key>
 
-### 4. Fonte estilo GTA no saldo
-- Trocar a fonte do `#moneyHud` de Courier para uma **família condensada/estêncil** parecida com a do GTA (HUD de dinheiro):
-  - Importar **`Pricedown`** (clássica do GTA) via Google Fonts alternativa ou self-host, com fallback: `"Pricedown","Anton","Bebas Neue",system-ui,sans-serif`.
-  - Cor verde-dinheiro `#7be37b` mantida, mas com leve **text-shadow preto** pra dar peso, letter-spacing 1px, maiúsculas.
-  - Tamanho 22px em landscape, 18px em portrait.
-- Aplicar a mesma família apenas em valores numéricos de HUD (saldo, +R$ no toast de entrega) — não no texto da UI inteira.
+job_progress                   ← estado por jogador
+  id, user_id, job_id, current_step_id, state (jsonb: itens carregados,
+  timers, escolhas), started_at, completed_at, status
+  unique(user_id, job_id, started_at)
 
-### 5. Chat melhor
-Hoje o chat mobile é um painel cinza translúcido que cobre o personagem.
-Proposta:
-- **Modo "flutuante" sempre visível**: as últimas 3 mensagens aparecem como bolhas discretas no canto inferior-esquerdo (acima do joystick), sem fundo de painel, com fade-out automático após ~8s.
-- Ao tocar no botão de chat, abre um **painel translúcido glass** mais alto e estreito (340px de largura em landscape), encostado à esquerda, com:
-  - cabeçalho fino: "Chat da sala" + botão fechar `×`
-  - log com mais respiro entre bolhas (gap 8px), bolhas com avatar à esquerda e nome em negrito acima
-  - bolhas do próprio usuário alinhadas à direita, fundo `primary/20`
-  - input fixo no rodapé com `position: sticky; bottom: 0` + safe-area
-- O texto **"Saiu da conversa"** e **"Conversando com X (Esc para sair)"** sai do log de chat e vira um **banner separado**, fixo no topo da área de jogo (logo abaixo dos pills), pra não poluir o histórico.
+job_cooldowns
+  user_id, job_id, available_at
+```
 
-### 6. Correções extras propostas
-- **`SAIR`** vira pill compacto (mesmo estilo dos outros), perde o escudo grande que destoa.
-- **Botão de microfone** ganha estado visual claro de "gravando" (anel vermelho pulsante) — hoje fica idêntico ligado/desligado.
-- **Joystick**: o anel branco está com opacidade alta, pode ficar `opacity: 0.5` quando ocioso e 0.9 ao tocar.
-- **Nameplates** (ex: "caio") ganham um leve fundo `rgba(0,0,0,0.4)` + padding 2px 6px pra serem lidos em qualquer plano de fundo.
-- **Pill NPCs** só aparece pra admin (hoje aparece pra todo mundo, mas o painel é admin-only).
+`dialogue` por step (jsonb):
+```json
+{ "on_enter": ["Pega essa caixa ali atrás."],
+  "on_progress": ["Tá indo bem!"],
+  "on_complete": ["Boa, próxima parada…"],
+  "on_fail": ["Deixou cair?"] }
+```
 
-## Onde mexer (técnico)
+Recompensa reaproveita `complete_delivery`-style RPC (`complete_job_step`) que credita `profiles.balance_cents` + `wallet_transactions` + grava `job_cooldowns`.
 
-- `public/index.html` — remover/ocultar a `.topbar` em mobile; transformar `#logoutButton` em pill no canto.
-- `public/styles.css`
-  - novo bloco "HUD pills" com a classe utilitária `.hud-pill`
-  - `@media (max-height: 600px) and (pointer: coarse)`: `display:none` na `.topbar`, ajuste de `bottom` da `.mobile-bar`, joystick, micro
-  - estilizar `.chat-panel` em landscape (largura 340px, alinhado à esquerda) + bolha do próprio user à direita
-  - `@font-face` ou `<link>` do Pricedown/Anton
-  - estilo `#moneyHud` reescrito (remover inline cssText e mover pra `.css`)
-- `public/delivery.js` — trocar o `style.cssText` inline do `#moneyHud` por `className = 'hud-pill money-pill'`; toast de entrega usa a mesma família.
-- `public/npc.js` — trocar o `style.cssText` inline do botão "🧍 NPCs" por `className = 'hud-pill npc-pill admin-only'`.
-- Banner "Conversando com X" — novo elemento `#npcChatBanner` controlado em `npc.js`, fora do `chatLog`.
+---
 
-Sem mudanças em backend, rotas, NPCs ou lógica de jogo — só camada visual.
+## 2. Painel admin (novo botão no escudo de admin)
+
+Tela "Empregos" com 2 abas:
+
+**a) Lista de templates** — criar / editar / ativar / duplicar.
+
+**b) Editor visual de etapas** (canvas simples, nodes + setas):
+- Sidebar com blocos arrastáveis (1 por `kind`).
+- Clicar num node abre painel lateral com formulário específico do `kind`:
+  - `pickup_item` → seleciona `item_catalog` + botão "definir posição" (clica no mapa 3D pra capturar x/y/z igual já fazemos com hubs).
+  - `interact_asset` → dropdown de `map_assets` + `map_asset_interactions` daquele asset.
+  - `talk_to_npc` → dropdown de `npc_instances` do mapa.
+  - `enter_vehicle` / `drive_to` → dropdown de `map_cars` + capturar ponto.
+  - Todos os steps: textarea de falas (1 por linha) para cada gatilho do `dialogue`.
+- Setas conectam nodes (`on_success` por padrão; criar segunda saída vira `on_fail` ou `on_choice`).
+- Botão "Definir como início" marca `start_step_id`.
+
+NPC dador: dropdown global no topo + ícone aparece flutuando sobre a cabeça dele no mapa (igual hub de entrega, mas em verde com 💼).
+
+---
+
+## 3. Runtime no jogo (`public/jobs.js` — novo arquivo)
+
+Polling 800 ms (igual `delivery.js`):
+
+1. **Detecção do dador**: se player < 3.5 m de um `giver_npc_id` ativo e sem `job_progress` em aberto e sem cooldown → mostra prompt `[J] Falar com {NPC}` + balão de fala (`talk_to_giver` step).
+2. **Aceitar** → insere `job_progress` com `current_step_id = start_step_id`, dispara `on_enter` do primeiro step real.
+3. **Loop por step ativo** avalia condição de avanço conforme `kind`:
+   - `pickup_item`: spawn de mesh no mundo → player < 2 m + tecla [E] → marca item em `state.inventory` + esconde mesh + cola "caixa" nas mãos do avatar (reaproveita item attach existente).
+   - `deliver_item`: player < radius + tem item no state → remove item + avança.
+   - `goto_point` / `drive_to`: distância < radius (drive_to verifica se está montado num car).
+   - `interact_asset`: dispara a interaction existente; ao terminar animação → avança.
+   - `talk_to_npc`: distância < radius → balão flutuante sobre o NPC com `on_enter`, botão "Continuar" avança.
+   - `enter_vehicle`: detecta que entrou no carro do `car_id`.
+   - `play_animation`: toca anim no player, espera `duration_ms`.
+4. **HUD lateral** (canto direito, abaixo do dinheiro): título do job + label do step atual + seta indicadora 3D apontando para o alvo (sprite já usado em delivery).
+5. **Balões de fala**: componente compartilhado `npc-bubble` (div absoluta posicionada por projeção 3D, fade out 4 s) usado em `on_enter`/`on_progress`/`on_complete` de qualquer step com `target_npc_id` ou no próprio dador.
+6. **Terminal**: ao chegar em `complete` chama RPC `complete_job(_progress_id)` → paga + atualiza saldo realtime + escreve `job_cooldowns(available_at = now() + cooldown_seconds)`.
+
+---
+
+## 4. Empregos prontos que você consegue montar no dia 1
+
+Só com os blocos acima, sem código novo:
+
+- **Entregador de padaria**: `talk_to_giver` → `pickup_item(pão)` → `deliver_item(casa cliente)` → `complete`.
+- **Mecânico**: `talk_to_giver` → `goto_point(garagem)` → `interact_asset(caixa de ferramenta, anim wrench)` → `talk_to_npc(cliente)` → `complete`.
+- **Motorista de táxi**: `talk_to_giver` → `enter_vehicle(taxi)` → `drive_to(passageiro)` → `talk_to_npc` → `drive_to(destino)` → `complete`.
+- **Mudança**: `talk_to_giver` → `pickup_item(caixa A)` → `enter_vehicle(van)` → `drive_to(casa nova)` → `deliver_item` → loop ×3 via transição `on_choice:more`.
+- **Garçom**: `talk_to_giver` → `talk_to_npc(mesa1)` → `goto_point(cozinha)` → `pickup_item(prato)` → `deliver_item(mesa1)` → `complete`.
+
+Ramificações úteis: `on_fail` em `deliver_item` (item caiu/expirou) → step "voltar e pegar de novo" ou `fail`.
+
+---
+
+## 5. Entregáveis em ordem
+
+1. Migração: 4 tabelas + RPC `complete_job` + RLS (admin escreve templates, jogadores leem ativos e mexem só no próprio `job_progress`/`job_cooldowns`) + GRANTs.
+2. `public/jobs-admin.js` + UI dentro do painel admin (lista + editor visual de grafo com `react-flow`-like simples em canvas/SVG vanilla pra ficar no padrão dos outros admins).
+3. `public/jobs.js` — runtime, prompts, HUD, balões, attach de item, marcadores no mapa.
+4. CSS pros balões e HUD lateral em `public/styles.css`.
+5. Registrar `jobs.js` em `public/index.html`.
+
+Pronto pra eu implementar nesta ordem?
