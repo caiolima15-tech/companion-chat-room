@@ -4785,9 +4785,9 @@ window.addEventListener("orientationchange", () => {
   setTimeout(resize, 50);
   setTimeout(resize, 350);
 });
-if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => setTimeout(resize, 30));
-}
+// Não rodar resize() em visualViewport changes — isso encolhe o canvas quando o
+// teclado virtual abre (faz a tela do jogo "subir" e deixa tarja preta).
+// O resize via window.resize/orientationchange é suficiente.
 
 // Teclado mobile: mantém o jogo ancorado e sobe APENAS o chat usando --kb-offset.
 // O visualViewport encolhe quando o teclado aparece (iOS Safari, Chrome Android).
