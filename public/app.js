@@ -4724,9 +4724,11 @@ function animate() {
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
     if (entity) {
-      const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + 0.85, entity.group.position.z);
+      const targetY = window.__firstPerson ? 1.68 : 0.85;
+      const desired = new THREE.Vector3(entity.group.position.x, entity.group.position.y + targetY, entity.group.position.z);
       const offset = new THREE.Vector3().subVectors(camera.position, controls.target);
-      controls.target.lerp(desired, delta * 4.0);
+      const lerpK = window.__firstPerson ? 1 : delta * 4.0;
+      controls.target.lerp(desired, lerpK);
       // Auto-orbit: enquanto se move, gira a câmera para ficar atrás do personagem.
       const mv = entity.__moveDir;
       if (mv && !window.__camUserDragging && performance.now() > (window.__camUserHoldUntil || 0)) {
@@ -4742,6 +4744,10 @@ function animate() {
           offset.x = Math.sin(newYaw) * r;
           offset.z = Math.cos(newYaw) * r;
         }
+      }
+      if (window.__firstPerson) {
+        // Em 1ª pessoa, mantém a câmera bem na altura da cabeça, levemente à frente do olho
+        offset.setLength(0.18);
       }
       camera.position.copy(controls.target).add(offset);
     }
