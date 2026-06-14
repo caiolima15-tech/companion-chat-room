@@ -417,6 +417,11 @@
       } else {
         hidePrompt();
       }
+    } else if (kind === "deliver_to_spawned_npc") {
+      if (!spawnedNpcMesh) return;
+      const d = Math.hypot(spawnedNpcMesh.position.x - p.position.x, spawnedNpcMesh.position.z - p.position.z);
+      if (d < (cfg.radius || 2.2)) showPrompt("[E] Entregar");
+      else hidePrompt();
     } else if (kind === "play_animation") {
       if (!currentStep._animStartedAt) {
         currentStep._animStartedAt = Date.now();
