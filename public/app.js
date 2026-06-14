@@ -1841,7 +1841,13 @@ confirmMapButton?.addEventListener("click", async () => {
 
   if (switching && !alreadyInRoom) {
     currentMapId = selectedMapId;
+    window.__currentMapId = selectedMapId;
     localStorage.setItem("neon-tap-room-map", selectedMapId);
+    window.dispatchEvent(new CustomEvent("map-changed", { detail: selectedMapId }));
+  } else if (!alreadyInRoom) {
+    // Mesma sala que estava em cache — força NPCs a recarregarem para o map atual.
+    window.__currentMapId = currentMapId;
+    window.dispatchEvent(new CustomEvent("map-changed", { detail: currentMapId }));
   }
   closeMapSelect();
   if (!alreadyInRoom) {
