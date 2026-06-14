@@ -10315,6 +10315,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
   }
 
+  window.__getMapCarPos = function (carId) {
+    const c = cars.get(carId);
+    if (!c) return null;
+    return { x: c.group.position.x, y: c.group.position.y, z: c.group.position.z };
+  };
+  window.__listMapCars = function () {
+    const out = [];
+    for (const [id, c] of cars) out.push({ id, name: c.row?.name || id.slice(0, 8) });
+    return out;
+  };
+  window.__exitDrivingCar = function (force) { try { return exitCar(!!force); } catch {} };
+
   window.__carsFrame = function (delta) {
     if (driving) simulateDriving(delta);
     else if (riding) updatePassengerFrame(delta);
