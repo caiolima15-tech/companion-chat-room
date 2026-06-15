@@ -474,6 +474,10 @@
 
 
       <aside class="chat-panel" aria-label="Chat da sala">
+        <div class="chat-collapse-header" id="chatCollapseHeader" role="button" tabindex="0" aria-label="Minimizar chat">
+          <span>Chat</span>
+          <span class="chat-collapse-ico" aria-hidden="true">▾</span>
+        </div>
         <div class="identity">
           <label for="nameInput">Apelido</label>
           <div class="name-row">
@@ -489,6 +493,23 @@
           <button type="submit">Enviar</button>
         </form>
       </aside>
+      <script>
+        (function () {
+          const hdr = document.getElementById('chatCollapseHeader');
+          const panel = document.querySelector('.chat-panel');
+          if (!hdr || !panel) return;
+          const KEY = 'chatPanelCollapsed';
+          try { if (localStorage.getItem(KEY) === '1') panel.classList.add('is-collapsed'); } catch {}
+          function toggle() {
+            panel.classList.toggle('is-collapsed');
+            try { localStorage.setItem(KEY, panel.classList.contains('is-collapsed') ? '1' : '0'); } catch {}
+          }
+          hdr.addEventListener('click', toggle);
+          hdr.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+          });
+        })();
+      </script>
     </main>
 
     <!-- Liquid glass mobile bar (sibling of .app-shell so it's always on top) -->
