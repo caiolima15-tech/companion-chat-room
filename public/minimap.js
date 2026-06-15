@@ -26,7 +26,11 @@
   function draw() {
     if (!ctx) return;
     const p = window.__player;
-    if (!p) { wrapEl.style.opacity = "0.35"; return; }
+    const inCar = document.body.classList.contains("driving-on");
+    const carStep = !!window.__jobGpsCarStep;
+    const visible = !!p && (inCar || carStep);
+    if (!visible) { wrapEl.style.display = "none"; return; }
+    wrapEl.style.display = "";
     wrapEl.style.opacity = "1";
     const tgt = window.__jobGpsTarget;
     const R = SIZE / 2;
