@@ -10390,7 +10390,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         c.state.yaw += dy * kr;
         c.group.rotation.y = c.state.yaw;
         // Roda visual com base na velocidade transmitida
-        const wr = c.row.wheel_radius || 0.35;
+        const wr = c.autoWheelRadius || c.row.wheel_radius || 0.35;
         c.state.wheelSpin -= ((t.vel || 0) * delta) / wr;
         for (const k of ["fl","fr","rl","rr"]) {
           const w = c.wheels[k]; if (!w) continue;
