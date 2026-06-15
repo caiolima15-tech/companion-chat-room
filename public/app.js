@@ -3306,7 +3306,7 @@ async function loadEnvironment(mapId, opts = {}) {
     }, 12000);
     loader.load(
       map.url,
-      async (gltf) => {
+      (gltf) => {
         try {
           if (token !== __envLoadToken) return; // outra chamada assumiu
           const env = gltf.scene;
@@ -3319,11 +3319,8 @@ async function loadEnvironment(mapId, opts = {}) {
           currentEnvBaseScale = baseScale;
           env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
-          currentMapTransform = await transformPromise;
-          if (token !== __envLoadToken) return;
-          setDarkMode(!!currentMapTransform?.dark_mode);
-          applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-          reloadMapLights(currentMapId);
+          // Render imediato com transform padrão; a query de transform aplica
+          // ajustes quando chegar (sem segurar o map aparecer).
           currentEnvRoot = env;
           applyEnvTransform();
 
@@ -3335,7 +3332,17 @@ async function loadEnvironment(mapId, opts = {}) {
           registerCollidable(env);
           envGroup.add(env);
           invalidateEnvCullCache?.();
-          syncMapAdminPanel();
+
+          // Aplica transform/luzes salvos em segundo plano (não bloqueia entrada)
+          transformPromise.then((t) => {
+            if (token !== __envLoadToken) return;
+            currentMapTransform = t;
+            setDarkMode(!!currentMapTransform?.dark_mode);
+            applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+            reloadMapLights(currentMapId);
+            applyEnvTransform();
+            syncMapAdminPanel();
+          }).catch(() => {});
         } finally {
           safeResolve();
         }
@@ -7381,15 +7388,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (tickTimer) return;
     tickTimer = setInterval(() => {
       if (!visible) return;
-      // Alvo: nunca além de 95% até hideWorldLoading; depois corre para 100%.
-      const target = Math.max(realPct, 0.95);
+      // Acompanha o progresso real (sem travar abaixo dele) e segue subindo
+      // gradualmente até 95% mesmo sem novos eventos — assim a barra não fica
+      // parecendo "engasgada" quando o GLB grande está baixando.
+      const target = Math.max(realPct, Math.min(0.95, displayPct + 0.02));
       if (displayPct < target) {
-        // ease-out: avanço proporcional à distância, com piso pra não travar
-        const delta = Math.max(0.004, (target - displayPct) * 0.05);
+        const delta = Math.max(0.015, (target - displayPct) * 0.18);
         displayPct = Math.min(target, displayPct + delta);
         paint();
       }
-    }, 80);
+    }, 60);
   }
   function stopTick() {
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
