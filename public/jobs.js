@@ -531,6 +531,7 @@
     for (const lm of liveMarkers) { try { sc?.remove(lm.mesh); } catch {} }
     liveMarkers = [];
     window.__jobGpsTarget = null;
+    window.__jobGpsCarStep = false;
     hidePrompt();
     closeScriptedDialog();
     for (const [, el] of bubbles) { el._dispose?.(); el.remove(); }
