@@ -300,7 +300,22 @@
     const cfg = { ...(s.config || {}), car_id: carId };
     if (s.kind === "park_vehicle" && !confirm("Manter o veículo no mapa após estacionar? (Cancelar = veículo some)")) {
       cfg.despawn_on_complete = true;
-    }
+  }
+
+  async function linkNpc(j, s) {
+    const sb = SB();
+    const { data: npcs } = await sb.from("npc_instances")
+      .select("id,name,model_id")
+      .eq("map_id", window.__currentMapId)
+      .eq("active", true);
+    if (!npcs?.length) return alert("Nenhum NPC ativo no mapa. Crie um no painel de NPCs antes.");
+    const opts = npcs.map(n => ({ id: n.id, label: n.name || n.id.slice(0, 8) }));
+    const npcId = promptSelect("NPC vinculado a esta etapa:", opts);
+    if (!npcId) return;
+    const cfg = { ...(s.config || {}), target_npc_id: npcId };
+    await sb.from("job_steps").update({ config: cfg }).eq("id", s.id);
+    openStepsEditor(j);
+  }
     await sb.from("job_steps").update({ config: cfg }).eq("id", s.id);
     openStepsEditor(j);
   }
