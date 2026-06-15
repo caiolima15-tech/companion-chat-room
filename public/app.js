@@ -9842,12 +9842,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     chassisGroup.scale.setScalar(row.chassis_scale || 1);
     group.add(chassisGroup);
     // load chassis
+    let chassisRoot = null;
     try {
       const gltf = await new Promise((res, rej) => loader.load(row.chassis_url, res, undefined, rej));
       const m = gltf.scene || gltf.scenes?.[0];
       if (m) {
         m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         chassisGroup.add(m);
+        chassisRoot = m;
       }
     } catch (e) {
       console.warn("[cars] chassis load fail", row.chassis_url, e);
@@ -9858,7 +9860,27 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       fallback.position.y = 0.5;
       chassisGroup.add(fallback);
     }
-    // wheels
+
+    // --- AUTO-DETECT WHEELS no GLB do chassi ---
+    // Se o modelo já trouxer rodas separadas (nomeadas wheel/roda/etc.), elas
+    // viram pivôs animáveis (spin + steering) automaticamente — sem precisar
+    // subir GLB separado de roda nem ajustar offsets manualmente.
+    if (row.auto_detect_wheels !== false && chassisRoot) {
+      try {
+        const detected = detectChassisWheels(chassisRoot);
+        if (detected) {
+          const wheels = attachDetectedWheels(detected, chassisGroup);
+          // raio estimado para sincronizar wheelSpin com velocidade
+          const sz = detected.fl.size;
+          const autoRadius = Math.max(sz.y, sz.z) / 2 || (row.wheel_radius || 0.35);
+          return { group, chassisGroup, wheels, autoDetectedWheels: true, autoWheelRadius: autoRadius, steerKeys: ["fl","fr"] };
+        }
+      } catch (e) {
+        console.warn("[cars] auto-detect rodas falhou", e);
+      }
+    }
+
+    // wheels (caminho legado: roda separada OU procedural)
     const wheelOffsets = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
     const wheelScale = wheelOffsets.scale ?? 1;
     const radius = row.wheel_radius || 0.35;
@@ -9897,7 +9919,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       group.add(node);
       wheels[k] = node;
     }
-    return { group, chassisGroup, wheels };
+    return { group, chassisGroup, wheels, autoDetectedWheels: false, steerKeys: ["rl","rr"] };
   }
 
   function applyWheelTransforms(c, wo) {
