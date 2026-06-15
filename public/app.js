@@ -3306,7 +3306,7 @@ async function loadEnvironment(mapId, opts = {}) {
     }, 12000);
     loader.load(
       map.url,
-      async (gltf) => {
+      (gltf) => {
         try {
           if (token !== __envLoadToken) return; // outra chamada assumiu
           const env = gltf.scene;
@@ -3319,11 +3319,8 @@ async function loadEnvironment(mapId, opts = {}) {
           currentEnvBaseScale = baseScale;
           env.userData.baseOffset = { x: -center.x, y: -box.min.y, z: -center.z };
 
-          currentMapTransform = await transformPromise;
-          if (token !== __envLoadToken) return;
-          setDarkMode(!!currentMapTransform?.dark_mode);
-          applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
-          reloadMapLights(currentMapId);
+          // Render imediato com transform padrão; a query de transform aplica
+          // ajustes quando chegar (sem segurar o map aparecer).
           currentEnvRoot = env;
           applyEnvTransform();
 
@@ -3335,7 +3332,17 @@ async function loadEnvironment(mapId, opts = {}) {
           registerCollidable(env);
           envGroup.add(env);
           invalidateEnvCullCache?.();
-          syncMapAdminPanel();
+
+          // Aplica transform/luzes salvos em segundo plano (não bloqueia entrada)
+          transformPromise.then((t) => {
+            if (token !== __envLoadToken) return;
+            currentMapTransform = t;
+            setDarkMode(!!currentMapTransform?.dark_mode);
+            applyLightingForMood(currentMapTransform?.mood || map.mood || "day");
+            reloadMapLights(currentMapId);
+            applyEnvTransform();
+            syncMapAdminPanel();
+          }).catch(() => {});
         } finally {
           safeResolve();
         }
