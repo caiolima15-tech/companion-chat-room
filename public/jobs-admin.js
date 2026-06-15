@@ -274,6 +274,8 @@
     row.querySelector('[data-a="capture"]').onclick = () => captureCurrentPos(j, s);
     const linkCarBtn = row.querySelector('[data-a="link-car"]');
     if (linkCarBtn) linkCarBtn.onclick = () => linkCar(j, s);
+    const linkNpcBtn = row.querySelector('[data-a="link-npc"]');
+    if (linkNpcBtn) linkNpcBtn.onclick = () => linkNpc(j, s);
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Excluir etapa?")) return;
       await SB().from("job_steps").delete().eq("id", s.id);
