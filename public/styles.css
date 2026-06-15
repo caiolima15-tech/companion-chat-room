@@ -551,8 +551,9 @@ h1 {
   transition: transform .25s ease, opacity .2s ease;
 }
 .chat-panel.is-collapsed {
-  transform: translateY(calc(100% - 52px));
+  transform: translateY(calc(100% - 40px));
 }
+.chat-panel.is-collapsed .identity,
 .chat-panel.is-collapsed .chat-log,
 .chat-panel.is-collapsed .chat-form { opacity: 0; pointer-events: none; }
 
