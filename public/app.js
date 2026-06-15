@@ -10294,13 +10294,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       c.group.position.y += (gy - c.group.position.y) * Math.min(1, delta * 12);
     } catch {}
     // rodas
-    const wr = r.wheel_radius || 0.35;
+    const wr = c.autoWheelRadius || r.wheel_radius || 0.35;
     c.state.wheelSpin -= (c.state.vel * delta) / wr;
+    const steerKeys = c.steerKeys || ["rl","rr"];
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      // Front wheels (visually) are rl/rr after the wheel-position swap
-      if (k === "rl" || k === "rr") w.rotation.y = c.state.steer;
+      if (steerKeys.includes(k)) w.rotation.y = c.state.steer;
       w.userData.spin.rotation.x = c.state.wheelSpin;
     }
     // HUD
