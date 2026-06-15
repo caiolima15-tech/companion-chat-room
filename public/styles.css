@@ -3120,8 +3120,8 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
 /* ============ MINIMAPA ============ */
 #miniMap {
   position: fixed;
-  left: 14px;
-  bottom: 14px;
+  right: 18px;
+  bottom: calc(96px + env(safe-area-inset-bottom));
   width: 170px;
   z-index: 950;
   pointer-events: none;
@@ -3144,6 +3144,92 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   border: 1px solid rgba(255,255,255,0.1);
 }
 @media (max-width: 720px) {
-  #miniMap { width: 130px; left: 10px; bottom: 110px; }
+  #miniMap { width: 130px; right: 10px; bottom: calc(110px + env(safe-area-inset-bottom)); }
   #miniMap canvas { width: 130px; height: 130px; }
 }
+
+/* Admin shield — abaixo do saldo (money pill) para não sobrepor */
+.admin-shortcut {
+  top: calc(64px + env(safe-area-inset-top)) !important;
+  right: calc(12px + env(safe-area-inset-right)) !important;
+}
+
+/* ============ Desktop: chat minimizável (header clicável) ============ */
+.chat-collapse-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  cursor: pointer;
+  user-select: none;
+  font: 700 12px/1 system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.chat-collapse-header .chat-collapse-ico {
+  transition: transform .2s ease;
+  opacity: 0.75;
+  font-size: 14px;
+}
+.chat-panel.is-collapsed .chat-collapse-header .chat-collapse-ico {
+  transform: rotate(180deg);
+}
+@media (max-height: 600px) and (pointer: coarse), (max-width: 900px) and (orientation: landscape) and (pointer: coarse) {
+  .chat-collapse-header { display: none !important; }
+}
+
+/* ============ Desktop: widgets em estilo "liquid glass" igual mobile ============ */
+@media (min-width: 901px), (pointer: fine) {
+  /* Topbar transparente, sem barra cheia */
+  .topbar {
+    background: transparent !important;
+    border-bottom: 0 !important;
+    padding: 14px 18px;
+  }
+  .topbar h1 {
+    font-size: 1.05rem;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  }
+
+  /* World-hud (botões inferiores) — container transparente, botões pill de vidro */
+  .world-hud {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    padding: 12px !important;
+    gap: 10px !important;
+    justify-content: center;
+  }
+  .world-hud button,
+  .world-hud .file-picker {
+    min-height: 42px !important;
+    padding: 0 16px !important;
+    border-radius: 999px !important;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04)),
+      rgba(14,16,22,0.55) !important;
+    border: 1px solid rgba(255,255,255,0.18) !important;
+    color: #fff !important;
+    font-weight: 700 !important;
+    font-size: 13px !important;
+    letter-spacing: 0.02em;
+    backdrop-filter: blur(18px) saturate(170%);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.22),
+      0 8px 22px rgba(0,0,0,0.4) !important;
+    transition: transform .12s ease, background .15s ease, border-color .15s ease;
+  }
+  .world-hud button:hover,
+  .world-hud .file-picker:hover {
+    background:
+      linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.06)),
+      rgba(14,16,22,0.6) !important;
+  }
+  .world-hud button:active { transform: scale(0.96); }
+}
+
