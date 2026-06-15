@@ -259,6 +259,7 @@
         ${!isStart ? '<button data-a="start">Marcar início</button>' : ""}
         <button data-a="capture" title="Capturar posição do player">📍 Capturar pos</button>
         ${["enter_vehicle","drive_to","park_vehicle"].includes(s.kind) ? '<button data-a="link-car">🚗 Vincular carro</button>' : ""}
+        ${["talk_to_npc","deliver_to_spawned_npc"].includes(s.kind) ? '<button data-a="link-npc">🧍 Vincular NPC</button>' : ""}
         <button data-a="delete" class="danger">Excluir</button>
       </div>`;
 
