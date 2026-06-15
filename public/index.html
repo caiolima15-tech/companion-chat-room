@@ -314,11 +314,11 @@
                   <input id="carNewName" type="text" placeholder="Nome (ex: BYD Seal)" maxlength="40" style="padding:6px;background:#1a1f2a;color:#fff;border:1px solid #333;border-radius:4px;">
                   <label class="file-picker" style="text-align:center;">
                     <input id="carNewChassisFile" type="file" accept=".glb,model/gltf-binary">
-                    Chassi .glb
+                    Chassi .glb (rodas nomeadas wheel/roda são detectadas e animam automaticamente)
                   </label>
                   <label class="file-picker" style="text-align:center;">
                     <input id="carNewWheelFile" type="file" accept=".glb,model/gltf-binary,.gltf">
-                    Roda .glb (opcional)
+                    Roda .glb (opcional — só se o chassi não tiver rodas embutidas)
                   </label>
                   <div id="carNewStatus" style="font-size:11px;color:#9aa;min-height:14px;"></div>
                   <button id="carNewSave" type="button" style="background:#29d3bd;color:#001a17;border:none;border-radius:4px;padding:8px;cursor:pointer;font-weight:600;">Salvar no catálogo</button>
