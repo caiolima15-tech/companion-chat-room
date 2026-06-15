@@ -9963,7 +9963,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         existing.__netTarget.yaw = row.rotation_y || 0;
       }
       const wo = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
-      applyWheelTransforms(existing, wo);
+      if (!existing.autoDetectedWheels) applyWheelTransforms(existing, wo);
       existing.chassisGroup.position.y = row.chassis_offset_y || 0;
       existing.chassisGroup.scale.setScalar(row.chassis_scale || 1);
       if (isLocalDriver) {
@@ -9980,6 +9980,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       group: mesh.group,
       chassisGroup: mesh.chassisGroup,
       wheels: mesh.wheels,
+      autoDetectedWheels: !!mesh.autoDetectedWheels,
+      steerKeys: mesh.steerKeys || ["rl","rr"],
+      autoWheelRadius: mesh.autoWheelRadius || null,
       state: { vel: 0, steer: 0, yaw: row.rotation_y || 0, wheelSpin: 0 },
     };
     cars.set(row.id, c);
