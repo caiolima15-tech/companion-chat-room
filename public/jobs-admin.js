@@ -259,6 +259,7 @@
         ${!isStart ? '<button data-a="start">Marcar início</button>' : ""}
         <button data-a="capture" title="Capturar posição do player">📍 Capturar pos</button>
         ${["enter_vehicle","drive_to","park_vehicle"].includes(s.kind) ? '<button data-a="link-car">🚗 Vincular carro</button>' : ""}
+        ${["talk_to_npc","deliver_to_spawned_npc"].includes(s.kind) ? '<button data-a="link-npc">🧍 Vincular NPC</button>' : ""}
         <button data-a="delete" class="danger">Excluir</button>
       </div>`;
 
@@ -273,6 +274,8 @@
     row.querySelector('[data-a="capture"]').onclick = () => captureCurrentPos(j, s);
     const linkCarBtn = row.querySelector('[data-a="link-car"]');
     if (linkCarBtn) linkCarBtn.onclick = () => linkCar(j, s);
+    const linkNpcBtn = row.querySelector('[data-a="link-npc"]');
+    if (linkNpcBtn) linkNpcBtn.onclick = () => linkNpc(j, s);
     row.querySelector('[data-a="delete"]').onclick = async () => {
       if (!confirm("Excluir etapa?")) return;
       await SB().from("job_steps").delete().eq("id", s.id);
@@ -297,7 +300,22 @@
     const cfg = { ...(s.config || {}), car_id: carId };
     if (s.kind === "park_vehicle" && !confirm("Manter o veículo no mapa após estacionar? (Cancelar = veículo some)")) {
       cfg.despawn_on_complete = true;
-    }
+  }
+
+  async function linkNpc(j, s) {
+    const sb = SB();
+    const { data: npcs } = await sb.from("npc_instances")
+      .select("id,name,model_id")
+      .eq("map_id", window.__currentMapId)
+      .eq("active", true);
+    if (!npcs?.length) return alert("Nenhum NPC ativo no mapa. Crie um no painel de NPCs antes.");
+    const opts = npcs.map(n => ({ id: n.id, label: n.name || n.id.slice(0, 8) }));
+    const npcId = promptSelect("NPC vinculado a esta etapa:", opts);
+    if (!npcId) return;
+    const cfg = { ...(s.config || {}), target_npc_id: npcId };
+    await sb.from("job_steps").update({ config: cfg }).eq("id", s.id);
+    openStepsEditor(j);
+  }
     await sb.from("job_steps").update({ config: cfg }).eq("id", s.id);
     openStepsEditor(j);
   }
