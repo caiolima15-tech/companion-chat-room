@@ -212,6 +212,9 @@
       const pos = id ? npcPos(id) : null;
       window.__jobGpsTarget = pos ? { x: pos.x, z: pos.z, label: label || "Falar com NPC" } : null;
     }
+    // GPS só aparece em passos de carro (ou enquanto dirigindo)
+    const carSteps = ["enter_vehicle", "drive_to", "park_vehicle"];
+    window.__jobGpsCarStep = carSteps.includes(step?.kind);
   }
 
   function refreshGpsLive() {
