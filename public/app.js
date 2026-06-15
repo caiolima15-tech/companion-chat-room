@@ -9743,6 +9743,95 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return wrap;
   }
 
+  // Detecta nós de roda dentro do GLB do chassi (por nome).
+  // Retorna { fl, fr, rl, rr } onde cada item = { obj, center(local), size }
+  // ou null se não conseguir identificar as 4 rodas.
+  function detectChassisWheels(chassisRoot) {
+    if (!chassisRoot) return null;
+    chassisRoot.updateMatrixWorld(true);
+    // nomes comuns em vários idiomas / convenções
+    const wheelRe = /(wheel|wheels|roda|rodas|tire|tyre|rueda|reifen|felge|rim)/i;
+    // evita pegar carcaça/freio: rejeita nomes que claramente NÃO são roda
+    const negRe = /(body|chassis|chasis|carroc|door|porta|janela|window|glass|seat|banco|hood|capo|bumper|para_?choque|interior|engine|motor|trunk|porta_?mala|mirror|retrovisor|light|farol|brake_?disc|caliper|pinca|axle|eixo)/i;
+    const found = [];
+    chassisRoot.traverse(o => {
+      if (!o || !o.name) return;
+      if (!wheelRe.test(o.name)) return;
+      if (negRe.test(o.name)) return;
+      // se já achei um ancestral, pula
+      let p = o.parent, skip = false;
+      while (p) { if (found.some(f => f.obj === p)) { skip = true; break; } p = p.parent; }
+      if (skip) return;
+      const box = new THREE.Box3().setFromObject(o);
+      if (box.isEmpty()) return;
+      const size = box.getSize(new THREE.Vector3());
+      // rejeita coisas muito grandes (provavelmente carroceria)
+      if (Math.max(size.x, size.y, size.z) > 1.5) return;
+      const center = box.getCenter(new THREE.Vector3());
+      chassisRoot.worldToLocal(center);
+      found.push({ obj: o, center, size });
+    });
+    if (found.length < 4) return null;
+    // pega as 4 mais "de canto"
+    found.sort((a,b) => (Math.abs(b.center.x)+Math.abs(b.center.z)) - (Math.abs(a.center.x)+Math.abs(a.center.z)));
+    const four = found.slice(0, 4);
+    const out = { fl:null, fr:null, rl:null, rr:null };
+    for (const it of four) {
+      const isLeft  = it.center.x < 0;
+      const isFront = it.center.z > 0;
+      const key = (isFront ? 'f' : 'r') + (isLeft ? 'l' : 'r');
+      if (!out[key]) out[key] = it;
+    }
+    if (!out.fl || !out.fr || !out.rl || !out.rr) {
+      console.warn("[cars] auto-detect rodas: não conseguiu classificar as 4 (fl/fr/rl/rr).", out);
+      return null;
+    }
+    console.log("[cars] rodas auto-detectadas no GLB do chassi:", Object.fromEntries(
+      Object.entries(out).map(([k,v]) => [k, v.obj.name])
+    ));
+    return out;
+  }
+
+  // Converte 4 nós do GLB em rodas animáveis (steeringNode > spinPivot > visual).
+  // Reposiciona em chassisGroup mantendo a posição visual original.
+  function attachDetectedWheels(detected, parentForWheels) {
+    const wheels = {};
+    for (const k of ["fl","fr","rl","rr"]) {
+      const { obj } = detected[k];
+      // Captura world transform antes de reparentar
+      obj.updateMatrixWorld(true);
+      const worldPos = new THREE.Vector3();
+      const worldQuat = new THREE.Quaternion();
+      const worldScale = new THREE.Vector3();
+      obj.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+
+      const steeringNode = new THREE.Group();
+      const spinPivot = new THREE.Group();
+      steeringNode.add(spinPivot);
+      parentForWheels.add(steeringNode);
+
+      // Coloca steeringNode no local da roda (relativo a parentForWheels)
+      parentForWheels.updateMatrixWorld(true);
+      const localPos = parentForWheels.worldToLocal(worldPos.clone());
+      steeringNode.position.copy(localPos);
+
+      // Remove do parent original e injeta no spinPivot mantendo orientação/escala
+      if (obj.parent) obj.parent.remove(obj);
+      obj.position.set(0, 0, 0);
+      obj.quaternion.copy(worldQuat);
+      // ajusta escala relativa ao parentForWheels
+      const pScale = new THREE.Vector3();
+      parentForWheels.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), pScale);
+      obj.scale.set(worldScale.x/pScale.x, worldScale.y/pScale.y, worldScale.z/pScale.z);
+      spinPivot.add(obj);
+
+      steeringNode.userData.spin = spinPivot;
+      steeringNode.userData.visual = obj;
+      wheels[k] = steeringNode;
+    }
+    return wheels;
+  }
+
   async function spawnCarMesh(row) {
     const group = new THREE.Group();
     group.name = `Car:${row.name}`;
@@ -9753,12 +9842,14 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     chassisGroup.scale.setScalar(row.chassis_scale || 1);
     group.add(chassisGroup);
     // load chassis
+    let chassisRoot = null;
     try {
       const gltf = await new Promise((res, rej) => loader.load(row.chassis_url, res, undefined, rej));
       const m = gltf.scene || gltf.scenes?.[0];
       if (m) {
         m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
         chassisGroup.add(m);
+        chassisRoot = m;
       }
     } catch (e) {
       console.warn("[cars] chassis load fail", row.chassis_url, e);
@@ -9769,7 +9860,27 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       fallback.position.y = 0.5;
       chassisGroup.add(fallback);
     }
-    // wheels
+
+    // --- AUTO-DETECT WHEELS no GLB do chassi ---
+    // Se o modelo já trouxer rodas separadas (nomeadas wheel/roda/etc.), elas
+    // viram pivôs animáveis (spin + steering) automaticamente — sem precisar
+    // subir GLB separado de roda nem ajustar offsets manualmente.
+    if (row.auto_detect_wheels !== false && chassisRoot) {
+      try {
+        const detected = detectChassisWheels(chassisRoot);
+        if (detected) {
+          const wheels = attachDetectedWheels(detected, chassisGroup);
+          // raio estimado para sincronizar wheelSpin com velocidade
+          const sz = detected.fl.size;
+          const autoRadius = Math.max(sz.y, sz.z) / 2 || (row.wheel_radius || 0.35);
+          return { group, chassisGroup, wheels, autoDetectedWheels: true, autoWheelRadius: autoRadius, steerKeys: ["fl","fr"] };
+        }
+      } catch (e) {
+        console.warn("[cars] auto-detect rodas falhou", e);
+      }
+    }
+
+    // wheels (caminho legado: roda separada OU procedural)
     const wheelOffsets = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
     const wheelScale = wheelOffsets.scale ?? 1;
     const radius = row.wheel_radius || 0.35;
@@ -9808,7 +9919,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       group.add(node);
       wheels[k] = node;
     }
-    return { group, chassisGroup, wheels };
+    return { group, chassisGroup, wheels, autoDetectedWheels: false, steerKeys: ["rl","rr"] };
   }
 
   function applyWheelTransforms(c, wo) {
@@ -9852,7 +9963,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         existing.__netTarget.yaw = row.rotation_y || 0;
       }
       const wo = row.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
-      applyWheelTransforms(existing, wo);
+      if (!existing.autoDetectedWheels) applyWheelTransforms(existing, wo);
       existing.chassisGroup.position.y = row.chassis_offset_y || 0;
       existing.chassisGroup.scale.setScalar(row.chassis_scale || 1);
       if (isLocalDriver) {
@@ -9869,6 +9980,9 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       group: mesh.group,
       chassisGroup: mesh.chassisGroup,
       wheels: mesh.wheels,
+      autoDetectedWheels: !!mesh.autoDetectedWheels,
+      steerKeys: mesh.steerKeys || ["rl","rr"],
+      autoWheelRadius: mesh.autoWheelRadius || null,
       state: { vel: 0, steer: 0, yaw: row.rotation_y || 0, wheelSpin: 0 },
     };
     cars.set(row.id, c);
@@ -10180,13 +10294,13 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       c.group.position.y += (gy - c.group.position.y) * Math.min(1, delta * 12);
     } catch {}
     // rodas
-    const wr = r.wheel_radius || 0.35;
+    const wr = c.autoWheelRadius || r.wheel_radius || 0.35;
     c.state.wheelSpin -= (c.state.vel * delta) / wr;
+    const steerKeys = c.steerKeys || ["rl","rr"];
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      // Front wheels (visually) are rl/rr after the wheel-position swap
-      if (k === "rl" || k === "rr") w.rotation.y = c.state.steer;
+      if (steerKeys.includes(k)) w.rotation.y = c.state.steer;
       w.userData.spin.rotation.x = c.state.wheelSpin;
     }
     // HUD
@@ -10276,7 +10390,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         c.state.yaw += dy * kr;
         c.group.rotation.y = c.state.yaw;
         // Roda visual com base na velocidade transmitida
-        const wr = c.row.wheel_radius || 0.35;
+        const wr = c.autoWheelRadius || c.row.wheel_radius || 0.35;
         c.state.wheelSpin -= ((t.vel || 0) * delta) / wr;
         for (const k of ["fl","fr","rl","rr"]) {
           const w = c.wheels[k]; if (!w) continue;
