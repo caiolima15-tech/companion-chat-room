@@ -7388,15 +7388,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (tickTimer) return;
     tickTimer = setInterval(() => {
       if (!visible) return;
-      // Alvo: nunca além de 95% até hideWorldLoading; depois corre para 100%.
-      const target = Math.max(realPct, 0.95);
+      // Acompanha o progresso real (sem travar abaixo dele) e segue subindo
+      // gradualmente até 95% mesmo sem novos eventos — assim a barra não fica
+      // parecendo "engasgada" quando o GLB grande está baixando.
+      const target = Math.max(realPct, Math.min(0.95, displayPct + 0.02));
       if (displayPct < target) {
-        // ease-out: avanço proporcional à distância, com piso pra não travar
-        const delta = Math.max(0.004, (target - displayPct) * 0.05);
+        const delta = Math.max(0.015, (target - displayPct) * 0.18);
         displayPct = Math.min(target, displayPct + delta);
         paint();
       }
-    }, 80);
+    }, 60);
   }
   function stopTick() {
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
