@@ -940,6 +940,19 @@ async function enterRoom() {
   Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.portalsEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.carsEnterRoom?.(currentMapId)).catch(() => {});
+  // Áudio: aplica ambiente e sons de objetos da sala
+  Promise.resolve().then(() => {
+    try {
+      window.GameAudio?.applyMapAmbient?.(currentMapId);
+      window.GameAudio?.applyMapObjectSounds?.(currentMapId, (assetId) => {
+        try {
+          const a = (window.__mapAssetsById || new Map()).get(assetId);
+          if (a?.group) return { x: a.group.position.x, y: a.group.position.y + 1.5, z: a.group.position.z };
+        } catch {}
+        return null;
+      });
+    } catch {}
+  });
 
 }
 
