@@ -946,8 +946,8 @@ async function enterRoom() {
       window.GameAudio?.applyMapAmbient?.(currentMapId);
       window.GameAudio?.applyMapObjectSounds?.(currentMapId, (assetId) => {
         try {
-          const a = (window.__mapAssetsById || new Map()).get(assetId);
-          if (a?.group) return { x: a.group.position.x, y: a.group.position.y + 1.5, z: a.group.position.z };
+          const obj = assetObjects.get(assetId);
+          if (obj) return { x: obj.position.x, y: obj.position.y + 1.5, z: obj.position.z };
         } catch {}
         return null;
       });
