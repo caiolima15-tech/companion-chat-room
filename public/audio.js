@@ -445,6 +445,7 @@
     setListener: (pos, fwd, up) => { setListener(pos, fwd, up); setListenerCache(pos); },
     applyMapAmbient, stopAmbient, applyMapObjectSounds,
     registerRemote, unregisterRemote,
+    setLoopVolume, setLoopRate, setLoopPosition,
     playInteractionSoundForAsset: async (mapId, assetId, pos) => {
       try {
         const { data } = await window.supabase
