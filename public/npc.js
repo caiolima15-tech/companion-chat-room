@@ -765,10 +765,19 @@
       </div>
       <div id="npcTabContent"></div>`;
     document.body.appendChild(panel);
-    document.getElementById("npcLoadRadius").onchange = (e) => {
+    document.getElementById("npcLoadRadius").onchange = async (e) => {
       const v = Math.max(5, Math.min(200, Number(e.target.value) || 25));
       localStorage.setItem("npcLoadRadius", String(v));
+      _globalLoadRadius = v;
+      window.__npcLoadRadiusGlobal = v;
       e.target.value = v;
+      try {
+        const sb = SB();
+        const { data: au } = await sb.auth.getUser();
+        await sb.from("game_settings").upsert({
+          key: "npc_load_radius", value: v, updated_by: au?.user?.id || null,
+        }, { onConflict: "key" });
+      } catch (err) { console.warn("[npc] persist load radius failed", err); }
     };
     document.getElementById("npcAdminClose").onclick = () => { panel.remove(); exitRouteEditor(); };
     panel.querySelectorAll(".npc-tab").forEach((b) => b.addEventListener("click", () => {
