@@ -9088,6 +9088,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ent.group.rotation.y = Math.atan2(dir.x, dir.z);
         moving = true;
         if (!ent.__fbKicking) setPlayerAction(ent, running && ent.actions?.run ? "run" : "walk");
+        if (window.GameAudio && !window.__drivingCar) GameAudio.onFootstep(running);
         me && (me.running = running);
       }
     }
