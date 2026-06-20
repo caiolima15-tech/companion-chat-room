@@ -940,6 +940,19 @@ async function enterRoom() {
   Promise.resolve().then(() => window.interactionsEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.portalsEnterRoom?.(currentMapId)).catch(() => {});
   Promise.resolve().then(() => window.carsEnterRoom?.(currentMapId)).catch(() => {});
+  // Áudio: aplica ambiente e sons de objetos da sala
+  Promise.resolve().then(() => {
+    try {
+      window.GameAudio?.applyMapAmbient?.(currentMapId);
+      window.GameAudio?.applyMapObjectSounds?.(currentMapId, (assetId) => {
+        try {
+          const obj = assetObjects.get(assetId);
+          if (obj) return { x: obj.position.x, y: obj.position.y + 1.5, z: obj.position.z };
+        } catch {}
+        return null;
+      });
+    } catch {}
+  });
 
 }
 
@@ -2840,6 +2853,15 @@ async function switchRoom(newMapId) {
     Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.portalsEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.carsEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => {
+      try {
+        window.GameAudio?.applyMapAmbient?.(newMapId);
+        window.GameAudio?.applyMapObjectSounds?.(newMapId, (assetId) => {
+          const obj = assetObjects.get(assetId);
+          return obj ? { x: obj.position.x, y: obj.position.y + 1.5, z: obj.position.z } : null;
+        });
+      } catch {}
+    });
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
@@ -4786,6 +4808,14 @@ function animate() {
   if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
   renderer.render(scene, camera);
   updateNameplates();
+  // Atualiza o listener 3D do áudio
+  if (window.GameAudio?.setListener) {
+    try {
+      const _fwd = new THREE.Vector3();
+      camera.getWorldDirection(_fwd);
+      GameAudio.setListener(camera.position, _fwd, camera.up);
+    } catch {}
+  }
 }
 
 
@@ -10108,8 +10138,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
     if (window.GameAudio) {
+      // Tenta usar clipes específicos do carro (cars_catalog)
+      const carTypeId = c.row.car_id || c.row.catalog_id || c.row.type_id;
+      let accelUrl = null, enterUrl = null;
+      try {
+        if (carTypeId && window.supabase) {
+          const { data: cat } = await window.supabase
+            .from('cars_catalog').select('accel_clip_id').eq('id', carTypeId).maybeSingle();
+          if (cat?.accel_clip_id) {
+            const clip = window.GameAudio.listClips?.().find(x => x.id === cat.accel_clip_id);
+            if (clip) accelUrl = clip.url;
+          }
+        }
+      } catch {}
       GameAudio.playOnce("car_enter", { volume: 0.8 });
-      GameAudio.startLoop("car_accel_loop", { volume: 0.12 });
+      GameAudio.startLoop("car_accel_loop", { url: accelUrl || undefined, key: 'car_accel_loop', volume: 0.12, category: 'engine' });
+      window.__currentCarTypeId = carTypeId;
     }
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
