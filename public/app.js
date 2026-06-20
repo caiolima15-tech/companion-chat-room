@@ -10140,21 +10140,26 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (window.GameAudio) {
       // Tenta usar clipes específicos do carro (cars_catalog)
       const carTypeId = c.row.car_id || c.row.catalog_id || c.row.type_id;
-      let accelUrl = null, enterUrl = null;
+      let accelUrl = null, hornUrl = null, brakeUrl = null;
       try {
         if (carTypeId && window.supabase) {
           const { data: cat } = await window.supabase
-            .from('cars_catalog').select('accel_clip_id').eq('id', carTypeId).maybeSingle();
-          if (cat?.accel_clip_id) {
-            const clip = window.GameAudio.listClips?.().find(x => x.id === cat.accel_clip_id);
-            if (clip) accelUrl = clip.url;
-          }
+            .from('cars_catalog').select('accel_clip_id,horn_clip_id,brake_clip_id').eq('id', carTypeId).maybeSingle();
+          const findUrl = (id) => id ? (window.GameAudio.listClips?.().find(x => x.id === id)?.url || null) : null;
+          accelUrl = findUrl(cat?.accel_clip_id);
+          hornUrl  = findUrl(cat?.horn_clip_id);
+          brakeUrl = findUrl(cat?.brake_clip_id);
         }
       } catch {}
       GameAudio.playOnce("car_enter", { volume: 0.8 });
       GameAudio.startLoop("car_accel_loop", { url: accelUrl || undefined, key: 'car_accel_loop', volume: 0.12, category: 'engine' });
       window.__currentCarTypeId = carTypeId;
+      window.__currentHornUrl = hornUrl;
+      window.__currentBrakeUrl = brakeUrl;
     }
+    // Mostra botão de buzina no mobile
+    const hornBtn = document.getElementById("carBtnHorn");
+    if (hornBtn) hornBtn.hidden = false;
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
     const prompt = document.getElementById("carPrompt");
