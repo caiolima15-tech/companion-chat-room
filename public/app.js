@@ -10107,6 +10107,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = playerEntities.get(myId);
     if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
+    if (window.GameAudio) {
+      GameAudio.playOnce("car_enter", { volume: 0.8 });
+      GameAudio.startLoop("car_accel_loop", { volume: 0.12 });
+    }
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
     const prompt = document.getElementById("carPrompt");
