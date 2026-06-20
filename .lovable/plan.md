@@ -1,108 +1,107 @@
-## Objetivo
+# Tráfego de carros (NPC vehicles)
 
-Criar um sistema completo de áudio gerenciável pelo admin, com som 3D posicional (respeitando distância), sons por sala, por carro, por objeto/GLB, e controles finos de volume e timing de passos.
+Sistema novo, espelhado no de NPCs a pé que já existe, mas adaptado para veículos: traçado de rotas por cliques, IA de seguimento de faixa, paradas em semáforos, anti-colisão simples, áudio 3D e renderização controlada por raio.
 
 ## 1. Banco de dados (Lovable Cloud)
 
-Novas tabelas:
+Novas tabelas (todas com RLS: `SELECT` para `authenticated`, `INSERT/UPDATE/DELETE` só admin via `has_role`, mais GRANTs):
 
-**`audio_clips`** — biblioteca central de arquivos de áudio enviados pelo admin
-- `id`, `created_at`, `created_by`
-- `name` (texto, ex: "Buzina civic"), `category` (enum: `ambient`, `footstep_walk`, `footstep_run`, `car_engine`, `car_brake`, `car_horn`, `voice_step`, `object`, `ui`, `other`)
-- `url` (texto — URL no storage), `storage_path`, `duration_ms`, `size_bytes`, `loopable` (bool)
+**`traffic_routes`** — uma rota traçada no mapa
+- `id`, `map_id`, `name`, `direction` ('forward'|'backward'|'both'), `lane_offset` (m, deslocamento lateral pra mão/contramão), `loop` (bool), `created_at/by`
 
-**`audio_settings`** — singleton/global por escopo
-- `id`, `scope` ('global' | `map_id`), `master_volume`, `ambient_volume`, `sfx_volume`, `voice_volume`, `engine_volume`
-- `footstep_walk_interval_ms` (default 410), `footstep_run_interval_ms` (default 250)
-- `hearing_radius_m` (default 18 — alcance de SFX de outros players/NPCs)
-- `falloff_ref_distance` (default 2), `falloff_max_distance` (default 25), `falloff_rolloff` (default 1.4)
+**`traffic_waypoints`** — pontos do traçado, conectados na ordem por cliques
+- `id`, `route_id`, `seq`, `x`, `y`, `z`
+- `speed_mps` (limite de velocidade no segmento que sai dali, default 8)
+- `is_stop` (bool — sinal de parada/semáforo), `stop_duration_ms` (default 3000)
+- `is_yield` (bool — dar preferência)
 
-**`map_ambient_sounds`** — som de fundo por sala
-- `id`, `map_id`, `clip_id`, `volume` (0..1), `enabled`
+**`traffic_signals`** — semáforos opcionais, ligados a um waypoint
+- `id`, `waypoint_id`, `cycle_red_ms`, `cycle_green_ms`, `cycle_yellow_ms`, `phase_offset_ms`
+  (estado calculado client-side a partir do `now()` para todos verem igual sem realtime)
 
-**`map_object_sounds`** — som anexado a um asset/GLB do mapa
-- `id`, `map_id`, `asset_instance_id` (ref `map_assets` ou `map_asset_interactions`)
-- `clip_id`, `volume`, `radius_m`, `loop` (bool), `trigger` (enum: `always`, `proximity`, `interaction`)
+**`traffic_vehicles`** — definição de "carro NPC" do admin
+- `id`, `map_id`, `route_id`, `car_catalog_id` (FK `cars_catalog` — pega GLB, sons, escala)
+- `color_hex` (override opcional), `max_speed_mps`, `active`
 
-Novas colunas em **`cars_catalog`**:
-- `accel_clip_id` (uuid, nullable, FK `audio_clips`)
-- `brake_clip_id` (uuid, nullable, FK `audio_clips`)
-- `horn_clip_id` (uuid, nullable, FK `audio_clips`)
+**`traffic_state`** — estado em runtime (1 linha por veículo, atualizado pelo `traffic-tick`)
+- `vehicle_id` (PK), `x,y,z`, `rot_y`, `speed`, `segment_index` (entre wp N e N+1), `t` (0..1 ao longo do segmento), `stopped_until` (timestamp), `updated_at`
 
-Todas com RLS:
-- `SELECT` para `authenticated` (todo mundo precisa ler para tocar)
-- `INSERT/UPDATE/DELETE` só para `has_role(auth.uid(),'admin')`
-- `GRANT`s seguindo o padrão do projeto
+Configurações em `game_settings` (mesma tabela já existente):
+- `traffic_load_radius` (default 60m — quanto antes spawnar visualmente)
+- `traffic_hearing_radius` (default 30m — áudio)
+- `traffic_min_gap_m` (default 6 — distância mínima entre veículos na mesma rota)
 
-Bucket de storage `audio-clips` (público, leitura anônima OK, upload restrito a admin via policy).
+## 2. Edge function `traffic-tick`
 
-## 2. Painel admin (`public/audio-admin.js` novo)
+Mesma forma do `npc-tick` que já existe:
+- Loop de ~1s, até 55 iterações por invocação, mantido vivo por cron.
+- Para cada `traffic_vehicles.active=true`:
+  - Lê waypoints da rota em ordem.
+  - Avança ao longo do segmento atual usando `speed_mps` do wp atual.
+  - Em waypoint com `is_stop`: para por `stop_duration_ms`.
+  - Em waypoint com semáforo: consulta fase (vermelho/amarelo = para antes da linha).
+  - Curvas: interpola posição com **Catmull-Rom** entre wps (wp-1, wp, wp+1, wp+2) para curva suave; `rot_y` = atan2 da derivada da curva. Isso é o "fazer curva como carro".
+  - Mão/contramão: offset lateral fixo (`lane_offset`) aplicado perpendicular à direção do segmento, então rotas opostas ficam nas faixas certas.
+  - **Anti-colisão**: antes de avançar, calcula distância pro veículo da frente na mesma rota (segment_index maior ou mesmo segment + t maior). Se < `traffic_min_gap_m`, ajusta velocidade pra ficar atrás (ou para).
+- Upsert em `traffic_state`.
 
-Novo botão `🔊 Áudios` no topbar admin (junto dos outros). Abre overlay modal com abas:
+## 3. Render no cliente (`public/traffic.js` novo)
 
-1. **Biblioteca** — upload de arquivos (.mp3/.ogg/.wav, máx 2 MB), lista com categoria, prévia (play), excluir.
-2. **Sala atual** — selecionar clip de ambiente para o mapa atual + volume; lista de sons anexados a objetos do mapa (add/edit/remove, com seletor de objeto via clique no asset).
-3. **Carros** — para cada carro do catálogo, escolher clips de aceleração, freio, buzina.
-4. **Volumes & timing** — sliders salvos em `audio_settings`: master, ambient, sfx, voice, engine; intervalo de passos andando/correndo; raio de audição; curva de atenuação (ref/max/rolloff).
+- Subscreve Realtime em `traffic_state` (mesmo padrão de `npc_state`).
+- Para cada veículo dentro de `traffic_load_radius` do jogador:
+  - Carrega GLB do `cars_catalog` (usa cache de GLBs que já existe pra carros do usuário).
+  - Aplica `color_hex` se vier.
+  - Interpola posição/rotação suavemente entre ticks (mesmo lerp dos NPCs).
+- Fora do raio: desmonta a mesh (libera memória).
+- Registra fonte de áudio 3D via `GameAudio.registerRemote("car:" + id, { getState })` — usa os clips do `cars_catalog` (accel/brake/horn). Volume cai com distância respeitando `traffic_hearing_radius` (mais alto que NPC).
+- Colisão com jogador/carro do jogador: trata localmente — se a hitbox AABB do veículo intersecta a do jogador/carro, dispara `car_crash` (som da categoria nova) e empurra o jogador.
 
-Tudo persistido na hora; updates causam um `audio:settings` event no `window` que o `audio.js` escuta para re-aplicar sem reload.
+## 4. Painel admin (`public/traffic-admin.js` novo)
 
-## 3. Áudio 3D posicional (`public/audio.js` reescrito)
+Botão `🚦 Trânsito` no topbar admin. Abas:
 
-Substituir o `HTMLAudioElement` puro por **Web Audio API** com `AudioContext`:
-- `AudioListener` segue posição/orientação da câmera (ou do jogador) a cada frame.
-- Cada som posicional usa `PannerNode` (HRTF) com `refDistance`, `maxDistance`, `rolloffFactor` configurados via `audio_settings`.
-- Carrega cada clip uma vez como `AudioBuffer` (cache por URL).
-- Continua expondo `window.GameAudio` com API ampliada:
-  - `playOnce(name, { volume, position? })`
-  - `startLoop(name, { volume, position?, follow? })` / `stopLoop(name)`
-  - `playAt(clipId, { position, volume, loop, refDistance, maxDistance })` — para sons de objeto e remotos
-  - `attachToEntity(entityId, { clipId, ... })` — segue um player/NPC/carro
-  - `setMasterVolume`, `setCategoryVolume(cat, v)`, `setHearingRadius(m)`, `setFootstepInterval(walk, run)`
-  - `setEngine(carId, throttle, speed01)` — usa o clip definido para o carro
-- Master + per-category gain nodes encadeados antes do destination.
+1. **Rotas** — lista de rotas do mapa atual; criar/editar/excluir. Botão **"Traçar rota"** entra em modo de captura:
+   - Cada clique no mapa adiciona um waypoint conectado ao anterior (linha desenhada com `THREE.Line` em overlay).
+   - Atalhos: `S` marca último wp como stop, `Y` como yield, `Enter` finaliza, `Esc` cancela.
+   - Botão "Fechar laço" liga o último wp ao primeiro.
+2. **Semáforos** — selecionar um wp da lista e ligar/desligar semáforo + ajustar ciclos.
+3. **Veículos** — para a rota selecionada, adicionar veículos (escolhe carro do `cars_catalog`, cor opcional, velocidade máx).
+4. **Visualização** — slider `traffic_load_radius` (persistido em `game_settings`, igual ao de NPCs, com realtime pra todos os usuários).
 
-## 4. Sons de outros players e NPCs
+## 5. Integração com `app.js`
 
-No tick principal de `public/app.js`:
-- Para cada player remoto e cada NPC ativo, manter um `audio_source` posicional persistente por entidade.
-- Quando o servidor (ou estado local replicado) dispara um evento (`player_footstep`, `npc_speak`, `car_horn`), chamar `GameAudio.playAt(clipId, { position: entity.position })`.
-- Passos de remotos: derivar do estado `walk`/`run` deles + o intervalo configurado em `audio_settings`, igual ao local. Filtragem por distância: só calcula se `distance < hearing_radius`.
-- Mesma lógica para NPCs (usa o `npc_state.position`).
+- `import` do `traffic.js` no `index.html`.
+- No `loadMap()`: pedir ao `traffic.js` pra (re)inicializar para o novo `map_id`.
+- No `animate()`: nada novo — `traffic.js` cuida do próprio loop de render + áudio (já temos `GameAudio.setListener` rodando por frame).
+- Colisão: chamar `Traffic.collideWith(playerAABB)` no tick local.
 
-## 5. Sons de objeto/GLB
+## 6. Cron
 
-No carregamento do mapa, ler `map_object_sounds` e para cada um:
-- `proximity`/`always`: `startLoop` com `position` no centro do asset, `refDistance` e `maxDistance` vindos do registro.
-- `interaction`: registra handler no objeto e dispara `playOnce` no clique/uso.
+Adicionar entrada no pg_cron que dispara `traffic-tick` a cada minuto (a função roda por ~55s, então fica contínuo), mesmo modelo do `npc-tick`.
 
-## 6. Sons de carro
-
-Em `enterCar(c)`:
-- Buscar `accel_clip_id`/`brake_clip_id`/`horn_clip_id` do catálogo do carro.
-- Trocar o loop padrão por esses clips quando existirem; fallback para os defaults atuais.
-- `setEngine` modula volume/playbackRate do clip do próprio carro.
-
-## 7. Arquivos tocados
+## 7. Arquivos
 
 **Novos:**
-- `public/audio-admin.js` (painel)
-- migrations Supabase (tabelas + bucket + policies + grants)
+- migration: tabelas + RLS + grants + chaves em `game_settings`
+- `supabase/functions/traffic-tick/index.ts`
+- `public/traffic.js`
+- `public/traffic-admin.js`
 
 **Editados:**
-- `public/audio.js` — reescrito para Web Audio API + posicional + categorias
-- `public/index.html` — botão `🔊 Áudios` + `<script src="audio-admin.js">`
-- `public/app.js` — hooks de remotos/NPCs/objetos/carros usando os clips do banco; remover hardcoded URLs e ler de `audio_settings`
-- `public/styles.css` — estilos do painel (segue padrão `users-admin-*`)
-
-**Removidos depois:** os 7 `.asset.json` em `src/assets/sfx/` (passam a ser opcionais como "clips iniciais" que o admin pode importar ou substituir).
+- `public/index.html` — incluir os 2 scripts + botão `🚦 Trânsito` no topbar admin
+- `public/app.js` — hook de `loadMap` e colisão
+- `public/styles.css` — estilos do painel (padrão `users-admin-*`)
 
 ## 8. Fora do escopo desta fase
 
-- Voz por microfone (proximity voice chat) — só sons pré-gravados.
-- Tocar áudio do *próprio* jogador para si mesmo em 3D (continua não-posicional, mais agradável).
-- UI de volume para o jogador final (continua sem por enquanto, como antes).
+- Cruzamentos com prioridade real entre rotas diferentes (só `is_stop`/`is_yield` por wp; cruzamentos ficam coordenados pelos semáforos).
+- Pedestres atravessando faixa interagindo com semáforo de carro.
+- IA de mudança de faixa / ultrapassagem.
+- Acidentes persistentes / amassado visual.
 
-## Estimativa
+## Pontos para você decidir antes de eu codar
 
-Mudança grande: ~1 migration, 1 arquivo novo, 3 arquivos editados pesado. Posso quebrar em duas entregas se preferir: (A) painel + biblioteca + sala/objeto/carro no banco; (B) áudio 3D posicional + remotos/NPCs. Se aprovar, faço tudo numa entrega só.
+1. **Quantidade**: limite máximo de veículos simultâneos por mapa? Sugiro 20 (limita custo da edge function e tráfego de realtime).
+2. **Curva**: ok com Catmull-Rom (suave automática) ou prefere curvas Bézier com pontos de controle explícitos no admin?
+3. **Faixa/contramão**: `lane_offset` único por rota (mais simples) está bom, ou quer múltiplas faixas na mesma rota?
+4. **Colisão com jogador**: empurrar e tocar som de batida, ou também aplicar dano/penalidade?
