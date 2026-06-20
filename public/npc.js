@@ -100,8 +100,23 @@
   const npcLoading = new Set();    // ids currently loading GLB
 
   function getCurrentMapId() { return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar"; }
-  function getLoadRadius() { return Number(localStorage.getItem("npcLoadRadius")) || 25; }
+  let _globalLoadRadius = null; // valor global vindo de game_settings
+  function getLoadRadius() {
+    if (typeof _globalLoadRadius === "number" && _globalLoadRadius > 0) return _globalLoadRadius;
+    return Number(localStorage.getItem("npcLoadRadius")) || 25;
+  }
   function getDespawnRadius() { return getLoadRadius() * 1.25; }
+
+  async function loadGlobalSettings() {
+    try {
+      const sb = SB();
+      const { data } = await sb.from("game_settings").select("key,value").eq("key", "npc_load_radius").maybeSingle();
+      if (data && data.value != null) {
+        const v = Number(data.value);
+        if (v > 0) { _globalLoadRadius = v; window.__npcLoadRadiusGlobal = v; }
+      }
+    } catch {}
+  }
 
   async function reloadForMap() {
     const sb = SB();
