@@ -5097,12 +5097,13 @@ chatForm.addEventListener("submit", async (event) => {
   }
   me.speech = text;
   await trackMe();
+  const _meDur = Math.min(14000, Math.max(2800, 1400 + (text || "").length * 75));
   setTimeout(() => {
     if (me) {
       me.speech = "";
       trackMe();
     }
-  }, 4500);
+  }, _meDur);
 });
 
 
