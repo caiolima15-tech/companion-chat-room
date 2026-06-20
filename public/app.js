@@ -2472,13 +2472,14 @@ async function setupRoomChannels(mapId) {
           player.speech = m.text;
           updateNameplate(player);
           clearTimeout(player._speechTimer);
+          const _dur = Math.min(14000, Math.max(2800, 1400 + (m.text || "").length * 75));
           player._speechTimer = setTimeout(() => {
             const cur = players.find((p) => p.id === m.user_id);
             if (cur) {
               cur.speech = "";
               updateNameplate(cur);
             }
-          }, 4500);
+          }, _dur);
         }
       },
     )
@@ -5096,12 +5097,13 @@ chatForm.addEventListener("submit", async (event) => {
   }
   me.speech = text;
   await trackMe();
+  const _meDur = Math.min(14000, Math.max(2800, 1400 + (text || "").length * 75));
   setTimeout(() => {
     if (me) {
       me.speech = "";
       trackMe();
     }
-  }, 4500);
+  }, _meDur);
 });
 
 

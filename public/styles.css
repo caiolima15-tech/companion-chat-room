@@ -282,6 +282,7 @@ h1 {
   font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
+  text-shadow: none !important;
 }
 
 .speech::after {
@@ -551,7 +552,9 @@ h1 {
   transition: transform .25s ease, opacity .2s ease;
 }
 .chat-panel.is-collapsed {
-  transform: translateY(calc(100% - 40px));
+  transform: translateY(140%);
+  opacity: 0;
+  pointer-events: none;
 }
 .chat-panel.is-collapsed .identity,
 .chat-panel.is-collapsed .chat-log,
@@ -853,9 +856,12 @@ input:focus {
   .chat-panel .identity { display: none; }
 
   body.mobile-show-chat .chat-panel {
-    transform: translateY(0);
-    pointer-events: auto;
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
+  /* Em mobile, o estado "is-collapsed" não deve sobrepor o toggle do botão de chat */
+  .chat-panel.is-collapsed { transform: translateY(100%); opacity: 1; }
 
   .chat-panel::before {
     content: "▾";
@@ -3234,3 +3240,32 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   .world-hud button:active { transform: scale(0.96); }
 }
 
+
+/* ============ Chat FAB (desktop opener) ============ */
+.chat-open-fab {
+  position: fixed;
+  left: 16px;
+  bottom: calc(34px + env(safe-area-inset-bottom));
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: linear-gradient(180deg, rgba(40,38,80,0.85), rgba(18,16,44,0.85));
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+  z-index: 41;
+  transition: transform .18s ease, filter .18s ease;
+}
+.chat-open-fab:hover { transform: translateY(-1px); filter: brightness(1.1); }
+.chat-open-fab svg { width: 24px; height: 24px; }
+.chat-open-fab[hidden] { display: none !important; }
+@media (max-width: 900px), (pointer: coarse) {
+  /* No mobile já existe o botão na barra inferior */
+  .chat-open-fab { display: none !important; }
+}
