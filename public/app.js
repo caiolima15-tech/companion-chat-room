@@ -10186,8 +10186,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     window.__drivingCar = null;
     document.body.classList.remove("driving-on");
     if (window.GameAudio) GameAudio.stopLoop("car_accel_loop");
+    window.__currentHornUrl = null; window.__currentBrakeUrl = null;
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = true;
+    const hornBtn = document.getElementById("carBtnHorn");
+    if (hornBtn) hornBtn.hidden = true;
     const ent = playerEntities.get(myId);
     if (ent) {
       ent.group.visible = true;
