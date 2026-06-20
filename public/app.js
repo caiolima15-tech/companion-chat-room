@@ -10559,6 +10559,17 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   };
 
   // ============ INPUT ============
+  let _lastHornAt = 0;
+  function playHorn() {
+    if (!window.GameAudio) return;
+    const now = performance.now();
+    if (now - _lastHornAt < 250) return;
+    _lastHornAt = now;
+    const url = window.__currentHornUrl || undefined;
+    window.GameAudio.playOnce("car_horn", { url, volume: 0.85, category: 'sfx' });
+  }
+  window.__playHorn = playHorn;
+
   document.addEventListener("keydown", (e) => {
     if (e.target?.matches?.("input, textarea")) return;
     const k = (e.key || "").toLowerCase();
@@ -10578,6 +10589,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (k === "f" && riding) {
       e.preventDefault();
       exitPassenger();
+      return;
+    }
+    if (k === "b" && driving) {
+      e.preventDefault();
+      playHorn();
       return;
     }
     if (driving) {
