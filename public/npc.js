@@ -195,7 +195,7 @@
         npcInstances.delete(id);
         npcStateCache.delete(id);
         const ent = npcEntities.get(id);
-        if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
+        if (ent) { try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {} try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
