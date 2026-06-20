@@ -282,6 +282,7 @@ h1 {
   font-weight: 700;
   line-height: 1.2;
   overflow-wrap: anywhere;
+  text-shadow: none !important;
 }
 
 .speech::after {
