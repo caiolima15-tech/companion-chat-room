@@ -2235,6 +2235,7 @@ export type Database = {
         | "object"
         | "ui"
         | "other"
+        | "car_crash"
       audio_trigger: "always" | "proximity" | "interaction"
     }
     CompositeTypes: {
@@ -2374,6 +2375,7 @@ export const Constants = {
         "object",
         "ui",
         "other",
+        "car_crash",
       ],
       audio_trigger: ["always", "proximity", "interaction"],
     },
