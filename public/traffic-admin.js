@@ -78,8 +78,10 @@
         </div>
       </div>`).join("") || `<div style="opacity:.6">Nenhuma rota. Clique em "+ Nova rota".</div>`;
     body.querySelector("#trfNewRoute").onclick = async () => {
+      if (!mapId) { alert("Nenhum mapa ativo. Entre num mapa antes de criar rota."); return; }
       const { data: u } = await sb.auth.getUser();
-      await sb.from("traffic_routes").insert({ map_id: mapId, name: "Rota " + ((rs?.length || 0) + 1), created_by: u?.user?.id });
+      const { error } = await sb.from("traffic_routes").insert({ map_id: mapId, name: "Rota " + ((rs?.length || 0) + 1), created_by: u?.user?.id });
+      if (error) { console.error("[traffic] insert route failed:", error); alert("Erro ao criar rota: " + error.message); return; }
       renderRoutes(body);
     };
     list.querySelectorAll("input,select").forEach((el) => el.onchange = async () => {
