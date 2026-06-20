@@ -145,11 +145,27 @@
     const { data: models } = await sb.from("npc_models").select("*");
     (models || []).forEach((m) => npcModels.set(m.id, m));
 
+    await loadGlobalSettings();
+
     await reloadForMap();
 
     loadAnimationLibrary();
 
     window.addEventListener("map-changed", () => { reloadForMap(); });
+
+    sb.channel("game-settings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_settings", filter: "key=eq.npc_load_radius" }, (payload) => {
+        const v = Number(payload.new?.value);
+        if (v > 0) {
+          _globalLoadRadius = v;
+          window.__npcLoadRadiusGlobal = v;
+          const inp = document.getElementById("npcLoadRadius");
+          if (inp && document.activeElement !== inp) inp.value = String(v);
+        }
+      })
+      .subscribe();
+
+
 
     sb.channel("npc-state")
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
