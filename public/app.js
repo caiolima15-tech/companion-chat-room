@@ -2853,6 +2853,15 @@ async function switchRoom(newMapId) {
     Promise.resolve().then(() => window.interactionsEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.portalsEnterRoom?.(newMapId)).catch(() => {});
     Promise.resolve().then(() => window.carsEnterRoom?.(newMapId)).catch(() => {});
+    Promise.resolve().then(() => {
+      try {
+        window.GameAudio?.applyMapAmbient?.(newMapId);
+        window.GameAudio?.applyMapObjectSounds?.(newMapId, (assetId) => {
+          const obj = assetObjects.get(assetId);
+          return obj ? { x: obj.position.x, y: obj.position.y + 1.5, z: obj.position.z } : null;
+        });
+      } catch {}
+    });
 
     addSystemLine(`Você entrou em ${MAPS.find((m) => m.id === newMapId)?.name || newMapId}.`);
   } finally {
