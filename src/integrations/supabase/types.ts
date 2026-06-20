@@ -2137,6 +2137,222 @@ export type Database = {
         }
         Relationships: []
       }
+      traffic_routes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          direction: string
+          id: string
+          lane_offset: number
+          loop: boolean
+          map_id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          lane_offset?: number
+          loop?: boolean
+          map_id: string
+          name?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          direction?: string
+          id?: string
+          lane_offset?: number
+          loop?: boolean
+          map_id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      traffic_signals: {
+        Row: {
+          created_at: string
+          cycle_green_ms: number
+          cycle_red_ms: number
+          cycle_yellow_ms: number
+          id: string
+          phase_offset_ms: number
+          waypoint_id: string
+        }
+        Insert: {
+          created_at?: string
+          cycle_green_ms?: number
+          cycle_red_ms?: number
+          cycle_yellow_ms?: number
+          id?: string
+          phase_offset_ms?: number
+          waypoint_id: string
+        }
+        Update: {
+          created_at?: string
+          cycle_green_ms?: number
+          cycle_red_ms?: number
+          cycle_yellow_ms?: number
+          id?: string
+          phase_offset_ms?: number
+          waypoint_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_signals_waypoint_id_fkey"
+            columns: ["waypoint_id"]
+            isOneToOne: false
+            referencedRelation: "traffic_waypoints"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_state: {
+        Row: {
+          rot_y: number
+          segment_index: number
+          speed: number
+          stopped_until: string | null
+          t: number
+          updated_at: string
+          vehicle_id: string
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          rot_y?: number
+          segment_index?: number
+          speed?: number
+          stopped_until?: string | null
+          t?: number
+          updated_at?: string
+          vehicle_id: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Update: {
+          rot_y?: number
+          segment_index?: number
+          speed?: number
+          stopped_until?: string | null
+          t?: number
+          updated_at?: string
+          vehicle_id?: string
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_state_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "traffic_vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_vehicles: {
+        Row: {
+          active: boolean
+          car_catalog_id: string | null
+          color_hex: string | null
+          created_at: string
+          id: string
+          map_id: string
+          max_speed_mps: number
+          route_id: string
+        }
+        Insert: {
+          active?: boolean
+          car_catalog_id?: string | null
+          color_hex?: string | null
+          created_at?: string
+          id?: string
+          map_id: string
+          max_speed_mps?: number
+          route_id: string
+        }
+        Update: {
+          active?: boolean
+          car_catalog_id?: string | null
+          color_hex?: string | null
+          created_at?: string
+          id?: string
+          map_id?: string
+          max_speed_mps?: number
+          route_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_vehicles_car_catalog_id_fkey"
+            columns: ["car_catalog_id"]
+            isOneToOne: false
+            referencedRelation: "cars_catalog"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "traffic_vehicles_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "traffic_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      traffic_waypoints: {
+        Row: {
+          created_at: string
+          id: string
+          is_stop: boolean
+          is_yield: boolean
+          route_id: string
+          seq: number
+          speed_mps: number
+          stop_duration_ms: number
+          x: number
+          y: number
+          z: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_stop?: boolean
+          is_yield?: boolean
+          route_id: string
+          seq: number
+          speed_mps?: number
+          stop_duration_ms?: number
+          x: number
+          y?: number
+          z: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_stop?: boolean
+          is_yield?: boolean
+          route_id?: string
+          seq?: number
+          speed_mps?: number
+          stop_duration_ms?: number
+          x?: number
+          y?: number
+          z?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "traffic_waypoints_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "traffic_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_avatars: {
         Row: {
           base_url: string
