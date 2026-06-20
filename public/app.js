@@ -4336,6 +4336,7 @@ function applyHeldMovement(delta) {
   entity.running = running;
 
   setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
+  if (window.GameAudio && !window.__drivingCar) GameAudio.onFootstep(running);
 
   if (me) {
     me.running = running;
@@ -9087,6 +9088,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         ent.group.rotation.y = Math.atan2(dir.x, dir.z);
         moving = true;
         if (!ent.__fbKicking) setPlayerAction(ent, running && ent.actions?.run ? "run" : "walk");
+        if (window.GameAudio && !window.__drivingCar) GameAudio.onFootstep(running);
         me && (me.running = running);
       }
     }
@@ -10105,6 +10107,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     const ent = playerEntities.get(myId);
     if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
+    if (window.GameAudio) {
+      GameAudio.playOnce("car_enter", { volume: 0.8 });
+      GameAudio.startLoop("car_accel_loop", { volume: 0.12 });
+    }
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
     const prompt = document.getElementById("carPrompt");
@@ -10130,6 +10136,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     driving = null;
     window.__drivingCar = null;
     document.body.classList.remove("driving-on");
+    if (window.GameAudio) GameAudio.stopLoop("car_accel_loop");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = true;
     const ent = playerEntities.get(myId);
@@ -10266,6 +10273,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return !!(hits.length && hits[0].distance < dist + 0.9);
   }
 
+  const _audState = { lastBrake: 0, lastSteerScreech: 0, lastCrash: 0, prevBrake: 0 };
   function simulateDriving(delta) {
     const c = driving;
     if (!c) return;
@@ -10292,10 +10300,36 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     // Tenta mover; se bater em parede/obstáculo, zera velocidade
     const from = c.group.position.clone();
     const to = from.clone().addScaledVector(fwd, c.state.vel * delta);
+    let crashed = false;
     if (hasObstacleAt(from, to)) {
+      crashed = Math.abs(c.state.vel) > 2.5;
       c.state.vel *= -0.15; // pequeno ricochete
     } else {
       c.group.position.copy(to);
+    }
+    // --- Áudio do veículo ---
+    if (window.GameAudio) {
+      const now = performance.now();
+      const speed01 = Math.min(1, Math.abs(c.state.vel) / Math.max(1, maxSpeed));
+      GameAudio.setEngine(inp.throttle, speed01);
+      // Freio: dispara na transição 0→1 com velocidade relevante
+      if (inp.brake && !_audState.prevBrake && Math.abs(c.state.vel) > 2) {
+        if (now - _audState.lastBrake > 350) {
+          GameAudio.playOnce("car_brake", { volume: 0.6 });
+          _audState.lastBrake = now;
+        }
+      }
+      _audState.prevBrake = inp.brake;
+      // Curva fechada em velocidade: mesmo som, mais baixo
+      if (Math.abs(c.state.steer) > 0.45 && speed01 > 0.45 && now - _audState.lastSteerScreech > 900) {
+        GameAudio.playOnce("car_brake", { volume: 0.35 });
+        _audState.lastSteerScreech = now;
+      }
+      // Batida
+      if (crashed && now - _audState.lastCrash > 400) {
+        GameAudio.playOnce("car_crash", { volume: 0.9 });
+        _audState.lastCrash = now;
+      }
     }
     c.group.rotation.y = c.state.yaw;
     // Segue o chão (rampas, plataformas)
