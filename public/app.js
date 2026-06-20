@@ -4336,7 +4336,7 @@ function applyHeldMovement(delta) {
   entity.running = running;
 
   setPlayerAction(entity, running && entity.actions?.run ? "run" : "walk");
-  if (window.GameAudio && !driving) GameAudio.onFootstep(running);
+  if (window.GameAudio && !window.__drivingCar) GameAudio.onFootstep(running);
 
   if (me) {
     me.running = running;
