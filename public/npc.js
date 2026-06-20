@@ -186,7 +186,7 @@
         } else {
           npcInstances.delete(inst.id);
           const ent = npcEntities.get(inst.id);
-          if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
+          if (ent) { try { window.GameAudio?.unregisterRemote?.("npc:" + inst.id); } catch {} try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
         }
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "npc_instances" }, (payload) => {
