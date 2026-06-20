@@ -10138,8 +10138,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (ent) { ent.group.visible = false; if (ent.plate) ent.plate.style.opacity = "0"; }
     document.body.classList.add("driving-on");
     if (window.GameAudio) {
+      // Tenta usar clipes específicos do carro (cars_catalog)
+      const carTypeId = c.row.car_id || c.row.catalog_id || c.row.type_id;
+      let accelUrl = null, enterUrl = null;
+      try {
+        if (carTypeId && window.supabase) {
+          const { data: cat } = await window.supabase
+            .from('cars_catalog').select('accel_clip_id').eq('id', carTypeId).maybeSingle();
+          if (cat?.accel_clip_id) {
+            const clip = window.GameAudio.listClips?.().find(x => x.id === cat.accel_clip_id);
+            if (clip) accelUrl = clip.url;
+          }
+        }
+      } catch {}
       GameAudio.playOnce("car_enter", { volume: 0.8 });
-      GameAudio.startLoop("car_accel_loop", { volume: 0.12 });
+      GameAudio.startLoop("car_accel_loop", { url: accelUrl || undefined, key: 'car_accel_loop', volume: 0.12, category: 'engine' });
+      window.__currentCarTypeId = carTypeId;
     }
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = false;
