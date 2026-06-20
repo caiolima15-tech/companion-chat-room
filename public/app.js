@@ -9785,50 +9785,34 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return wrap;
   }
 
-  // Detecta nós de roda dentro do GLB do chassi (por nome).
-  // Retorna { fl, fr, rl, rr } onde cada item = { obj, center(local), size }
-  // ou null se não conseguir identificar as 4 rodas.
+  // Detecta nós de roda dentro do GLB do chassi por NOMES PADRÃO:
+  //   pfe = pneu frente esquerdo → fl
+  //   pfd = pneu frente direito  → fr
+  //   pte = pneu traseiro esquerdo → rl
+  //   ptd = pneu traseiro direito  → rr
+  // Retorna { fl, fr, rl, rr } com { obj, center(local), size } ou null.
   function detectChassisWheels(chassisRoot) {
     if (!chassisRoot) return null;
     chassisRoot.updateMatrixWorld(true);
-    // nomes comuns em vários idiomas / convenções
-    const wheelRe = /(wheel|wheels|roda|rodas|tire|tyre|rueda|reifen|felge|rim)/i;
-    // evita pegar carcaça/freio: rejeita nomes que claramente NÃO são roda
-    const negRe = /(body|chassis|chasis|carroc|door|porta|janela|window|glass|seat|banco|hood|capo|bumper|para_?choque|interior|engine|motor|trunk|porta_?mala|mirror|retrovisor|light|farol|brake_?disc|caliper|pinca|axle|eixo)/i;
-    const found = [];
+    const map = { pfe: "fl", pfd: "fr", pte: "rl", ptd: "rr" };
+    const out = { fl: null, fr: null, rl: null, rr: null };
     chassisRoot.traverse(o => {
       if (!o || !o.name) return;
-      if (!wheelRe.test(o.name)) return;
-      if (negRe.test(o.name)) return;
-      // se já achei um ancestral, pula
-      let p = o.parent, skip = false;
-      while (p) { if (found.some(f => f.obj === p)) { skip = true; break; } p = p.parent; }
-      if (skip) return;
+      const norm = String(o.name).trim().toLowerCase().replace(/[^a-z]/g, "");
+      const key = map[norm];
+      if (!key || out[key]) return;
       const box = new THREE.Box3().setFromObject(o);
       if (box.isEmpty()) return;
       const size = box.getSize(new THREE.Vector3());
-      // rejeita coisas muito grandes (provavelmente carroceria)
-      if (Math.max(size.x, size.y, size.z) > 1.5) return;
       const center = box.getCenter(new THREE.Vector3());
       chassisRoot.worldToLocal(center);
-      found.push({ obj: o, center, size });
+      out[key] = { obj: o, center, size };
     });
-    if (found.length < 4) return null;
-    // pega as 4 mais "de canto"
-    found.sort((a,b) => (Math.abs(b.center.x)+Math.abs(b.center.z)) - (Math.abs(a.center.x)+Math.abs(a.center.z)));
-    const four = found.slice(0, 4);
-    const out = { fl:null, fr:null, rl:null, rr:null };
-    for (const it of four) {
-      const isLeft  = it.center.x < 0;
-      const isFront = it.center.z > 0;
-      const key = (isFront ? 'f' : 'r') + (isLeft ? 'l' : 'r');
-      if (!out[key]) out[key] = it;
-    }
     if (!out.fl || !out.fr || !out.rl || !out.rr) {
-      console.warn("[cars] auto-detect rodas: não conseguiu classificar as 4 (fl/fr/rl/rr).", out);
+      console.warn("[cars] esperado nós pfe/pfd/pte/ptd no GLB do chassi.", out);
       return null;
     }
-    console.log("[cars] rodas auto-detectadas no GLB do chassi:", Object.fromEntries(
+    console.log("[cars] rodas detectadas por nome (pfe/pfd/pte/ptd):", Object.fromEntries(
       Object.entries(out).map(([k,v]) => [k, v.obj.name])
     ));
     return out;
