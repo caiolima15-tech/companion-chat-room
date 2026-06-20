@@ -30,7 +30,8 @@
     car_enter:      'car_engine',
     car_accel_loop: 'car_engine',
     car_brake:      'car_brake',
-    car_crash:      'other',
+    car_crash:      'car_crash',
+    car_horn:       'car_horn',
   };
 
   // ---------- Estado ----------
