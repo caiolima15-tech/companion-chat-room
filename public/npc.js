@@ -123,6 +123,7 @@
     const mapId = getCurrentMapId();
     // despawn everything
     for (const [id, ent] of npcEntities) {
+      try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
       try { scene().remove(ent.group); } catch {}
       try { ent.bubble?.remove(); } catch {}
     }
