@@ -284,8 +284,19 @@
           e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
           e.targetRot = cur.rot_y || 0;
           setAnim(e, cur.anim || "idle");
+          // Registra como fonte sonora remota (passos posicionais)
+          try {
+            window.GameAudio?.registerRemote?.("npc:" + id, {
+              getState: () => ({
+                pos: { x: e.group.position.x, y: e.group.position.y, z: e.group.position.z },
+                moving: !!e._moving && e.status !== "sit" && e.status !== "talking",
+                running: false,
+              }),
+            });
+          } catch {}
         });
       } else if (ent && d > despawnR) {
+        try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
         try { scene().remove(ent.group); } catch {}
         try { ent.bubble?.remove(); } catch {}
         npcEntities.delete(id);
