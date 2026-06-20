@@ -1,0 +1,1 @@
+ALTER TYPE public.audio_category ADD VALUE IF NOT EXISTS 'car_crash';

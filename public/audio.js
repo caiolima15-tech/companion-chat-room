@@ -30,7 +30,8 @@
     car_enter:      'car_engine',
     car_accel_loop: 'car_engine',
     car_brake:      'car_brake',
-    car_crash:      'other',
+    car_crash:      'car_crash',
+    car_horn:       'car_horn',
   };
 
   // ---------- Estado ----------
@@ -91,6 +92,7 @@
       const c = KEY_TO_CATEGORY[keyOrCat];
       if (c === 'footstep_walk' || c === 'footstep_run') return 'sfx';
       if (c === 'car_engine' || c === 'car_brake') return 'engine';
+      if (c === 'car_horn' || c === 'car_crash') return 'sfx';
       if (c === 'ambient') return 'ambient';
     }
     return 'sfx';

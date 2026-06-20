@@ -76,6 +76,7 @@
     { v:'car_engine', l:'Motor (loop aceleração)' },
     { v:'car_brake', l:'Freio / pneu' },
     { v:'car_horn', l:'Buzina' },
+    { v:'car_crash', l:'Batida (colisão)' },
     { v:'object', l:'Objeto' },
     { v:'ui', l:'UI' },
     { v:'other', l:'Outro' },

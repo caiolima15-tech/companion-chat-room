@@ -2415,6 +2415,22 @@ body.world-ready #speedAdminPanel:not([hidden]) {
   background:linear-gradient(180deg, rgba(244,63,94,0.55), rgba(159,18,57,0.55));
   border-color:rgba(252,165,165,0.5);
 }
+.car-hud .car-btn-horn {
+  position:absolute; right:18px;
+  bottom:calc(260px + env(safe-area-inset-bottom));
+  width:64px; height:64px; border-radius:50%;
+  font-size:26px; pointer-events:auto;
+  background:linear-gradient(180deg, rgba(250,204,21,0.55), rgba(202,138,4,0.55));
+  border:1px solid rgba(254,240,138,0.55);
+  color:#fff;
+  -webkit-user-select:none; user-select:none;
+  -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent;
+  touch-action:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  box-shadow:0 8px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.25);
+  cursor:pointer;
+}
+.car-hud .car-btn-horn:active { transform:scale(0.92); background:rgba(250,204,21,0.75); }
 
 body.driving-on #joyHud,
 body.driving-on .emote-cluster,
