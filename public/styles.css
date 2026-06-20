@@ -856,9 +856,12 @@ input:focus {
   .chat-panel .identity { display: none; }
 
   body.mobile-show-chat .chat-panel {
-    transform: translateY(0);
-    pointer-events: auto;
+    transform: translateY(0) !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
   }
+  /* Em mobile, o estado "is-collapsed" não deve sobrepor o toggle do botão de chat */
+  .chat-panel.is-collapsed { transform: translateY(100%); opacity: 1; }
 
   .chat-panel::before {
     content: "▾";
