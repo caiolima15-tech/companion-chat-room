@@ -50,6 +50,99 @@ export type Database = {
         }
         Relationships: []
       }
+      audio_clips: {
+        Row: {
+          category: Database["public"]["Enums"]["audio_category"]
+          created_at: string
+          created_by: string | null
+          duration_ms: number | null
+          id: string
+          loopable: boolean
+          name: string
+          size_bytes: number | null
+          storage_path: string | null
+          updated_at: string
+          url: string
+        }
+        Insert: {
+          category?: Database["public"]["Enums"]["audio_category"]
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          id?: string
+          loopable?: boolean
+          name: string
+          size_bytes?: number | null
+          storage_path?: string | null
+          updated_at?: string
+          url: string
+        }
+        Update: {
+          category?: Database["public"]["Enums"]["audio_category"]
+          created_at?: string
+          created_by?: string | null
+          duration_ms?: number | null
+          id?: string
+          loopable?: boolean
+          name?: string
+          size_bytes?: number | null
+          storage_path?: string | null
+          updated_at?: string
+          url?: string
+        }
+        Relationships: []
+      }
+      audio_settings: {
+        Row: {
+          ambient_volume: number
+          engine_volume: number
+          falloff_max_distance: number
+          falloff_ref_distance: number
+          falloff_rolloff: number
+          footstep_run_interval_ms: number
+          footstep_walk_interval_ms: number
+          hearing_radius_m: number
+          id: string
+          master_volume: number
+          scope: string
+          sfx_volume: number
+          updated_at: string
+          voice_volume: number
+        }
+        Insert: {
+          ambient_volume?: number
+          engine_volume?: number
+          falloff_max_distance?: number
+          falloff_ref_distance?: number
+          falloff_rolloff?: number
+          footstep_run_interval_ms?: number
+          footstep_walk_interval_ms?: number
+          hearing_radius_m?: number
+          id?: string
+          master_volume?: number
+          scope?: string
+          sfx_volume?: number
+          updated_at?: string
+          voice_volume?: number
+        }
+        Update: {
+          ambient_volume?: number
+          engine_volume?: number
+          falloff_max_distance?: number
+          falloff_ref_distance?: number
+          falloff_rolloff?: number
+          footstep_run_interval_ms?: number
+          footstep_walk_interval_ms?: number
+          hearing_radius_m?: number
+          id?: string
+          master_volume?: number
+          scope?: string
+          sfx_volume?: number
+          updated_at?: string
+          voice_volume?: number
+        }
+        Relationships: []
+      }
       bot_animations: {
         Row: {
           created_at: string
@@ -112,13 +205,16 @@ export type Database = {
       }
       cars_catalog: {
         Row: {
+          accel_clip_id: string | null
           acceleration: number
+          brake_clip_id: string | null
           brake_force: number
           chassis_offset_y: number
           chassis_scale: number
           chassis_url: string
           created_at: string
           created_by: string | null
+          horn_clip_id: string | null
           id: string
           max_speed: number
           name: string
@@ -131,13 +227,16 @@ export type Database = {
           wheel_url: string | null
         }
         Insert: {
+          accel_clip_id?: string | null
           acceleration?: number
+          brake_clip_id?: string | null
           brake_force?: number
           chassis_offset_y?: number
           chassis_scale?: number
           chassis_url: string
           created_at?: string
           created_by?: string | null
+          horn_clip_id?: string | null
           id?: string
           max_speed?: number
           name: string
@@ -150,13 +249,16 @@ export type Database = {
           wheel_url?: string | null
         }
         Update: {
+          accel_clip_id?: string | null
           acceleration?: number
+          brake_clip_id?: string | null
           brake_force?: number
           chassis_offset_y?: number
           chassis_scale?: number
           chassis_url?: string
           created_at?: string
           created_by?: string | null
+          horn_clip_id?: string | null
           id?: string
           max_speed?: number
           name?: string
@@ -168,7 +270,29 @@ export type Database = {
           wheel_radius?: number
           wheel_url?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cars_catalog_accel_clip_id_fkey"
+            columns: ["accel_clip_id"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cars_catalog_brake_clip_id_fkey"
+            columns: ["brake_clip_id"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cars_catalog_horn_clip_id_fkey"
+            columns: ["horn_clip_id"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       characters: {
         Row: {
@@ -935,6 +1059,51 @@ export type Database = {
           },
         ]
       }
+      map_ambient_sounds: {
+        Row: {
+          clip_id: string | null
+          created_at: string
+          enabled: boolean
+          id: string
+          map_id: string
+          updated_at: string
+          volume: number
+        }
+        Insert: {
+          clip_id?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          map_id: string
+          updated_at?: string
+          volume?: number
+        }
+        Update: {
+          clip_id?: string | null
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          map_id?: string
+          updated_at?: string
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_ambient_sounds_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_ambient_sounds_map_id_fkey"
+            columns: ["map_id"]
+            isOneToOne: true
+            referencedRelation: "custom_maps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       map_asset_interactions: {
         Row: {
           animation_key: string
@@ -1354,6 +1523,67 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      map_object_sounds: {
+        Row: {
+          asset_id: string | null
+          clip_id: string
+          created_at: string
+          id: string
+          loop: boolean
+          map_id: string
+          radius_m: number
+          trigger: Database["public"]["Enums"]["audio_trigger"]
+          updated_at: string
+          volume: number
+        }
+        Insert: {
+          asset_id?: string | null
+          clip_id: string
+          created_at?: string
+          id?: string
+          loop?: boolean
+          map_id: string
+          radius_m?: number
+          trigger?: Database["public"]["Enums"]["audio_trigger"]
+          updated_at?: string
+          volume?: number
+        }
+        Update: {
+          asset_id?: string | null
+          clip_id?: string
+          created_at?: string
+          id?: string
+          loop?: boolean
+          map_id?: string
+          radius_m?: number
+          trigger?: Database["public"]["Enums"]["audio_trigger"]
+          updated_at?: string
+          volume?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_object_sounds_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "map_assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_object_sounds_clip_id_fkey"
+            columns: ["clip_id"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_object_sounds_map_id_fkey"
+            columns: ["map_id"]
+            isOneToOne: false
+            referencedRelation: "custom_maps"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       map_portals: {
         Row: {
@@ -1995,6 +2225,17 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "user"
+      audio_category:
+        | "ambient"
+        | "footstep_walk"
+        | "footstep_run"
+        | "car_engine"
+        | "car_brake"
+        | "car_horn"
+        | "object"
+        | "ui"
+        | "other"
+      audio_trigger: "always" | "proximity" | "interaction"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2123,6 +2364,18 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "user"],
+      audio_category: [
+        "ambient",
+        "footstep_walk",
+        "footstep_run",
+        "car_engine",
+        "car_brake",
+        "car_horn",
+        "object",
+        "ui",
+        "other",
+      ],
+      audio_trigger: ["always", "proximity", "interaction"],
     },
   },
 } as const
