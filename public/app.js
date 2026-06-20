@@ -4786,6 +4786,14 @@ function animate() {
   if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
   renderer.render(scene, camera);
   updateNameplates();
+  // Atualiza o listener 3D do áudio
+  if (window.GameAudio?.setListener) {
+    try {
+      const _fwd = new THREE.Vector3();
+      camera.getWorldDirection(_fwd);
+      GameAudio.setListener(camera.position, _fwd, camera.up);
+    } catch {}
+  }
 }
 
 
