@@ -10136,6 +10136,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     driving = null;
     window.__drivingCar = null;
     document.body.classList.remove("driving-on");
+    if (window.GameAudio) GameAudio.stopLoop("car_accel_loop");
     const hud = document.getElementById("carHud");
     if (hud) hud.hidden = true;
     const ent = playerEntities.get(myId);
