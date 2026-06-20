@@ -100,14 +100,30 @@
   const npcLoading = new Set();    // ids currently loading GLB
 
   function getCurrentMapId() { return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar"; }
-  function getLoadRadius() { return Number(localStorage.getItem("npcLoadRadius")) || 25; }
+  let _globalLoadRadius = null; // valor global vindo de game_settings
+  function getLoadRadius() {
+    if (typeof _globalLoadRadius === "number" && _globalLoadRadius > 0) return _globalLoadRadius;
+    return Number(localStorage.getItem("npcLoadRadius")) || 25;
+  }
   function getDespawnRadius() { return getLoadRadius() * 1.25; }
+
+  async function loadGlobalSettings() {
+    try {
+      const sb = SB();
+      const { data } = await sb.from("game_settings").select("key,value").eq("key", "npc_load_radius").maybeSingle();
+      if (data && data.value != null) {
+        const v = Number(data.value);
+        if (v > 0) { _globalLoadRadius = v; window.__npcLoadRadiusGlobal = v; }
+      }
+    } catch {}
+  }
 
   async function reloadForMap() {
     const sb = SB();
     const mapId = getCurrentMapId();
     // despawn everything
     for (const [id, ent] of npcEntities) {
+      try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
       try { scene().remove(ent.group); } catch {}
       try { ent.bubble?.remove(); } catch {}
     }
@@ -130,11 +146,27 @@
     const { data: models } = await sb.from("npc_models").select("*");
     (models || []).forEach((m) => npcModels.set(m.id, m));
 
+    await loadGlobalSettings();
+
     await reloadForMap();
 
     loadAnimationLibrary();
 
     window.addEventListener("map-changed", () => { reloadForMap(); });
+
+    sb.channel("game-settings")
+      .on("postgres_changes", { event: "*", schema: "public", table: "game_settings", filter: "key=eq.npc_load_radius" }, (payload) => {
+        const v = Number(payload.new?.value);
+        if (v > 0) {
+          _globalLoadRadius = v;
+          window.__npcLoadRadiusGlobal = v;
+          const inp = document.getElementById("npcLoadRadius");
+          if (inp && document.activeElement !== inp) inp.value = String(v);
+        }
+      })
+      .subscribe();
+
+
 
     sb.channel("npc-state")
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_state" }, (payload) => {
@@ -154,7 +186,7 @@
         } else {
           npcInstances.delete(inst.id);
           const ent = npcEntities.get(inst.id);
-          if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
+          if (ent) { try { window.GameAudio?.unregisterRemote?.("npc:" + inst.id); } catch {} try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(inst.id); }
         }
       })
       .on("postgres_changes", { event: "DELETE", schema: "public", table: "npc_instances" }, (payload) => {
@@ -163,7 +195,7 @@
         npcInstances.delete(id);
         npcStateCache.delete(id);
         const ent = npcEntities.get(id);
-        if (ent) { try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
+        if (ent) { try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {} try { scene().remove(ent.group); } catch {} try { ent.bubble?.remove(); } catch {} npcEntities.delete(id); }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "npc_models" }, async () => {
         const { data: models } = await sb.from("npc_models").select("*");
@@ -253,8 +285,19 @@
           e.targetPos = new (THREE().Vector3)(cur.x, cur.y, cur.z);
           e.targetRot = cur.rot_y || 0;
           setAnim(e, cur.anim || "idle");
+          // Registra como fonte sonora remota (passos posicionais)
+          try {
+            window.GameAudio?.registerRemote?.("npc:" + id, {
+              getState: () => ({
+                pos: { x: e.group.position.x, y: e.group.position.y, z: e.group.position.z },
+                moving: !!e._moving && e.status !== "sit" && e.status !== "talking",
+                running: false,
+              }),
+            });
+          } catch {}
         });
       } else if (ent && d > despawnR) {
+        try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
         try { scene().remove(ent.group); } catch {}
         try { ent.bubble?.remove(); } catch {}
         npcEntities.delete(id);
@@ -734,10 +777,19 @@
       </div>
       <div id="npcTabContent"></div>`;
     document.body.appendChild(panel);
-    document.getElementById("npcLoadRadius").onchange = (e) => {
+    document.getElementById("npcLoadRadius").onchange = async (e) => {
       const v = Math.max(5, Math.min(200, Number(e.target.value) || 25));
       localStorage.setItem("npcLoadRadius", String(v));
+      _globalLoadRadius = v;
+      window.__npcLoadRadiusGlobal = v;
       e.target.value = v;
+      try {
+        const sb = SB();
+        const { data: au } = await sb.auth.getUser();
+        await sb.from("game_settings").upsert({
+          key: "npc_load_radius", value: v, updated_by: au?.user?.id || null,
+        }, { onConflict: "key" });
+      } catch (err) { console.warn("[npc] persist load radius failed", err); }
     };
     document.getElementById("npcAdminClose").onclick = () => { panel.remove(); exitRouteEditor(); };
     panel.querySelectorAll(".npc-tab").forEach((b) => b.addEventListener("click", () => {
