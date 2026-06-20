@@ -10624,6 +10624,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (driving) exitCar();
       else if (riding) exitPassenger();
     });
+    document.getElementById("carBtnHorn")?.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      if (driving) playHorn();
+    });
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (!el) return;
