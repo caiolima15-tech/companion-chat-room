@@ -11,6 +11,10 @@
   let overlay = null, currentTab = "routes";
   let editor = null; // { routeId, gizmos:Map, line:Line, raycaster, pointer, wps:[] }
 
+  function getMapId() {
+    return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar";
+  }
+
   // ----- Overlay base (mesmo estilo de audio-admin) -----
   function ensureOverlay() {
     if (overlay) return overlay;
@@ -54,15 +58,17 @@
   // ============ ROTAS ============
   async function renderRoutes(body) {
     const sb = SB();
-    const mapId = window.__currentMapId;
-    const { data: rs } = await sb.from("traffic_routes").select("*").eq("map_id", mapId).order("created_at");
+    const mapId = getMapId();
+    const { data: rs, error: loadError } = await sb.from("traffic_routes").select("*").eq("map_id", mapId).order("created_at");
     body.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <button id="trfNewRoute" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 10px;cursor:pointer">+ Nova rota</button>
         <span style="opacity:.7;font-size:12px;align-self:center">Mapa atual: ${mapId || "(nenhum)"}</span>
       </div>
+      <div id="trfStatus" style="display:${loadError ? 'block' : 'none'};margin-bottom:8px;color:#fca5a5;font-size:12px">${loadError ? escapeHtml(loadError.message) : ''}</div>
       <div id="trfRouteList" style="display:flex;flex-direction:column;gap:6px"></div>`;
     const list = body.querySelector("#trfRouteList");
+    const status = body.querySelector("#trfStatus");
     list.innerHTML = (rs || []).map((r) => `
       <div style="border:1px solid #333;border-radius:8px;padding:8px;background:#0a0a14">
         <div style="display:flex;gap:8px;align-items:center">
@@ -78,10 +84,26 @@
         </div>
       </div>`).join("") || `<div style="opacity:.6">Nenhuma rota. Clique em "+ Nova rota".</div>`;
     body.querySelector("#trfNewRoute").onclick = async () => {
-      if (!mapId) { alert("Nenhum mapa ativo. Entre num mapa antes de criar rota."); return; }
-      const { data: u } = await sb.auth.getUser();
-      const { error } = await sb.from("traffic_routes").insert({ map_id: mapId, name: "Rota " + ((rs?.length || 0) + 1), created_by: u?.user?.id });
-      if (error) { console.error("[traffic] insert route failed:", error); alert("Erro ao criar rota: " + error.message); return; }
+      const activeMapId = getMapId();
+      if (!activeMapId) { alert("Nenhum mapa ativo. Entre num mapa antes de criar rota."); return; }
+      const btn = body.querySelector("#trfNewRoute");
+      btn.disabled = true;
+      status.style.display = "block";
+      status.style.color = "#93c5fd";
+      status.textContent = "Criando rota...";
+      const { data: u, error: userError } = await sb.auth.getUser();
+      if (userError) console.warn("[traffic] auth user unavailable:", userError);
+      const payload = { map_id: activeMapId, name: "Rota " + ((rs?.length || 0) + 1) };
+      if (u?.user?.id) payload.created_by = u.user.id;
+      const { error } = await sb.from("traffic_routes").insert(payload);
+      if (error) {
+        console.error("[traffic] insert route failed:", error);
+        btn.disabled = false;
+        status.style.color = "#fca5a5";
+        status.textContent = "Erro ao criar rota: " + error.message;
+        alert("Erro ao criar rota: " + error.message);
+        return;
+      }
       renderRoutes(body);
     };
     list.querySelectorAll("input,select").forEach((el) => el.onchange = async () => {
@@ -387,10 +409,9 @@
     btn.type = "button";
     btn.title = "Trânsito (admin)";
     btn.textContent = "🚦 Trânsito";
-    btn.style.cssText = "position:absolute;top:12px;left:1230px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui";
+    btn.style.cssText = "position:fixed;top:12px;right:12px;z-index:9050;background:rgba(15,23,42,0.9);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui";
     btn.onclick = open;
-    const ref = document.getElementById("audioAdminToggle") || document.getElementById("speedAdminToggle") || document.body;
-    (ref.parentNode || document.body).appendChild(btn);
+    document.body.appendChild(btn);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
   else ensureButton();
