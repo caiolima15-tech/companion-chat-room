@@ -10402,11 +10402,11 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       if (steerKeys.includes(k)) w.rotation.y = -c.state.steer;
       const spin = w.userData.spin;
       const axle = w.userData.axleAxis || "x";
-      if (spin) {
-        spin.rotation.x = 0; spin.rotation.y = 0; spin.rotation.z = 0;
-        // Recompoe orientação base (preservada no quaternion) e aplica spin
-        // somente no eixo do eixo da roda detectado.
-        spin.rotation[axle] = c.state.wheelSpin;
+      const baseQ = w.userData.baseQuat;
+      if (spin && baseQ) {
+        const axisVec = axle === "x" ? _AX_X : axle === "y" ? _AX_Y : _AX_Z;
+        _tmpQ.setFromAxisAngle(axisVec, c.state.wheelSpin);
+        spin.quaternion.copy(baseQ).multiply(_tmpQ);
       }
     }
     // HUD
