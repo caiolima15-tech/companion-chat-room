@@ -10432,14 +10432,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (sv) sv.textContent = String(Math.round(Math.abs(c.state.vel) * 3.6));
     const exitBtn = document.getElementById("carExitBtn");
     if (exitBtn) exitBtn.disabled = Math.abs(c.state.vel) > 0.05;
-    // Câmera
+    // Câmera — segue o carro mas permite orbitar livremente com o mouse.
+    // Mantemos o offset atual (posição − alvo) ao mover o alvo, para a câmera
+    // acompanhar sem reposicionar. Só "auto-orbita" para trás se o jogador
+    // estiver dirigindo e não interagiu com a câmera recentemente.
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const camWant = c.group.position.clone()
-      .addScaledVector(fwd, -6.5)
-      .add(new THREE.Vector3(0, 3.2, 0));
-    camera.position.lerp(camWant, Math.min(1, delta * 4));
-    controls.target.lerp(camTarget, Math.min(1, delta * 6));
-    camera.lookAt(controls.target);
+    const prevOffset = camera.position.clone().sub(controls.target);
+    controls.target.lerp(camTarget, Math.min(1, delta * 10));
+    camera.position.copy(controls.target).add(prevOffset);
+    const moving = Math.abs(c.state.vel) > 1.2;
+    const userIdle = !window.__camUserDragging && performance.now() > (window.__camUserHoldUntil || 0);
+    if (moving && userIdle) {
+      const camWant = c.group.position.clone()
+        .addScaledVector(fwd, -6.5)
+        .add(new THREE.Vector3(0, 3.2, 0));
+      camera.position.lerp(camWant, Math.min(1, delta * 1.5));
+    }
     // Mantém a entidade do jogador acompanhando o carro (evita "snap" ao sair
     // e garante que outros players vejam o avatar junto do carro).
     const ent = playerEntities.get(myId);
