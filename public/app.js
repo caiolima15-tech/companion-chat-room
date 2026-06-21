@@ -9853,6 +9853,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       spinPivot.name = `spin_${k}`;
       spinPivot.quaternion.copy(localQuat);
       spinPivot.scale.copy(localScale);
+      // Guarda quaternion base para recompor a cada frame ao aplicar o spin
+      const baseQuat = localQuat.clone();
 
       // Substitui obj no parent original pelos pivôs
       originalParent.add(steeringNode);
