@@ -10393,8 +10393,18 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     for (const k of ["fl","fr","rl","rr"]) {
       const w = c.wheels[k];
       if (!w) continue;
-      if (steerKeys.includes(k)) w.rotation.y = c.state.steer;
-      w.userData.spin.rotation.x = c.state.wheelSpin;
+      // Esterça em torno do Y vertical. Sinal invertido porque rotação Y
+      // positiva no three.js gira anti-horário visto de cima (= esquerda),
+      // mas steer positivo vem do input "direita".
+      if (steerKeys.includes(k)) w.rotation.y = -c.state.steer;
+      const spin = w.userData.spin;
+      const axle = w.userData.axleAxis || "x";
+      if (spin) {
+        spin.rotation.x = 0; spin.rotation.y = 0; spin.rotation.z = 0;
+        // Recompoe orientação base (preservada no quaternion) e aplica spin
+        // somente no eixo do eixo da roda detectado.
+        spin.rotation[axle] = c.state.wheelSpin;
+      }
     }
     // HUD
     const sv = document.getElementById("carSpeedVal");
