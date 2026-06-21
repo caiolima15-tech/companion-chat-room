@@ -10506,7 +10506,16 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         c.state.wheelSpin -= ((t.vel || 0) * delta) / wr;
         for (const k of ["fl","fr","rl","rr"]) {
           const w = c.wheels[k]; if (!w) continue;
-          w.userData.spin.rotation.x = c.state.wheelSpin;
+          const spin = w.userData.spin;
+          const baseQ = w.userData.baseQuat;
+          const axle = w.userData.axleAxis || "x";
+          if (spin && baseQ) {
+            const axisVec = axle === "x" ? _AX_X : axle === "y" ? _AX_Y : _AX_Z;
+            _tmpQ.setFromAxisAngle(axisVec, c.state.wheelSpin);
+            spin.quaternion.copy(baseQ).multiply(_tmpQ);
+          } else if (spin) {
+            spin.rotation.x = c.state.wheelSpin;
+          }
         }
       }
     }
