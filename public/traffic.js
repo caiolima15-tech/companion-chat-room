@@ -106,10 +106,19 @@
 
   function applyState(row) {
     const cur = states.get(row.vehicle_id);
-    const target = { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed, t: performance.now() };
+    const now = performance.now();
+    const target = { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0, t: now };
     if (!cur) {
-      states.set(row.vehicle_id, { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed, target });
+      states.set(row.vehicle_id, {
+        x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
+        target, lastTarget: { ...target }, lastUpdate: now, interval: 1.0,
+      });
     } else {
+      // estima intervalo entre updates do servidor para extrapolar com confiança
+      const dt = Math.max(0.05, (now - cur.lastUpdate) / 1000);
+      cur.interval = cur.interval ? cur.interval * 0.7 + dt * 0.3 : dt;
+      cur.lastUpdate = now;
+      cur.lastTarget = cur.target;
       cur.target = target;
     }
   }
