@@ -106,10 +106,19 @@
 
   function applyState(row) {
     const cur = states.get(row.vehicle_id);
-    const target = { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed, t: performance.now() };
+    const now = performance.now();
+    const target = { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0, t: now };
     if (!cur) {
-      states.set(row.vehicle_id, { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed, target });
+      states.set(row.vehicle_id, {
+        x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
+        target, lastTarget: { ...target }, lastUpdate: now, interval: 1.0,
+      });
     } else {
+      // estima intervalo entre updates do servidor para extrapolar com confiança
+      const dt = Math.max(0.05, (now - cur.lastUpdate) / 1000);
+      cur.interval = cur.interval ? cur.interval * 0.7 + dt * 0.3 : dt;
+      cur.lastUpdate = now;
+      cur.lastTarget = cur.target;
       cur.target = target;
     }
   }
@@ -217,16 +226,35 @@
       const lr2 = lr * lr;
       const despawn2 = (lr * 1.25) * (lr * 1.25);
 
+
       for (const [id, st] of states) {
-        const dx = (st.target.x - st.x), dy = (st.target.y - st.y), dz = (st.target.z - st.z);
-        // lerp suave 8/s
-        const k = 1 - Math.exp(-dt * 8);
-        st.x += dx * k; st.y += dy * k; st.z += dz * k;
-        // rot interpola pelo caminho mais curto
+        // Dead-reckoning: avança continuamente na direção atual usando a velocidade reportada,
+        // e corrige suavemente para o alvo mais recente do servidor. Isso elimina o "teleporte"
+        // entre updates esparsos do tick do backend.
+        const speed = st.target.speed || 0;
+        // posição prevista do alvo no "agora" (o servidor reporta o estado da última iteração)
+        const ageSec = Math.min(2.0, (now - st.target.t) / 1000);
+        const fwdX = Math.sin(st.target.rot), fwdZ = Math.cos(st.target.rot);
+        const predX = st.target.x + fwdX * speed * ageSec;
+        const predZ = st.target.z + fwdZ * speed * ageSec;
+        const predY = st.target.y;
+
+        // integra a própria posição no rumo atual (movimento fluido)
+        st.x += Math.sin(st.rot) * speed * dt;
+        st.z += Math.cos(st.rot) * speed * dt;
+
+        // corrige suavemente em direção ao alvo previsto (gain baixo = sem solavancos)
+        const corr = 1 - Math.exp(-dt * 3.0);
+        st.x += (predX - st.x) * corr;
+        st.y += (predY - st.y) * corr;
+        st.z += (predZ - st.z) * corr;
+
+        // rotação: interpola pelo caminho mais curto, suave
         let dr = st.target.rot - st.rot;
         while (dr > Math.PI) dr -= 2 * Math.PI;
         while (dr < -Math.PI) dr += 2 * Math.PI;
-        st.rot += dr * k;
+        st.rot += dr * (1 - Math.exp(-dt * 5.0));
+        st.speed = speed;
 
         const distance2 = p ? (st.x - p.x) ** 2 + (st.z - p.z) ** 2 : 0;
         const ent = entities.get(id);
