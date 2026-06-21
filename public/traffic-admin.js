@@ -409,10 +409,9 @@
     btn.type = "button";
     btn.title = "Trânsito (admin)";
     btn.textContent = "🚦 Trânsito";
-    btn.style.cssText = "position:absolute;top:12px;left:1230px;z-index:30;background:rgba(15,23,42,0.85);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui";
+    btn.style.cssText = "position:fixed;top:12px;right:12px;z-index:9050;background:rgba(15,23,42,0.9);color:#fff;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 10px;cursor:pointer;backdrop-filter:blur(6px);font:13px system-ui";
     btn.onclick = open;
-    const ref = document.getElementById("audioAdminToggle") || document.getElementById("speedAdminToggle") || document.body;
-    (ref.parentNode || document.body).appendChild(btn);
+    document.body.appendChild(btn);
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", ensureButton);
   else ensureButton();
