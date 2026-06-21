@@ -9889,7 +9889,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     return wheels;
   }
-  }
+
+
 
   async function spawnCarMesh(row) {
     const group = new THREE.Group();
