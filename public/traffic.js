@@ -226,19 +226,6 @@
       const lr2 = lr * lr;
       const despawn2 = (lr * 1.25) * (lr * 1.25);
 
-      for (const [id, st] of states) {
-        const dx = (st.target.x - st.x), dy = (st.target.y - st.y), dz = (st.target.z - st.z);
-        // lerp suave 8/s
-        const k = 1 - Math.exp(-dt * 8);
-        st.x += dx * k; st.y += dy * k; st.z += dz * k;
-        // rot interpola pelo caminho mais curto
-        let dr = st.target.rot - st.rot;
-        while (dr > Math.PI) dr -= 2 * Math.PI;
-        while (dr < -Math.PI) dr += 2 * Math.PI;
-        st.rot += dr * k;
-
-        const distance2 = p ? (st.x - p.x) ** 2 + (st.z - p.z) ** 2 : 0;
-        const ent = entities.get(id);
 
       for (const [id, st] of states) {
         // Dead-reckoning: avança continuamente na direção atual usando a velocidade reportada,
