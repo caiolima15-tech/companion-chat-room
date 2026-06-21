@@ -183,6 +183,8 @@
       <strong>🚦 Traçando rota</strong>
       <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Shift+click no ponto: parada · Alt+click: yield · Botão direito no ponto: apagar</span>
       <button id="trfCloseLoop" style="background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Fechar laço</button>
+      <button id="trfDelLast" style="background:#f59e0b;color:#111;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar último</button>
+      <button id="trfDelAll" style="background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar todos</button>
       <button id="trfExit" style="background:#c33;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Sair</button>`;
     document.body.appendChild(hud);
     hud.querySelector("#trfExit").onclick = () => { exitEditor(); renderTab(); };
@@ -192,6 +194,18 @@
       const sb = SB();
       const seq = (editor.wps[editor.wps.length - 1]?.seq || 0) + 1;
       await sb.from("traffic_waypoints").insert({ route_id: editor.routeId, seq, x: first.x, y: first.y, z: first.z });
+    };
+    hud.querySelector("#trfDelLast").onclick = async () => {
+      if (!editor?.wps?.length) return;
+      const last = editor.wps[editor.wps.length - 1];
+      const sb = SB();
+      await sb.from("traffic_waypoints").delete().eq("id", last.id);
+    };
+    hud.querySelector("#trfDelAll").onclick = async () => {
+      if (!editor?.wps?.length) return;
+      if (!confirm("Apagar TODOS os pontos desta rota?")) return;
+      const sb = SB();
+      await sb.from("traffic_waypoints").delete().eq("route_id", editor.routeId);
     };
   }
   let bound = false;
