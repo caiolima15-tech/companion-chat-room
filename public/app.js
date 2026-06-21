@@ -9810,7 +9810,8 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const box = new THREE.Box3().setFromObject(o);
       if (box.isEmpty()) return;
       const size = box.getSize(new THREE.Vector3());
-      out[key] = { obj: o, size };
+      const worldCenter = box.getCenter(new THREE.Vector3());
+      out[key] = { obj: o, size, worldCenter };
     });
     if (!out.fl || !out.fr || !out.rl || !out.rr) {
       console.warn("[cars] esperado nós pfe/pfd/pte/ptd no GLB do chassi.", out);
