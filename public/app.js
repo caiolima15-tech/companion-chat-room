@@ -9868,6 +9868,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       steeringNode.userData.spin = spinPivot;
       steeringNode.userData.visual = obj;
       steeringNode.userData.axleAxis = axleAxis;
+      steeringNode.userData.baseQuat = baseQuat;
       wheels[k] = steeringNode;
     }
     return wheels;
