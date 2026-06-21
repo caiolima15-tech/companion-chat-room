@@ -9830,17 +9830,22 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   function attachDetectedWheels(detected, _parentForWheels) {
     const wheels = {};
     for (const k of ["fl","fr","rl","rr"]) {
-      const { obj, size } = detected[k];
+      const { obj, size, worldCenter } = detected[k];
       const originalParent = obj.parent;
-      if (!originalParent) continue;
+      if (!originalParent || !worldCenter) continue;
 
-      // Guarda transform local original (relativo ao parent original)
+      // Transform local original do obj (relativo ao parent original)
       const localPos = obj.position.clone();
       const localQuat = obj.quaternion.clone();
       const localScale = obj.scale.clone();
 
-      // Detecta eixo do eixo da roda: menor dimensão do bbox.
-      // (a roda é fina ao longo do eixo de rotação)
+      // Centro geométrico da roda em coordenadas do originalParent.
+      // É AQUI que o pivô precisa ficar (não na origem do nó, que pode
+      // estar no centro do carro e fazer a roda "orbitar" em volta dele).
+      originalParent.updateMatrixWorld(true);
+      const pivotLocal = originalParent.worldToLocal(worldCenter.clone());
+
+      // Eixo do eixo da roda: menor dimensão do bbox (a roda é fina nesse eixo)
       let axleAxis = "x";
       if (size) {
         const ax = Math.abs(size.x), ay = Math.abs(size.y), az = Math.abs(size.z);
@@ -9849,36 +9854,41 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         else axleAxis = "y";
       }
 
-      // steeringNode: na posição da roda, sem rotação (eixo Y mundo = vertical)
+      // steeringNode no centro da roda; spinPivot zerado dentro dele.
       const steeringNode = new THREE.Group();
       steeringNode.name = `steer_${k}`;
-      steeringNode.position.copy(localPos);
+      steeringNode.position.copy(pivotLocal);
 
-      // spinPivot: herda a rotação/escala original da roda, para que o eixo
-      // local da roda fique preservado e a roda visualmente não saia do lugar.
       const spinPivot = new THREE.Group();
       spinPivot.name = `spin_${k}`;
-      spinPivot.quaternion.copy(localQuat);
-      spinPivot.scale.copy(localScale);
-      // Guarda quaternion base para recompor a cada frame ao aplicar o spin
-      const baseQuat = localQuat.clone();
 
-      // Substitui obj no parent original pelos pivôs
       originalParent.add(steeringNode);
       steeringNode.add(spinPivot);
+
+      // Move obj para dentro do spinPivot, compensando o offset para que
+      // o visual fique IDÊNTICO ao do GLB quando spin/steer = 0.
+      //   world(obj) = originalParent * (localPos, localQuat, localScale)
+      // queremos:
+      //   world(obj) = originalParent * steering(pivotLocal) * spin(I) * (objPos, objQuat, objScale)
+      // logo objQuat = localQuat, objScale = localScale,
+      // objPos = localPos - pivotLocal (no frame do originalParent — válido
+      // pois steeringNode tem rotação identidade).
       originalParent.remove(obj);
-      obj.position.set(0, 0, 0);
-      obj.quaternion.identity();
-      obj.scale.set(1, 1, 1);
+      obj.position.copy(localPos).sub(pivotLocal);
+      obj.quaternion.copy(localQuat);
+      obj.scale.copy(localScale);
       spinPivot.add(obj);
 
       steeringNode.userData.spin = spinPivot;
       steeringNode.userData.visual = obj;
       steeringNode.userData.axleAxis = axleAxis;
-      steeringNode.userData.baseQuat = baseQuat;
+      // baseQuat agora é identidade (spinPivot começa zerado); guardamos
+      // mesmo assim para a API existente.
+      steeringNode.userData.baseQuat = new THREE.Quaternion();
       wheels[k] = steeringNode;
     }
     return wheels;
+  }
   }
 
   async function spawnCarMesh(row) {
