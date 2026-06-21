@@ -3999,7 +3999,9 @@ function renderAssets(assets = []) {
       assetObjects.delete(id);
     }
   }
-  const pending = [];
+  // Prioriza carregar primeiro o que está perto do jogador
+  const pp = (typeof player !== "undefined" && player?.position) ? player.position : { x: 0, y: 0, z: 0 };
+  const toLoad = [];
   for (const asset of assets) {
     if (assetObjects.has(asset.id)) {
       const object = assetObjects.get(asset.id);
@@ -4012,56 +4014,71 @@ function renderAssets(assets = []) {
       registerCollidable(object);
       continue;
     }
-    pending.push(new Promise((resolve) => {
-      loader.load(
-        asset.url,
-        (gltf) => {
-          const object = gltf.scene;
-          object.name = asset.name;
-          normalizeImportedObject(object, asset.scale);
-          object.position.set(asset.x, asset.y, asset.z);
-          object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-          object.traverse((child) => {
-            if (child.isMesh) {
-              child.castShadow = true;
-              child.receiveShadow = true;
-            }
-          });
-          scene.add(object);
-          object.updateMatrixWorld(true);
-          registerCollidable(object);
-          assetObjects.set(asset.id, object);
-          // Suporte a GLBs com animação embutida: cria mixer e toca todas em loop
-          if (gltf.animations && gltf.animations.length) {
-            try {
-              const mixer = new THREE.AnimationMixer(object);
-              for (const clip of gltf.animations) {
-                const action = mixer.clipAction(clip);
-                action.setLoop(THREE.LoopRepeat, Infinity);
-                action.play();
-              }
-              object.userData.__mixer = mixer;
-              assetMixers.add(mixer);
-            } catch (e) { console.warn("[map asset anim]", e); }
-          }
-          resolve();
-        },
-        undefined,
-        () => {
-          const fallback = makeFallbackAsset(asset.name, asset.scale);
-          fallback.position.set(asset.x, asset.y, asset.z);
-          fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
-          scene.add(fallback);
-          fallback.updateMatrixWorld(true);
-          registerCollidable(fallback);
-          assetObjects.set(asset.id, fallback);
-          resolve();
-        },
-      );
-    }));
+    const dx = asset.x - pp.x, dz = asset.z - pp.z;
+    toLoad.push({ asset, d2: dx * dx + dz * dz });
   }
+  toLoad.sort((a, b) => a.d2 - b.d2);
+
+  const loadOne = (asset) => new Promise((resolve) => {
+    loader.load(
+      asset.url,
+      (gltf) => {
+        const object = gltf.scene;
+        object.name = asset.name;
+        normalizeImportedObject(object, asset.scale);
+        object.position.set(asset.x, asset.y, asset.z);
+        object.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+        object.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        scene.add(object);
+        object.updateMatrixWorld(true);
+        registerCollidable(object);
+        assetObjects.set(asset.id, object);
+        if (gltf.animations && gltf.animations.length) {
+          try {
+            const mixer = new THREE.AnimationMixer(object);
+            for (const clip of gltf.animations) {
+              const action = mixer.clipAction(clip);
+              action.setLoop(THREE.LoopRepeat, Infinity);
+              action.play();
+            }
+            object.userData.__mixer = mixer;
+            assetMixers.add(mixer);
+          } catch (e) { console.warn("[map asset anim]", e); }
+        }
+        resolve();
+      },
+      undefined,
+      () => {
+        const fallback = makeFallbackAsset(asset.name, asset.scale);
+        fallback.position.set(asset.x, asset.y, asset.z);
+        fallback.rotation.set(asset.rotationX, asset.rotationY, asset.rotationZ);
+        scene.add(fallback);
+        fallback.updateMatrixWorld(true);
+        registerCollidable(fallback);
+        assetObjects.set(asset.id, fallback);
+        resolve();
+      },
+    );
+  });
+
+  // Concorrência limitada — os mais próximos do jogador terminam primeiro
+  const CONCURRENCY = 4;
+  let cursor = 0;
+  const runNext = async () => {
+    while (cursor < toLoad.length) {
+      const item = toLoad[cursor++];
+      await loadOne(item.asset);
+    }
+  };
+  const workers = [];
+  for (let i = 0; i < Math.min(CONCURRENCY, toLoad.length); i++) workers.push(runNext());
   updateAssetList(assets);
-  return Promise.all(pending);
+  return Promise.all(workers);
 }
 
 function normalizeImportedObject(object, scale = 1) {
