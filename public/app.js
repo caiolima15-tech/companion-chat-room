@@ -9785,6 +9785,12 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return wrap;
   }
 
+  // Vetores e quaternion reutilizáveis para animação de rodas
+  const _AX_X = new THREE.Vector3(1, 0, 0);
+  const _AX_Y = new THREE.Vector3(0, 1, 0);
+  const _AX_Z = new THREE.Vector3(0, 0, 1);
+  const _tmpQ = new THREE.Quaternion();
+
   // Detecta nós de roda dentro do GLB do chassi por NOMES PADRÃO:
   //   pfe = pneu frente esquerdo → fl
   //   pfd = pneu frente direito  → fr
