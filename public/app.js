@@ -9804,9 +9804,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
       const box = new THREE.Box3().setFromObject(o);
       if (box.isEmpty()) return;
       const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      chassisRoot.worldToLocal(center);
-      out[key] = { obj: o, center, size };
+      out[key] = { obj: o, size };
     });
     if (!out.fl || !out.fr || !out.rl || !out.rr) {
       console.warn("[cars] esperado nós pfe/pfd/pte/ptd no GLB do chassi.", out);
@@ -9818,41 +9816,56 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     return out;
   }
 
-  // Converte 4 nós do GLB em rodas animáveis (steeringNode > spinPivot > visual).
-  // Reposiciona em chassisGroup mantendo a posição visual original.
-  function attachDetectedWheels(detected, parentForWheels) {
+  // Insere pivôs ENTRE o parent original e o nó da roda, preservando a
+  // posição visual exata do GLB. Cada roda fica com seu próprio
+  // steeringNode (gira em Y para esterçar) e spinPivot (gira no eixo do
+  // eixo da roda — detectado pelo menor lado do bbox).
+  function attachDetectedWheels(detected, _parentForWheels) {
     const wheels = {};
     for (const k of ["fl","fr","rl","rr"]) {
-      const { obj } = detected[k];
-      // Captura world transform antes de reparentar
-      obj.updateMatrixWorld(true);
-      const worldPos = new THREE.Vector3();
-      const worldQuat = new THREE.Quaternion();
-      const worldScale = new THREE.Vector3();
-      obj.matrixWorld.decompose(worldPos, worldQuat, worldScale);
+      const { obj, size } = detected[k];
+      const originalParent = obj.parent;
+      if (!originalParent) continue;
 
+      // Guarda transform local original (relativo ao parent original)
+      const localPos = obj.position.clone();
+      const localQuat = obj.quaternion.clone();
+      const localScale = obj.scale.clone();
+
+      // Detecta eixo do eixo da roda: menor dimensão do bbox.
+      // (a roda é fina ao longo do eixo de rotação)
+      let axleAxis = "x";
+      if (size) {
+        const ax = Math.abs(size.x), ay = Math.abs(size.y), az = Math.abs(size.z);
+        if (ax <= ay && ax <= az) axleAxis = "x";
+        else if (az <= ax && az <= ay) axleAxis = "z";
+        else axleAxis = "y";
+      }
+
+      // steeringNode: na posição da roda, sem rotação (eixo Y mundo = vertical)
       const steeringNode = new THREE.Group();
-      const spinPivot = new THREE.Group();
-      steeringNode.add(spinPivot);
-      parentForWheels.add(steeringNode);
-
-      // Coloca steeringNode no local da roda (relativo a parentForWheels)
-      parentForWheels.updateMatrixWorld(true);
-      const localPos = parentForWheels.worldToLocal(worldPos.clone());
+      steeringNode.name = `steer_${k}`;
       steeringNode.position.copy(localPos);
 
-      // Remove do parent original e injeta no spinPivot mantendo orientação/escala
-      if (obj.parent) obj.parent.remove(obj);
+      // spinPivot: herda a rotação/escala original da roda, para que o eixo
+      // local da roda fique preservado e a roda visualmente não saia do lugar.
+      const spinPivot = new THREE.Group();
+      spinPivot.name = `spin_${k}`;
+      spinPivot.quaternion.copy(localQuat);
+      spinPivot.scale.copy(localScale);
+
+      // Substitui obj no parent original pelos pivôs
+      originalParent.add(steeringNode);
+      steeringNode.add(spinPivot);
+      originalParent.remove(obj);
       obj.position.set(0, 0, 0);
-      obj.quaternion.copy(worldQuat);
-      // ajusta escala relativa ao parentForWheels
-      const pScale = new THREE.Vector3();
-      parentForWheels.matrixWorld.decompose(new THREE.Vector3(), new THREE.Quaternion(), pScale);
-      obj.scale.set(worldScale.x/pScale.x, worldScale.y/pScale.y, worldScale.z/pScale.z);
+      obj.quaternion.identity();
+      obj.scale.set(1, 1, 1);
       spinPivot.add(obj);
 
       steeringNode.userData.spin = spinPivot;
       steeringNode.userData.visual = obj;
+      steeringNode.userData.axleAxis = axleAxis;
       wheels[k] = steeringNode;
     }
     return wheels;
