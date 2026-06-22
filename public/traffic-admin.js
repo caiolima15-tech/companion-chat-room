@@ -9,7 +9,8 @@
   const renderer = () => window.__renderer;
 
   let overlay = null, currentTab = "routes";
-  let editor = null; // { routeId, gizmos:Map, line:Line, raycaster, pointer, wps:[] }
+  let editor = null; // { routeId, gizmos:Map, line:Line, deleteMarker, selectedWpId, raycaster, pointer, wps:[] }
+  let deleteMarkerTexture = null;
 
   function getMapId() {
     return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar";
@@ -128,7 +129,8 @@
     exitEditor();
     const sb = SB(); const T = THREE();
     const { data: wps } = await sb.from("traffic_waypoints").select("*").eq("route_id", routeId).order("seq");
-    editor = { routeId, gizmos: new Map(), line: null, raycaster: new T.Raycaster(), pointer: new T.Vector2(), wps: wps || [] };
+    editor = { routeId, gizmos: new Map(), line: null, deleteMarker: null, selectedWpId: null, raycaster: new T.Raycaster(), pointer: new T.Vector2(), wps: wps || [] };
+    editor.raycaster.params.Sprite = { threshold: 0.2 };
     rebuildGizmos();
     bindEvents();
     showHud();
@@ -144,6 +146,7 @@
     const sb = SB();
     if (editor.channel) try { sb.removeChannel(editor.channel); } catch {}
     for (const m of editor.gizmos.values()) scene().remove(m);
+    if (editor.deleteMarker) scene().remove(editor.deleteMarker);
     if (editor.line) scene().remove(editor.line);
     unbindEvents();
     document.getElementById("trfHud")?.remove();
@@ -153,6 +156,7 @@
     const T = THREE();
     for (const m of editor.gizmos.values()) scene().remove(m);
     editor.gizmos.clear();
+    if (editor.deleteMarker) { scene().remove(editor.deleteMarker); editor.deleteMarker = null; }
     if (editor.line) { scene().remove(editor.line); editor.line = null; }
     for (const wp of editor.wps) {
       const color = wp.is_stop ? 0xef4444 : (wp.is_yield ? 0xfacc15 : 0x22d3ee);
@@ -166,6 +170,7 @@
       scene().add(sph);
       editor.gizmos.set(wp.id, sph);
     }
+    updateDeleteMarker();
     if (editor.wps.length >= 2) {
       const pts = editor.wps.map((w) => new T.Vector3(w.x, (w.y || 0) + 0.5, w.z));
       const geo = new T.BufferGeometry().setFromPoints(pts);
@@ -174,6 +179,39 @@
       scene().add(editor.line);
     }
   }
+  function getDeleteMarkerTexture() {
+    const T = THREE();
+    if (deleteMarkerTexture) return deleteMarkerTexture;
+    const cnv = document.createElement("canvas");
+    cnv.width = 128; cnv.height = 128;
+    const ctx = cnv.getContext("2d");
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.fillStyle = "#dc2626";
+    ctx.beginPath(); ctx.arc(64, 64, 48, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 14; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(44, 44); ctx.lineTo(84, 84); ctx.moveTo(84, 44); ctx.lineTo(44, 84); ctx.stroke();
+    deleteMarkerTexture = new T.CanvasTexture(cnv);
+    return deleteMarkerTexture;
+  }
+  function updateDeleteMarker() {
+    if (!editor) return;
+    const T = THREE();
+    const selected = editor.selectedWpId ? editor.gizmos.get(editor.selectedWpId) : null;
+    if (!selected) {
+      if (editor.deleteMarker) { scene().remove(editor.deleteMarker); editor.deleteMarker = null; }
+      return;
+    }
+    if (!editor.deleteMarker) {
+      const mat = new T.SpriteMaterial({ map: getDeleteMarkerTexture(), transparent: true, depthTest: false, depthWrite: false });
+      editor.deleteMarker = new T.Sprite(mat);
+      editor.deleteMarker.name = "TrafficRouteDeleteX";
+      editor.deleteMarker.scale.set(0.9, 0.9, 0.9);
+      editor.deleteMarker.renderOrder = 10001;
+      editor.deleteMarker.userData.isDeleteMarker = true;
+      scene().add(editor.deleteMarker);
+    }
+    editor.deleteMarker.position.copy(selected.position).add(new T.Vector3(0, 0.95, 0));
+  }
   function showHud() {
     const old = document.getElementById("trfHud"); if (old) old.remove();
     const hud = document.createElement("div");
@@ -181,7 +219,7 @@
     hud.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111d;border:1px solid #22d3ee;border-radius:10px;padding:8px 14px;color:#fff;font:13px system-ui;z-index:10000;display:flex;gap:8px;align-items:center;max-width:90vw;flex-wrap:wrap";
     hud.innerHTML = `
       <strong>🚦 Traçando rota</strong>
-      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Shift+click no ponto: parada · Alt+click: yield · Botão direito no ponto: apagar</span>
+      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Clique no ponto mostra X para apagar · Shift+click: parada · Alt+click: yield</span>
       <button id="trfCloseLoop" style="background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Fechar laço</button>
       <button id="trfDelLast" style="background:#f59e0b;color:#111;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar último</button>
       <button id="trfDelAll" style="background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar todos</button>
@@ -235,6 +273,23 @@
     const hits = editor.raycaster.intersectObjects(Array.from(editor.gizmos.values()), false);
     return hits[0]?.object || null;
   }
+  function raycastDeleteMarker() {
+    if (!editor?.deleteMarker || !camera()) return null;
+    editor.raycaster.setFromCamera(editor.pointer, camera());
+    const hits = editor.raycaster.intersectObject(editor.deleteMarker, false);
+    return hits[0]?.object || null;
+  }
+  async function deleteWaypointNow(wpId) {
+    if (!editor || !wpId) return;
+    const sb = SB();
+    const gizmo = editor.gizmos.get(wpId);
+    if (gizmo) { scene().remove(gizmo); editor.gizmos.delete(wpId); }
+    if (editor.selectedWpId === wpId) editor.selectedWpId = null;
+    editor.wps = editor.wps.filter((w) => w.id !== wpId);
+    rebuildGizmos();
+    const { error } = await sb.from("traffic_waypoints").delete().eq("id", wpId);
+    if (error) console.warn("[traffic] delete waypoint failed", error);
+  }
   function raycastGround() {
     if (!editor || !camera()) return null;
     const T = THREE();
@@ -257,15 +312,22 @@
     // Right click: apagar gizmo
     if (e.button === 2) {
       const g = raycastGizmo();
-      if (g) { e.preventDefault(); e.stopImmediatePropagation(); await sb.from("traffic_waypoints").delete().eq("id", g.userData.wp.id); }
+      if (g) { e.preventDefault(); e.stopImmediatePropagation(); await deleteWaypointNow(g.userData.wp.id); }
       return;
     }
     if (e.button !== 0) return;
+    const del = raycastDeleteMarker();
+    if (del && editor.selectedWpId) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      await deleteWaypointNow(editor.selectedWpId);
+      return;
+    }
     const g = raycastGizmo();
     if (g) {
-      // shift = stop, alt = yield, click = nada (poderia abrir edição futura)
       e.preventDefault(); e.stopImmediatePropagation();
       const wp = g.userData.wp;
+      editor.selectedWpId = wp.id;
+      updateDeleteMarker();
       if (e.shiftKey) await sb.from("traffic_waypoints").update({ is_stop: !wp.is_stop }).eq("id", wp.id);
       else if (e.altKey) await sb.from("traffic_waypoints").update({ is_yield: !wp.is_yield }).eq("id", wp.id);
       return;

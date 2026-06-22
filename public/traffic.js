@@ -25,6 +25,11 @@
   let _loadRadius = 60, _hearRadius = 30, _minGap = 6;
   let _channel = null;
   let _mapChannel = null;
+  const DEFAULT_WHEEL_OFFSETS = {
+    fl: { x: -0.78, y: 0.1, z: 1.25 }, fr: { x: 0.75, y: 0.1, z: 1.25 },
+    rl: { x: -0.78, y: 0.1, z: -1.25 }, rr: { x: 0.75, y: 0.1, z: -1.25 },
+    scale: 1,
+  };
 
   async function init() {
     const sb = SB();
@@ -118,7 +123,7 @@
       const dt = Math.max(0.05, (now - cur.lastUpdate) / 1000);
       cur.interval = cur.interval ? cur.interval * 0.7 + dt * 0.3 : dt;
       cur.lastUpdate = now;
-      cur.lastTarget = cur.target;
+      cur.lastTarget = { x: cur.x, y: cur.y, z: cur.z, rot: cur.rot, speed: cur.speed || 0, t: now };
       cur.target = target;
     }
   }
@@ -139,7 +144,7 @@
     const T = THREE();
     const group = new T.Group();
     group.name = "TrafficCar:" + id;
-    const placeholder = { group, loading: true, audioId: "trafficCar:" + id };
+    const placeholder = { group, loading: true, audioId: "trafficCar:" + id, wheels: {}, wheelSpin: 0, wheelRadius: 0.35 };
     entities.set(id, placeholder);
     scene().add(group);
 
@@ -177,6 +182,7 @@
       mesh.position.y = 0.5;
       group.add(mesh);
     }
+    try { await addWheelSet(placeholder, cat); } catch (e) { console.warn("[traffic] wheel setup fail", e); }
     placeholder.loading = false;
 
     // posiciona já com o estado atual
@@ -213,6 +219,68 @@
     return null; // GameAudio.startLoop sem url cai no padrão "car_accel_loop"
   }
 
+  function makeWheelFallback(radius) {
+    const T = THREE();
+    const wheel = new T.Group();
+    const tire = new T.Mesh(
+      new T.CylinderGeometry(radius, radius, radius * 0.55, 20),
+      new T.MeshStandardMaterial({ color: 0x111111, roughness: 0.75, metalness: 0.15 })
+    );
+    tire.geometry.rotateZ(Math.PI / 2);
+    const hub = new T.Mesh(
+      new T.CylinderGeometry(radius * 0.48, radius * 0.48, radius * 0.6, 16),
+      new T.MeshStandardMaterial({ color: 0xb8c2cc, roughness: 0.35, metalness: 0.7 })
+    );
+    hub.geometry.rotateZ(Math.PI / 2);
+    wheel.add(tire, hub);
+    return wheel;
+  }
+
+  async function makeWheelTemplate(cat, radius) {
+    if (cat?.wheel_url && window.__GLTFLoader) {
+      try {
+        const loader = new window.__GLTFLoader();
+        const gltf = await new Promise((res, rej) => loader.load(cat.wheel_url, res, undefined, rej));
+        const raw = gltf.scene || gltf.scenes?.[0];
+        if (raw) {
+          raw.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          return raw;
+        }
+      } catch (e) { console.warn("[traffic] wheel glb load fail", e); }
+    }
+    return makeWheelFallback(radius);
+  }
+
+  async function addWheelSet(ent, cat) {
+    const T = THREE();
+    const offsets = cat?.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const radius = cat?.wheel_radius || 0.35;
+    ent.wheelRadius = radius;
+    const scale = offsets.scale ?? 1;
+    const rotY = ((offsets.rotY ?? 0) * Math.PI) / 180;
+    const mirror = offsets.mirror || "xz";
+    const template = await makeWheelTemplate(cat, radius);
+    ent.wheels = {};
+    for (const k of ["fl", "fr", "rl", "rr"]) {
+      const off = offsets[k] || DEFAULT_WHEEL_OFFSETS[k];
+      const node = new T.Group();
+      node.position.set(off.x, off.y, off.z);
+      const spin = new T.Group();
+      spin.scale.setScalar(scale);
+      let visual = template.clone(true);
+      const isRight = k === "fr" || k === "rr";
+      const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+      const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+      visual.scale.set(sx, 1, sz);
+      visual.rotation.y = rotY;
+      spin.add(visual);
+      node.add(spin);
+      node.userData.spin = spin;
+      ent.group.add(node);
+      ent.wheels[k] = node;
+    }
+  }
+
   // ----- Render loop -----
   let _lastCrash = 0;
   function startRenderLoop() {
@@ -228,33 +296,25 @@
 
 
       for (const [id, st] of states) {
-        // Dead-reckoning: avança continuamente na direção atual usando a velocidade reportada,
-        // e corrige suavemente para o alvo mais recente do servidor. Isso elimina o "teleporte"
-        // entre updates esparsos do tick do backend.
-        const speed = st.target.speed || 0;
-        // posição prevista do alvo no "agora" (o servidor reporta o estado da última iteração)
-        const ageSec = Math.min(2.0, (now - st.target.t) / 1000);
-        const fwdX = Math.sin(st.target.rot), fwdZ = Math.cos(st.target.rot);
-        const predX = st.target.x + fwdX * speed * ageSec;
-        const predZ = st.target.z + fwdZ * speed * ageSec;
-        const predY = st.target.y;
-
-        // integra a própria posição no rumo atual (movimento fluido)
-        st.x += Math.sin(st.rot) * speed * dt;
-        st.z += Math.cos(st.rot) * speed * dt;
-
-        // corrige suavemente em direção ao alvo previsto (gain baixo = sem solavancos)
-        const corr = 1 - Math.exp(-dt * 3.0);
-        st.x += (predX - st.x) * corr;
-        st.y += (predY - st.y) * corr;
-        st.z += (predZ - st.z) * corr;
-
-        // rotação: interpola pelo caminho mais curto, suave
-        let dr = st.target.rot - st.rot;
+        const prevX = st.x, prevZ = st.z;
+        const interval = Math.max(0.18, st.interval || 1.0);
+        const ageSec = Math.max(0, (now - st.target.t) / 1000);
+        const u = Math.min(1, ageSec / interval);
+        const ease = u * u * (3 - 2 * u);
+        const base = st.lastTarget || st.target;
+        st.x = base.x + (st.target.x - base.x) * ease;
+        st.y = base.y + (st.target.y - base.y) * ease;
+        st.z = base.z + (st.target.z - base.z) * ease;
+        if (ageSec > interval && st.target.speed > 0.05) {
+          const extra = Math.min(0.18, ageSec - interval);
+          st.x += Math.sin(st.target.rot) * st.target.speed * extra;
+          st.z += Math.cos(st.target.rot) * st.target.speed * extra;
+        }
+        let dr = st.target.rot - (base.rot ?? st.rot);
         while (dr > Math.PI) dr -= 2 * Math.PI;
         while (dr < -Math.PI) dr += 2 * Math.PI;
-        st.rot += dr * (1 - Math.exp(-dt * 5.0));
-        st.speed = speed;
+        st.rot = (base.rot ?? st.rot) + dr * ease;
+        st.speed = dt > 0 ? Math.hypot(st.x - prevX, st.z - prevZ) / dt : (st.target.speed || 0);
 
         const distance2 = p ? (st.x - p.x) ** 2 + (st.z - p.z) ** 2 : 0;
         const ent = entities.get(id);
@@ -268,6 +328,13 @@
         } else if (ent && !ent.loading) {
           ent.group.position.set(st.x, st.y, st.z);
           ent.group.rotation.y = st.rot;
+          const wr = ent.wheelRadius || 0.35;
+          ent.wheelSpin -= (st.speed * dt) / wr;
+          for (const k of ["fl", "fr", "rl", "rr"]) {
+            const w = ent.wheels?.[k];
+            const spin = w?.userData?.spin;
+            if (spin) spin.rotation.x = ent.wheelSpin;
+          }
           // motor: modula taxa pela velocidade
           try {
             const r = Math.min(1, Math.abs(st.speed) / 12);
