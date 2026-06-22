@@ -22,6 +22,8 @@
   const states = new Map();     // id -> { x,y,z,rot_y,speed, target:{x,y,z,rot,t} }
   const entities = new Map();   // id -> { group, loading, audioId, lastPos }
   const carCatalog = new Map(); // id -> row
+  const routes = new Map();     // route_id -> row
+  const waypointsByRoute = new Map(); // route_id -> waypoints ordenados
   let _loadRadius = 60, _hearRadius = 30, _minGap = 6;
   let _channel = null;
   let _mapChannel = null;
@@ -75,7 +77,7 @@
     startRenderLoop();
     // dispara o tick no servidor pra garantir que está rodando
     pokeTick();
-    setInterval(pokeTick, 40000);
+    setInterval(pokeTick, 58000);
   }
 
   async function pokeTick() {
@@ -84,7 +86,7 @@
       const url = (sb?.supabaseUrl || sb?.rest?.url || "").replace(/\/rest\/v1\/?$/, "");
       if (!url) return;
       // Não bloquear o cliente
-      fetch(url + "/functions/v1/traffic-tick?iter=50", {
+      fetch(url + "/functions/v1/traffic-tick?iter=55", {
         method: "POST",
         headers: { Authorization: "Bearer " + (sb?.supabaseKey || ""), apikey: sb?.supabaseKey || "" },
       }).catch(() => {});
@@ -96,11 +98,30 @@
     const mapId = window.__currentMapId;
     // limpa
     for (const id of Array.from(entities.keys())) removeVehicle(id);
-    vehicles.clear(); states.clear();
+    vehicles.clear(); states.clear(); routes.clear(); waypointsByRoute.clear();
     if (!mapId) return;
 
     const { data: v } = await sb.from("traffic_vehicles").select("*").eq("map_id", mapId).eq("active", true);
     for (const row of v || []) vehicles.set(row.id, row);
+
+    const routeIds = [...new Set((v || []).map((row) => row.route_id).filter(Boolean))];
+    if (routeIds.length) {
+      try {
+        const { data: rs } = await sb.from("traffic_routes").select("id,loop,lane_offset,direction").in("id", routeIds);
+        for (const r of rs || []) routes.set(r.id, r);
+      } catch {}
+      try {
+        const { data: wps } = await sb.from("traffic_waypoints")
+          .select("id,route_id,seq,x,y,z,speed_mps,is_stop,stop_duration_ms,is_yield")
+          .in("route_id", routeIds)
+          .order("seq", { ascending: true });
+        for (const w of wps || []) {
+          const list = waypointsByRoute.get(w.route_id) || [];
+          list.push(w);
+          waypointsByRoute.set(w.route_id, list);
+        }
+      } catch {}
+    }
 
     if (vehicles.size) {
       const ids = [...vehicles.keys()];
@@ -112,11 +133,15 @@
   function applyState(row) {
     const cur = states.get(row.vehicle_id);
     const now = performance.now();
-    const target = { x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0, t: now };
+    const target = {
+      x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
+      seg: row.segment_index || 0, pathT: row.t || 0, receivedAt: now,
+    };
     if (!cur) {
       states.set(row.vehicle_id, {
         x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
-        target, lastTarget: { ...target }, lastUpdate: now, interval: 1.0,
+        target, localSeg: target.seg, localT: target.pathT, driveSpeed: target.speed,
+        lastTarget: { ...target }, lastUpdate: now, interval: 1.0,
       });
     } else {
       // estima intervalo entre updates do servidor para extrapolar com confiança
@@ -125,6 +150,10 @@
       cur.lastUpdate = now;
       cur.lastTarget = { x: cur.x, y: cur.y, z: cur.z, rot: cur.rot, speed: cur.speed || 0, t: now };
       cur.target = target;
+      if (cur.localSeg == null || cur.localT == null) {
+        cur.localSeg = target.seg;
+        cur.localT = target.pathT;
+      }
     }
   }
 
