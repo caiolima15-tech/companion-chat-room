@@ -123,7 +123,7 @@
       const dt = Math.max(0.05, (now - cur.lastUpdate) / 1000);
       cur.interval = cur.interval ? cur.interval * 0.7 + dt * 0.3 : dt;
       cur.lastUpdate = now;
-      cur.lastTarget = cur.target;
+      cur.lastTarget = { x: cur.x, y: cur.y, z: cur.z, rot: cur.rot, speed: cur.speed || 0, t: now };
       cur.target = target;
     }
   }
