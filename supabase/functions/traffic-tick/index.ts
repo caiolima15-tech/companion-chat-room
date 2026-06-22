@@ -101,8 +101,9 @@ async function runOneTick(minGap: number) {
     let seg = st.segment_index || 0;
     let t = st.t || 0;
     const N = wpList.length;
+    if (!route.loop && seg >= N - 1) { seg = N - 2; t = 1; }
     let wpA = wpList[seg % N];
-    let wpB = wpList[(seg + 1) % N];
+    let wpB = wpList[route.loop ? (seg + 1) % N : seg + 1];
     if (!wpA || !wpB) continue;
 
     const dx = wpB.x - wpA.x, dz = wpB.z - wpA.z;
@@ -146,7 +147,7 @@ async function runOneTick(minGap: number) {
       seg = seg + 1;
       if (seg >= N) {
         if (route.loop) seg = 0;
-        else { seg = N - 1; t = 1; newSpeed = 0; }
+        else { seg = N - 2; t = 1; newSpeed = 0; }
       }
       const arrived = wpList[seg % N];
       if (arrived?.is_stop) {
@@ -157,7 +158,7 @@ async function runOneTick(minGap: number) {
     }
 
     wpA = wpList[seg % N];
-    wpB = wpList[(seg + 1) % N];
+    wpB = wpList[route.loop ? (seg + 1) % N : seg + 1];
     if (!wpA || !wpB) continue;
 
     const ndx = wpB.x - wpA.x, ndz = wpB.z - wpA.z;
