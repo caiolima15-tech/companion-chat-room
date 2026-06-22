@@ -255,6 +255,7 @@
     const T = THREE();
     const offsets = cat?.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
     const radius = cat?.wheel_radius || 0.35;
+    ent.wheelRadius = radius;
     const scale = offsets.scale ?? 1;
     const rotY = ((offsets.rotY ?? 0) * Math.PI) / 180;
     const mirror = offsets.mirror || "xz";
