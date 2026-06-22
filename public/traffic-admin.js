@@ -219,7 +219,7 @@
     hud.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111d;border:1px solid #22d3ee;border-radius:10px;padding:8px 14px;color:#fff;font:13px system-ui;z-index:10000;display:flex;gap:8px;align-items:center;max-width:90vw;flex-wrap:wrap";
     hud.innerHTML = `
       <strong>🚦 Traçando rota</strong>
-      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Shift+click no ponto: parada · Alt+click: yield · Botão direito no ponto: apagar</span>
+      <span style="opacity:.7;font-size:11px">Clique no chão pra adicionar ponto · Clique no ponto mostra X para apagar · Shift+click: parada · Alt+click: yield</span>
       <button id="trfCloseLoop" style="background:#16a34a;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Fechar laço</button>
       <button id="trfDelLast" style="background:#f59e0b;color:#111;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar último</button>
       <button id="trfDelAll" style="background:#dc2626;color:#fff;border:none;padding:4px 10px;border-radius:4px;cursor:pointer">Apagar todos</button>
