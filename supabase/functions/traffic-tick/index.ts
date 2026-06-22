@@ -101,8 +101,8 @@ async function runOneTick(minGap: number) {
     let seg = st.segment_index || 0;
     let t = st.t || 0;
     const N = wpList.length;
-    const wpA = wpList[seg % N];
-    const wpB = wpList[(seg + 1) % N];
+    let wpA = wpList[seg % N];
+    let wpB = wpList[(seg + 1) % N];
     if (!wpA || !wpB) continue;
 
     const dx = wpB.x - wpA.x, dz = wpB.z - wpA.z;
@@ -140,10 +140,10 @@ async function runOneTick(minGap: number) {
     let newSpeed = desiredSpeed;
     let stoppedUntil: string | null = null;
 
-    if (t >= 1) {
-      // chegou no wpB
+    while (t >= 1) {
+      // chegou no wpB; mantém o excesso de movimento em vez de voltar para o wp anterior
+      t -= 1;
       seg = seg + 1;
-      t = 0;
       if (seg >= N) {
         if (route.loop) seg = 0;
         else { seg = N - 1; t = 1; newSpeed = 0; }
@@ -153,16 +153,24 @@ async function runOneTick(minGap: number) {
         stoppedUntil = new Date(now + (arrived.stop_duration_ms || 3000)).toISOString();
         newSpeed = 0;
       }
+      if (newSpeed === 0 || t >= 1 === false) break;
     }
 
+    wpA = wpList[seg % N];
+    wpB = wpList[(seg + 1) % N];
+    if (!wpA || !wpB) continue;
+
+    const ndx = wpB.x - wpA.x, ndz = wpB.z - wpA.z;
+    const nSegLen = Math.hypot(ndx, ndz) || 1;
+
     // posição interpolada + offset lateral pra faixa
-    const ix = wpA.x + dx * t;
-    const iz = wpA.z + dz * t;
+    const ix = wpA.x + ndx * t;
+    const iz = wpA.z + ndz * t;
     const iy = (wpA.y || 0) + ((wpB.y || 0) - (wpA.y || 0)) * t;
-    const perpX = -dz / segLen;
-    const perpZ = dx / segLen;
+    const perpX = -ndz / nSegLen;
+    const perpZ = ndx / nSegLen;
     const lane = route.lane_offset || 0;
-    const rot = Math.atan2(dx, dz);
+    const rot = Math.atan2(ndx, ndz);
 
     updates.push({
       vehicle_id: v.id,
