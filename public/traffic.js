@@ -158,20 +158,13 @@
           m.scale.setScalar(cat.chassis_scale || 1);
           m.position.y = cat.chassis_offset_y || 0;
           m.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-          if (def.color_hex) {
-            m.traverse((o) => {
-              if (o.isMesh && o.material && o.material.color && /body|chass|paint/i.test(o.name || o.material.name || "")) {
-                try { o.material = o.material.clone(); o.material.color.set(def.color_hex); } catch {}
-              }
-            });
-          }
           group.add(m);
         }
       } else {
         // fallback
         const mesh = new T.Mesh(
           new T.BoxGeometry(1.8, 0.9, 4),
-          new T.MeshStandardMaterial({ color: def.color_hex || 0x4488ff })
+          new T.MeshStandardMaterial({ color: 0x4488ff })
         );
         mesh.position.y = 0.5;
         group.add(mesh);
