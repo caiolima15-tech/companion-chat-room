@@ -303,6 +303,100 @@
     }
   }
 
+  function normSeg(seg, n) {
+    return ((seg % n) + n) % n;
+  }
+
+  function advancePath(route, wpList, seg, t, meters) {
+    const N = wpList.length;
+    if (N < 2) return { seg: 0, t: 0 };
+    seg = Math.max(0, Math.min(N - 1, Math.floor(seg || 0)));
+    t = Math.max(0, Math.min(1, Number(t) || 0));
+    let guard = 0;
+    while (meters > 0.0001 && guard++ < N + 4) {
+      const a = wpList[normSeg(seg, N)];
+      const b = wpList[route.loop ? normSeg(seg + 1, N) : seg + 1];
+      if (!a || !b) return { seg: Math.max(0, N - 2), t: 1 };
+      const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+      const left = (1 - t) * len;
+      if (meters < left) {
+        t += meters / len;
+        meters = 0;
+      } else {
+        meters -= left;
+        seg += 1;
+        t = 0;
+        if (!route.loop && seg >= N - 1) return { seg: N - 2, t: 1 };
+        if (route.loop && seg >= N) seg = 0;
+      }
+    }
+    return { seg, t };
+  }
+
+  function pathDelta(fromSeg, fromT, toSeg, toT, n, loop) {
+    let d = (toSeg + toT) - (fromSeg + fromT);
+    if (loop) {
+      if (d > n / 2) d -= n;
+      if (d < -n / 2) d += n;
+    }
+    return d;
+  }
+
+  function poseOnRoute(route, wpList, seg, t) {
+    const N = wpList.length;
+    if (N < 2) return null;
+    if (!route.loop) seg = Math.max(0, Math.min(N - 2, seg));
+    const a = wpList[normSeg(seg, N)];
+    const b = wpList[route.loop ? normSeg(seg + 1, N) : seg + 1];
+    if (!a || !b) return null;
+    t = Math.max(0, Math.min(1, t));
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const lane = route.lane_offset || 0;
+    const perpX = -dz / len;
+    const perpZ = dx / len;
+    return {
+      x: a.x + dx * t + perpX * lane,
+      y: (a.y || 0) + ((b.y || 0) - (a.y || 0)) * t,
+      z: a.z + dz * t + perpZ * lane,
+      rot: Math.atan2(dx, dz),
+    };
+  }
+
+  function stepLocalTraffic(id, st, dt, now) {
+    const def = vehicles.get(id);
+    const route = def?.route_id ? routes.get(def.route_id) : null;
+    const wpList = def?.route_id ? waypointsByRoute.get(def.route_id) : null;
+    if (!route || !wpList || wpList.length < 2 || !st.target) return null;
+    if (st.localSeg == null || st.localT == null) {
+      st.localSeg = st.target.seg || 0;
+      st.localT = st.target.pathT || 0;
+    }
+
+    const desiredSpeed = Math.max(0, st.target.speed || 0);
+    const accelK = desiredSpeed > (st.driveSpeed || 0) ? 2.5 : 7.5;
+    st.driveSpeed = (st.driveSpeed || 0) + (desiredSpeed - (st.driveSpeed || 0)) * (1 - Math.exp(-dt * accelK));
+
+    let next = advancePath(route, wpList, st.localSeg, st.localT, st.driveSpeed * dt);
+
+    // Correção suave para o ponto lógico vindo do backend, já extrapolado pelo tempo de rede.
+    const age = Math.min(2.2, Math.max(0, (now - (st.target.receivedAt || now)) / 1000));
+    const serverNow = advancePath(route, wpList, st.target.seg || 0, st.target.pathT || 0, desiredSpeed * age);
+    const d = pathDelta(next.seg, next.t, serverNow.seg, serverNow.t, wpList.length, !!route.loop);
+    const maxCorrection = dt * 0.32;
+    const corr = Math.max(-maxCorrection, Math.min(maxCorrection, d));
+    if (Math.abs(corr) > 0.0001) {
+      const curLenWp = wpList[normSeg(next.seg, wpList.length)];
+      const nxtLenWp = wpList[route.loop ? normSeg(next.seg + 1, wpList.length) : next.seg + 1];
+      const segLen = curLenWp && nxtLenWp ? Math.hypot(nxtLenWp.x - curLenWp.x, nxtLenWp.z - curLenWp.z) || 1 : 1;
+      next = advancePath(route, wpList, next.seg, next.t, corr * segLen);
+    }
+
+    st.localSeg = next.seg;
+    st.localT = next.t;
+    return poseOnRoute(route, wpList, st.localSeg, st.localT);
+  }
+
   // ----- Render loop -----
   let _lastCrash = 0;
   function startRenderLoop() {
