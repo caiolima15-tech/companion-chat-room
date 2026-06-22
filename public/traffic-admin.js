@@ -156,6 +156,7 @@
     const T = THREE();
     for (const m of editor.gizmos.values()) scene().remove(m);
     editor.gizmos.clear();
+    if (editor.deleteMarker) { scene().remove(editor.deleteMarker); editor.deleteMarker = null; }
     if (editor.line) { scene().remove(editor.line); editor.line = null; }
     for (const wp of editor.wps) {
       const color = wp.is_stop ? 0xef4444 : (wp.is_yield ? 0xfacc15 : 0x22d3ee);
@@ -169,6 +170,7 @@
       scene().add(sph);
       editor.gizmos.set(wp.id, sph);
     }
+    updateDeleteMarker();
     if (editor.wps.length >= 2) {
       const pts = editor.wps.map((w) => new T.Vector3(w.x, (w.y || 0) + 0.5, w.z));
       const geo = new T.BufferGeometry().setFromPoints(pts);
@@ -176,6 +178,39 @@
       editor.line.renderOrder = 9998;
       scene().add(editor.line);
     }
+  }
+  function getDeleteMarkerTexture() {
+    const T = THREE();
+    if (deleteMarkerTexture) return deleteMarkerTexture;
+    const cnv = document.createElement("canvas");
+    cnv.width = 128; cnv.height = 128;
+    const ctx = cnv.getContext("2d");
+    ctx.clearRect(0, 0, 128, 128);
+    ctx.fillStyle = "#dc2626";
+    ctx.beginPath(); ctx.arc(64, 64, 48, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 14; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(44, 44); ctx.lineTo(84, 84); ctx.moveTo(84, 44); ctx.lineTo(44, 84); ctx.stroke();
+    deleteMarkerTexture = new T.CanvasTexture(cnv);
+    return deleteMarkerTexture;
+  }
+  function updateDeleteMarker() {
+    if (!editor) return;
+    const T = THREE();
+    const selected = editor.selectedWpId ? editor.gizmos.get(editor.selectedWpId) : null;
+    if (!selected) {
+      if (editor.deleteMarker) { scene().remove(editor.deleteMarker); editor.deleteMarker = null; }
+      return;
+    }
+    if (!editor.deleteMarker) {
+      const mat = new T.SpriteMaterial({ map: getDeleteMarkerTexture(), transparent: true, depthTest: false, depthWrite: false });
+      editor.deleteMarker = new T.Sprite(mat);
+      editor.deleteMarker.name = "TrafficRouteDeleteX";
+      editor.deleteMarker.scale.set(0.9, 0.9, 0.9);
+      editor.deleteMarker.renderOrder = 10001;
+      editor.deleteMarker.userData.isDeleteMarker = true;
+      scene().add(editor.deleteMarker);
+    }
+    editor.deleteMarker.position.copy(selected.position).add(new T.Vector3(0, 0.95, 0));
   }
   function showHud() {
     const old = document.getElementById("trfHud"); if (old) old.remove();
