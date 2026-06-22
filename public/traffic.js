@@ -295,33 +295,25 @@
 
 
       for (const [id, st] of states) {
-        // Dead-reckoning: avança continuamente na direção atual usando a velocidade reportada,
-        // e corrige suavemente para o alvo mais recente do servidor. Isso elimina o "teleporte"
-        // entre updates esparsos do tick do backend.
-        const speed = st.target.speed || 0;
-        // posição prevista do alvo no "agora" (o servidor reporta o estado da última iteração)
-        const ageSec = Math.min(2.0, (now - st.target.t) / 1000);
-        const fwdX = Math.sin(st.target.rot), fwdZ = Math.cos(st.target.rot);
-        const predX = st.target.x + fwdX * speed * ageSec;
-        const predZ = st.target.z + fwdZ * speed * ageSec;
-        const predY = st.target.y;
-
-        // integra a própria posição no rumo atual (movimento fluido)
-        st.x += Math.sin(st.rot) * speed * dt;
-        st.z += Math.cos(st.rot) * speed * dt;
-
-        // corrige suavemente em direção ao alvo previsto (gain baixo = sem solavancos)
-        const corr = 1 - Math.exp(-dt * 3.0);
-        st.x += (predX - st.x) * corr;
-        st.y += (predY - st.y) * corr;
-        st.z += (predZ - st.z) * corr;
-
-        // rotação: interpola pelo caminho mais curto, suave
-        let dr = st.target.rot - st.rot;
+        const prevX = st.x, prevZ = st.z;
+        const interval = Math.max(0.18, st.interval || 1.0);
+        const ageSec = Math.max(0, (now - st.target.t) / 1000);
+        const u = Math.min(1, ageSec / interval);
+        const ease = u * u * (3 - 2 * u);
+        const base = st.lastTarget || st.target;
+        st.x = base.x + (st.target.x - base.x) * ease;
+        st.y = base.y + (st.target.y - base.y) * ease;
+        st.z = base.z + (st.target.z - base.z) * ease;
+        if (ageSec > interval && st.target.speed > 0.05) {
+          const extra = Math.min(0.18, ageSec - interval);
+          st.x += Math.sin(st.target.rot) * st.target.speed * extra;
+          st.z += Math.cos(st.target.rot) * st.target.speed * extra;
+        }
+        let dr = st.target.rot - (base.rot ?? st.rot);
         while (dr > Math.PI) dr -= 2 * Math.PI;
         while (dr < -Math.PI) dr += 2 * Math.PI;
-        st.rot += dr * (1 - Math.exp(-dt * 5.0));
-        st.speed = speed;
+        st.rot = (base.rot ?? st.rot) + dr * ease;
+        st.speed = dt > 0 ? Math.hypot(st.x - prevX, st.z - prevZ) / dt : (st.target.speed || 0);
 
         const distance2 = p ? (st.x - p.x) ** 2 + (st.z - p.z) ** 2 : 0;
         const ent = entities.get(id);
@@ -335,6 +327,13 @@
         } else if (ent && !ent.loading) {
           ent.group.position.set(st.x, st.y, st.z);
           ent.group.rotation.y = st.rot;
+          const wr = ent.wheelRadius || 0.35;
+          ent.wheelSpin -= (st.speed * dt) / wr;
+          for (const k of ["fl", "fr", "rl", "rr"]) {
+            const w = ent.wheels?.[k];
+            const spin = w?.userData?.spin;
+            if (spin) spin.rotation.x = ent.wheelSpin;
+          }
           // motor: modula taxa pela velocidade
           try {
             const r = Math.min(1, Math.abs(st.speed) / 12);
