@@ -144,7 +144,7 @@
     const T = THREE();
     const group = new T.Group();
     group.name = "TrafficCar:" + id;
-    const placeholder = { group, loading: true, audioId: "trafficCar:" + id };
+    const placeholder = { group, loading: true, audioId: "trafficCar:" + id, wheels: {}, wheelSpin: 0, wheelRadius: 0.35 };
     entities.set(id, placeholder);
     scene().add(group);
 
@@ -182,6 +182,7 @@
       mesh.position.y = 0.5;
       group.add(mesh);
     }
+    try { await addWheelSet(placeholder, cat); } catch (e) { console.warn("[traffic] wheel setup fail", e); }
     placeholder.loading = false;
 
     // posiciona já com o estado atual
