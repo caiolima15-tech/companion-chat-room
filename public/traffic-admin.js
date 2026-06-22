@@ -9,7 +9,8 @@
   const renderer = () => window.__renderer;
 
   let overlay = null, currentTab = "routes";
-  let editor = null; // { routeId, gizmos:Map, line:Line, raycaster, pointer, wps:[] }
+  let editor = null; // { routeId, gizmos:Map, line:Line, deleteMarker, selectedWpId, raycaster, pointer, wps:[] }
+  let deleteMarkerTexture = null;
 
   function getMapId() {
     return window.__currentMapId || localStorage.getItem("neon-tap-room-map") || "bar";
@@ -128,7 +129,8 @@
     exitEditor();
     const sb = SB(); const T = THREE();
     const { data: wps } = await sb.from("traffic_waypoints").select("*").eq("route_id", routeId).order("seq");
-    editor = { routeId, gizmos: new Map(), line: null, raycaster: new T.Raycaster(), pointer: new T.Vector2(), wps: wps || [] };
+    editor = { routeId, gizmos: new Map(), line: null, deleteMarker: null, selectedWpId: null, raycaster: new T.Raycaster(), pointer: new T.Vector2(), wps: wps || [] };
+    editor.raycaster.params.Sprite = { threshold: 0.2 };
     rebuildGizmos();
     bindEvents();
     showHud();
@@ -144,6 +146,7 @@
     const sb = SB();
     if (editor.channel) try { sb.removeChannel(editor.channel); } catch {}
     for (const m of editor.gizmos.values()) scene().remove(m);
+    if (editor.deleteMarker) scene().remove(editor.deleteMarker);
     if (editor.line) scene().remove(editor.line);
     unbindEvents();
     document.getElementById("trfHud")?.remove();
