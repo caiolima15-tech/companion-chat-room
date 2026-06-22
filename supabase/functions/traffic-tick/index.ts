@@ -153,7 +153,7 @@ async function runOneTick(minGap: number) {
         stoppedUntil = new Date(now + (arrived.stop_duration_ms || 3000)).toISOString();
         newSpeed = 0;
       }
-      if (newSpeed === 0 || t >= 1 === false) break;
+      if (newSpeed === 0 || t < 1) break;
     }
 
     wpA = wpList[seg % N];
