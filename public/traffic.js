@@ -214,15 +214,16 @@
     // áudio: loop de motor 3D usando clipe do car_catalog (ou padrão)
     try {
       const url = await resolveEngineClipUrl(cat);
-      if (url && window.GameAudio?.startLoop) {
+      if (window.GameAudio?.startLoop) {
         window.GameAudio.startLoop(placeholder.audioId, {
-          url,
-          volume: 0.35,
+          url: url || undefined,
+          key: url ? undefined : "car_accel_loop",
+          volume: 0.3,
           category: "engine",
           position: { x: group.position.x, y: group.position.y + 0.5, z: group.position.z },
-          refDistance: 3,
+          refDistance: 4,
           maxDistance: _hearRadius,
-          rolloff: 1.6,
+          rolloff: 1.8,
           follow: () => ({ x: group.position.x, y: group.position.y + 0.5, z: group.position.z }),
         });
       }
