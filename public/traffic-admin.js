@@ -273,6 +273,23 @@
     const hits = editor.raycaster.intersectObjects(Array.from(editor.gizmos.values()), false);
     return hits[0]?.object || null;
   }
+  function raycastDeleteMarker() {
+    if (!editor?.deleteMarker || !camera()) return null;
+    editor.raycaster.setFromCamera(editor.pointer, camera());
+    const hits = editor.raycaster.intersectObject(editor.deleteMarker, false);
+    return hits[0]?.object || null;
+  }
+  async function deleteWaypointNow(wpId) {
+    if (!editor || !wpId) return;
+    const sb = SB();
+    const gizmo = editor.gizmos.get(wpId);
+    if (gizmo) { scene().remove(gizmo); editor.gizmos.delete(wpId); }
+    if (editor.selectedWpId === wpId) editor.selectedWpId = null;
+    editor.wps = editor.wps.filter((w) => w.id !== wpId);
+    rebuildGizmos();
+    const { error } = await sb.from("traffic_waypoints").delete().eq("id", wpId);
+    if (error) console.warn("[traffic] delete waypoint failed", error);
+  }
   function raycastGround() {
     if (!editor || !camera()) return null;
     const T = THREE();
@@ -295,15 +312,22 @@
     // Right click: apagar gizmo
     if (e.button === 2) {
       const g = raycastGizmo();
-      if (g) { e.preventDefault(); e.stopImmediatePropagation(); await sb.from("traffic_waypoints").delete().eq("id", g.userData.wp.id); }
+      if (g) { e.preventDefault(); e.stopImmediatePropagation(); await deleteWaypointNow(g.userData.wp.id); }
       return;
     }
     if (e.button !== 0) return;
+    const del = raycastDeleteMarker();
+    if (del && editor.selectedWpId) {
+      e.preventDefault(); e.stopImmediatePropagation();
+      await deleteWaypointNow(editor.selectedWpId);
+      return;
+    }
     const g = raycastGizmo();
     if (g) {
-      // shift = stop, alt = yield, click = nada (poderia abrir edição futura)
       e.preventDefault(); e.stopImmediatePropagation();
       const wp = g.userData.wp;
+      editor.selectedWpId = wp.id;
+      updateDeleteMarker();
       if (e.shiftKey) await sb.from("traffic_waypoints").update({ is_stop: !wp.is_stop }).eq("id", wp.id);
       else if (e.altKey) await sb.from("traffic_waypoints").update({ is_yield: !wp.is_yield }).eq("id", wp.id);
       return;
