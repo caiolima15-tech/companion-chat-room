@@ -75,7 +75,7 @@
     startRenderLoop();
     // dispara o tick no servidor pra garantir que está rodando
     pokeTick();
-    setInterval(pokeTick, 60000);
+    setInterval(pokeTick, 40000);
   }
 
   async function pokeTick() {
