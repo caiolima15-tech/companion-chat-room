@@ -395,30 +395,18 @@
     const def = vehicles.get(id);
     const route = def?.route_id ? routes.get(def.route_id) : null;
     const wpList = def?.route_id ? waypointsByRoute.get(def.route_id) : null;
-    if (!route || !wpList || wpList.length < 2 || !st.target) return null;
+    if (!route || !wpList || wpList.length < 2) return null;
     if (st.localSeg == null || st.localT == null) {
-      st.localSeg = st.target.seg || 0;
-      st.localT = st.target.pathT || 0;
+      st.localSeg = st.target?.seg || 0;
+      st.localT = st.target?.pathT || 0;
     }
 
-    const desiredSpeed = Math.max(0, st.target.speed || 0);
-    const accelK = desiredSpeed > (st.driveSpeed || 0) ? 2.5 : 7.5;
+    const curWp = wpList[normSeg(st.localSeg, wpList.length)] || wpList[0];
+    const desiredSpeed = Math.max(0, Math.min(def.max_speed_mps || 10, curWp?.speed_mps || 8));
+    const accelK = desiredSpeed > (st.driveSpeed || 0) ? 1.8 : 3.5;
     st.driveSpeed = (st.driveSpeed || 0) + (desiredSpeed - (st.driveSpeed || 0)) * (1 - Math.exp(-dt * accelK));
 
-    let next = advancePath(route, wpList, st.localSeg, st.localT, st.driveSpeed * dt);
-
-    // Correção suave para o ponto lógico vindo do backend, já extrapolado pelo tempo de rede.
-    const age = Math.min(2.2, Math.max(0, (now - (st.target.receivedAt || now)) / 1000));
-    const serverNow = advancePath(route, wpList, st.target.seg || 0, st.target.pathT || 0, desiredSpeed * age);
-    const d = pathDelta(next.seg, next.t, serverNow.seg, serverNow.t, wpList.length, !!route.loop);
-    const maxCorrection = dt * 0.32;
-    const corr = Math.max(-maxCorrection, Math.min(maxCorrection, d));
-    if (Math.abs(corr) > 0.0001) {
-      const curLenWp = wpList[normSeg(next.seg, wpList.length)];
-      const nxtLenWp = wpList[route.loop ? normSeg(next.seg + 1, wpList.length) : next.seg + 1];
-      const segLen = curLenWp && nxtLenWp ? Math.hypot(nxtLenWp.x - curLenWp.x, nxtLenWp.z - curLenWp.z) || 1 : 1;
-      next = advancePath(route, wpList, next.seg, next.t, corr * segLen);
-    }
+    const next = advancePath(route, wpList, st.localSeg, st.localT, st.driveSpeed * dt);
 
     st.localSeg = next.seg;
     st.localT = next.t;
