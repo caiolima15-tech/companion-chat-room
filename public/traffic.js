@@ -313,6 +313,26 @@
     seg = Math.max(0, Math.min(N - 1, Math.floor(seg || 0)));
     t = Math.max(0, Math.min(1, Number(t) || 0));
     let guard = 0;
+    if (meters < 0) {
+      while (meters < -0.0001 && guard++ < N + 4) {
+        const a = wpList[normSeg(seg, N)];
+        const b = wpList[route.loop ? normSeg(seg + 1, N) : seg + 1];
+        if (!a || !b) return { seg: 0, t: 0 };
+        const len = Math.hypot(b.x - a.x, b.z - a.z) || 1;
+        const back = t * len;
+        if (-meters < back) {
+          t += meters / len;
+          meters = 0;
+        } else {
+          meters += back;
+          seg -= 1;
+          t = 1;
+          if (!route.loop && seg < 0) return { seg: 0, t: 0 };
+          if (route.loop && seg < 0) seg = N - 1;
+        }
+      }
+      return { seg, t };
+    }
     while (meters > 0.0001 && guard++ < N + 4) {
       const a = wpList[normSeg(seg, N)];
       const b = wpList[route.loop ? normSeg(seg + 1, N) : seg + 1];
@@ -413,21 +433,20 @@
 
       for (const [id, st] of states) {
         const prevX = st.x, prevZ = st.z;
-        // Predição contínua: ponto-alvo extrapolado pela velocidade do servidor
-        const ageSec = Math.max(0, (now - st.target.t) / 1000);
-        const tgtSpeed = st.target.speed || 0;
-        const predX = st.target.x + Math.sin(st.target.rot) * tgtSpeed * ageSec;
-        const predZ = st.target.z + Math.cos(st.target.rot) * tgtSpeed * ageSec;
-        const predY = st.target.y;
-        // Suavização exponencial (sem teleporte, sem congelar)
-        const kPos = 1 - Math.exp(-dt * 4.0);
-        st.x += (predX - st.x) * kPos;
-        st.y += (predY - st.y) * kPos;
-        st.z += (predZ - st.z) * kPos;
-        let dr = st.target.rot - st.rot;
+        const routePose = stepLocalTraffic(id, st, dt, now);
+        const tgtSpeed = st.target?.speed || 0;
+        const fallbackPose = st.target ? { x: st.target.x, y: st.target.y, z: st.target.z, rot: st.target.rot } : null;
+        const pose = routePose || fallbackPose;
+        if (!pose) continue;
+        // O visual anda localmente a cada frame; updates atrasados só corrigem devagar.
+        const kPos = routePose ? 1 : (1 - Math.exp(-dt * 3.0));
+        st.x += (pose.x - st.x) * kPos;
+        st.y += (pose.y - st.y) * kPos;
+        st.z += (pose.z - st.z) * kPos;
+        let dr = pose.rot - st.rot;
         while (dr > Math.PI) dr -= 2 * Math.PI;
         while (dr < -Math.PI) dr += 2 * Math.PI;
-        st.rot += dr * (1 - Math.exp(-dt * 6.0));
+        st.rot += dr * (1 - Math.exp(-dt * 10.0));
         const moved = Math.hypot(st.x - prevX, st.z - prevZ);
         st.speed = dt > 0 ? moved / dt : tgtSpeed;
 
@@ -445,7 +464,7 @@
           ent.group.rotation.y = st.rot;
           const wr = ent.wheelRadius || 0.35;
           // gira para frente quando o carro anda para frente (+Z local)
-          ent.wheelSpin += (st.speed * dt) / wr;
+          ent.wheelSpin -= (st.speed * dt) / wr;
           for (const k of ["fl", "fr", "rl", "rr"]) {
             const w = ent.wheels?.[k];
             const spin = w?.userData?.spin;
