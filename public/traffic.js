@@ -25,6 +25,11 @@
   let _loadRadius = 60, _hearRadius = 30, _minGap = 6;
   let _channel = null;
   let _mapChannel = null;
+  const DEFAULT_WHEEL_OFFSETS = {
+    fl: { x: -0.78, y: 0.1, z: 1.25 }, fr: { x: 0.75, y: 0.1, z: 1.25 },
+    rl: { x: -0.78, y: 0.1, z: -1.25 }, rr: { x: 0.75, y: 0.1, z: -1.25 },
+    scale: 1,
+  };
 
   async function init() {
     const sb = SB();
@@ -211,6 +216,67 @@
       } catch {}
     }
     return null; // GameAudio.startLoop sem url cai no padrão "car_accel_loop"
+  }
+
+  function makeWheelFallback(radius) {
+    const T = THREE();
+    const wheel = new T.Group();
+    const tire = new T.Mesh(
+      new T.CylinderGeometry(radius, radius, radius * 0.55, 20),
+      new T.MeshStandardMaterial({ color: 0x111111, roughness: 0.75, metalness: 0.15 })
+    );
+    tire.geometry.rotateZ(Math.PI / 2);
+    const hub = new T.Mesh(
+      new T.CylinderGeometry(radius * 0.48, radius * 0.48, radius * 0.6, 16),
+      new T.MeshStandardMaterial({ color: 0xb8c2cc, roughness: 0.35, metalness: 0.7 })
+    );
+    hub.geometry.rotateZ(Math.PI / 2);
+    wheel.add(tire, hub);
+    return wheel;
+  }
+
+  async function makeWheelTemplate(cat, radius) {
+    if (cat?.wheel_url && window.__GLTFLoader) {
+      try {
+        const loader = new window.__GLTFLoader();
+        const gltf = await new Promise((res, rej) => loader.load(cat.wheel_url, res, undefined, rej));
+        const raw = gltf.scene || gltf.scenes?.[0];
+        if (raw) {
+          raw.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+          return raw;
+        }
+      } catch (e) { console.warn("[traffic] wheel glb load fail", e); }
+    }
+    return makeWheelFallback(radius);
+  }
+
+  async function addWheelSet(ent, cat) {
+    const T = THREE();
+    const offsets = cat?.wheel_offsets || DEFAULT_WHEEL_OFFSETS;
+    const radius = cat?.wheel_radius || 0.35;
+    const scale = offsets.scale ?? 1;
+    const rotY = ((offsets.rotY ?? 0) * Math.PI) / 180;
+    const mirror = offsets.mirror || "xz";
+    const template = await makeWheelTemplate(cat, radius);
+    ent.wheels = {};
+    for (const k of ["fl", "fr", "rl", "rr"]) {
+      const off = offsets[k] || DEFAULT_WHEEL_OFFSETS[k];
+      const node = new T.Group();
+      node.position.set(off.x, off.y, off.z);
+      const spin = new T.Group();
+      spin.scale.setScalar(scale);
+      let visual = template.clone(true);
+      const isRight = k === "fr" || k === "rr";
+      const sx = (isRight && (mirror === "x" || mirror === "xz")) ? -1 : 1;
+      const sz = (isRight && (mirror === "z" || mirror === "xz")) ? -1 : 1;
+      visual.scale.set(sx, 1, sz);
+      visual.rotation.y = rotY;
+      spin.add(visual);
+      node.add(spin);
+      node.userData.spin = spin;
+      ent.group.add(node);
+      ent.wheels[k] = node;
+    }
   }
 
   // ----- Render loop -----
