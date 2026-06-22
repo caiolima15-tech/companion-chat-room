@@ -75,18 +75,17 @@
       .subscribe();
 
     startRenderLoop();
-    // dispara o tick no servidor pra garantir que está rodando
-    pokeTick();
-    setInterval(pokeTick, 58000);
+    // apenas inicializa estados faltantes; o movimento visual roda localmente, como os NPCs.
+    pokeTick(2);
   }
 
-  async function pokeTick() {
+  async function pokeTick(iter = 2) {
     try {
       const sb = SB();
       const url = (sb?.supabaseUrl || sb?.rest?.url || "").replace(/\/rest\/v1\/?$/, "");
       if (!url) return;
-      // Não bloquear o cliente
-      fetch(url + "/functions/v1/traffic-tick?iter=55", {
+      // Não bloquear o cliente. Evita loops longos concorrentes vindos de vários jogadores.
+      fetch(url + "/functions/v1/traffic-tick?iter=" + Math.max(1, Math.min(5, Number(iter) || 2)), {
         method: "POST",
         headers: { Authorization: "Bearer " + (sb?.supabaseKey || ""), apikey: sb?.supabaseKey || "" },
       }).catch(() => {});
@@ -137,22 +136,30 @@
       x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
       seg: row.segment_index || 0, pathT: row.t || 0, receivedAt: now,
     };
+    const def = vehicles.get(row.vehicle_id);
+    const routeId = def?.route_id || null;
     if (!cur) {
       states.set(row.vehicle_id, {
         x: row.x, y: row.y, z: row.z, rot: row.rot_y, speed: row.speed || 0,
-        target, localSeg: target.seg, localT: target.pathT, driveSpeed: target.speed,
+        target, routeId, localSeg: target.seg, localT: target.pathT, driveSpeed: Math.max(0, target.speed || 0),
         lastTarget: { ...target }, lastUpdate: now, interval: 1.0,
       });
     } else {
-      // estima intervalo entre updates do servidor para extrapolar com confiança
       const dt = Math.max(0.05, (now - cur.lastUpdate) / 1000);
       cur.interval = cur.interval ? cur.interval * 0.7 + dt * 0.3 : dt;
       cur.lastUpdate = now;
       cur.lastTarget = { x: cur.x, y: cur.y, z: cur.z, rot: cur.rot, speed: cur.speed || 0, t: now };
       cur.target = target;
-      if (cur.localSeg == null || cur.localT == null) {
+      // Só realinha no servidor em reset/troca de rota. Durante o jogo, o visual anda localmente
+      // para não perseguir pacotes atrasados de realtime e parecer que teleportou.
+      const routeChanged = cur.routeId !== routeId;
+      const hardGap = Math.hypot((cur.x || 0) - row.x, (cur.z || 0) - row.z) > 80;
+      cur.routeId = routeId;
+      if (routeChanged || hardGap || cur.localSeg == null || cur.localT == null) {
+        cur.x = row.x; cur.y = row.y; cur.z = row.z; cur.rot = row.rot_y;
         cur.localSeg = target.seg;
         cur.localT = target.pathT;
+        cur.driveSpeed = Math.max(0, target.speed || 0);
       }
     }
   }
