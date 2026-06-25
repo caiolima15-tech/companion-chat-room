@@ -2334,6 +2334,9 @@ async function applyCharacter(entity, slug) {
     entity.currentAction = null;
     entity.emoteAction = null;
     entity.emoteUntil = 0;
+    // O mixer antigo morreu junto com o character; qualquer ação de sit anterior
+    // referenciava o mixer antigo, então limpamos pra forçar reaplicação no novo mixer.
+    entity.__remoteSit = null;
   }
   if (!entity.loadingFx) {
     entity.loadingFx = createLoadingSmoke();
