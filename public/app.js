@@ -2334,6 +2334,9 @@ async function applyCharacter(entity, slug) {
     entity.currentAction = null;
     entity.emoteAction = null;
     entity.emoteUntil = 0;
+    // O mixer antigo morreu junto com o character; qualquer ação de sit anterior
+    // referenciava o mixer antigo, então limpamos pra forçar reaplicação no novo mixer.
+    entity.__remoteSit = null;
   }
   if (!entity.loadingFx) {
     entity.loadingFx = createLoadingSmoke();
@@ -8224,7 +8227,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   async function applyRemoteSit(entity, sittingId) {
     if (!entity || !entity.mixer || !entity.character) return;
     const cur = entity.__remoteSit || null;
-    if ((cur?.id || null) === (sittingId || null) && (cur?.action || cur?.loading || !sittingId)) return;
+    // Verifica se a ação cacheada ainda pertence ao mixer atual; se o character foi recarregado,
+    // o mixer mudou e a ação está morta → precisa reaplicar.
+    const actionAlive = !!(cur?.action && cur.action.getMixer && cur.action.getMixer() === entity.mixer);
+    if ((cur?.id || null) === (sittingId || null) && (actionAlive || cur?.loading || !sittingId)) return;
     // Para a ação anterior, se houver.
     if (cur?.action) {
       try { cur.action.fadeOut(0.2); } catch {}

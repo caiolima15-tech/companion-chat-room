@@ -359,7 +359,7 @@
     if (!mapId) return;
     currentAmbient = { mapId };
     if (loops.has('city_ambience')) stopLoop('city_ambience');
-    if (!window.supabase) { startLoop('city_ambience', { key: 'city_ambience', volume: 1.0 }); return; }
+    if (!window.supabase) return; // sem default: só toca se o admin cadastrar um clip pra sala
     try {
       const { data } = await window.supabase
         .from('map_ambient_sounds').select('clip_id,volume,enabled').eq('map_id', mapId).maybeSingle();
@@ -367,12 +367,10 @@
         const clip = clipsById.get(data.clip_id);
         if (clip) {
           startLoop('city_ambience', { key: 'city_ambience', url: clip.url, volume: data.volume ?? 1.0, category: 'ambient' });
-          return;
         }
       }
     } catch {}
-    // Sem registro: usa ambiente padrão
-    startLoop('city_ambience', { key: 'city_ambience', volume: 1.0, category: 'ambient' });
+    // Sem registro cadastrado: não toca nenhum ambiente padrão.
   }
   function stopAmbient() {
     currentAmbient = null;
