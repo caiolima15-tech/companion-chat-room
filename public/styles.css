@@ -3036,7 +3036,7 @@ html, body { background: #000; }
    ============================================================ */
 .cam-toggle-pill {
   position: fixed;
-  top: calc(70px + env(safe-area-inset-top));
+  top: calc(116px + env(safe-area-inset-top));
   right: calc(14px + env(safe-area-inset-right));
   width: 44px; height: 44px;
   display: none;
@@ -3061,8 +3061,78 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   color: #b6ffb1;
 }
 @media (max-width: 600px) and (orientation: portrait) {
-  .cam-toggle-pill { width: 40px; height: 40px; top: calc(60px + env(safe-area-inset-top)); }
+  .cam-toggle-pill { width: 40px; height: 40px; top: calc(112px + env(safe-area-inset-top)); }
 }
+
+/* ============================================================
+   Lovable modal system (jobs/mechanics admin)
+   ============================================================ */
+.lv-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(5,8,14,0.72);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9100; padding: 16px;
+  animation: lvFadeIn .12s ease;
+}
+@keyframes lvFadeIn { from { opacity: 0 } to { opacity: 1 } }
+.lv-modal {
+  background: linear-gradient(180deg, rgba(22,28,40,0.96), rgba(12,16,24,0.96));
+  color: #e7ecf3;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.55);
+  width: min(720px, 100%); max-height: 88vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.lv-modal.lv-modal-lg { width: min(960px, 100%); }
+.lv-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 700;
+}
+.lv-modal-head h3 { margin: 0; font-size: 16px; }
+.lv-modal-body { padding: 16px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.lv-modal-foot { padding: 12px 18px; border-top: 1px solid rgba(255,255,255,0.08); display: flex; gap: 8px; justify-content: flex-end; }
+.lv-x { background: transparent; border: 0; color: #aab; font-size: 20px; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.lv-x:hover { background: rgba(255,255,255,0.08); color: #fff; }
+.lv-field { display: flex; flex-direction: column; gap: 4px; }
+.lv-field > label { font-size: 12px; opacity: .8; font-weight: 600; }
+.lv-field input[type="text"], .lv-field input[type="number"], .lv-field select, .lv-field textarea {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  color: #fff; padding: 8px 10px; border-radius: 8px; font: 13px system-ui;
+}
+.lv-field textarea { min-height: 70px; resize: vertical; }
+.lv-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.lv-row > * { flex: 1 1 120px; }
+.lv-btn {
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.04));
+  border: 1px solid rgba(255,255,255,0.14); color: #fff;
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px;
+}
+.lv-btn:hover { background: rgba(255,255,255,0.14); }
+.lv-btn.primary { background: linear-gradient(180deg, #3aa6ff, #2a7adb); border-color: #2a7adb; }
+.lv-btn.danger { background: linear-gradient(180deg, #ff5c66, #c5343c); border-color: #c5343c; }
+.lv-btn.ghost { background: transparent; }
+.lv-toast {
+  position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%);
+  background: rgba(20,28,40,0.94); color: #fff;
+  padding: 10px 16px; border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  z-index: 9300; font: 600 13px system-ui;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.5);
+}
+.lv-toast.error { border-color: #f55; color: #ffd1d4; }
+.lv-toast.ok { border-color: #5d5; color: #d5ffd9; }
+.lv-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.lv-card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.lv-pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+.lv-pill.on { background: #1f7a3a; color: #d5ffd9; }
+.lv-pill.off { background: #5a2a30; color: #ffd1d4; }
+.lv-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.lv-chip { background: rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); padding:4px 10px; border-radius:999px; font-size:12px; cursor:pointer; }
+.lv-chip:hover { background: rgba(255,255,255,0.12); }
+.lv-chip.sel { background: #2a7adb; border-color: #2a7adb; }
+.lv-empty { text-align: center; opacity: .6; padding: 18px; }
 
 /* ====== Jobs / Missões ====== */
 .job-prompt {
