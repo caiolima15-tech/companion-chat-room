@@ -1012,6 +1012,7 @@ export type Database = {
         Row: {
           active: boolean
           cooldown_seconds: number
+          cover_url: string | null
           created_at: string
           created_by: string | null
           description: string | null
@@ -1030,6 +1031,7 @@ export type Database = {
         Insert: {
           active?: boolean
           cooldown_seconds?: number
+          cover_url?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1048,6 +1050,7 @@ export type Database = {
         Update: {
           active?: boolean
           cooldown_seconds?: number
+          cover_url?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
@@ -1750,6 +1753,80 @@ export type Database = {
         }
         Relationships: []
       }
+      mechanic_cooldowns: {
+        Row: {
+          available_at: string
+          mechanic_id: string
+          user_id: string
+        }
+        Insert: {
+          available_at: string
+          mechanic_id: string
+          user_id: string
+        }
+        Update: {
+          available_at?: string
+          mechanic_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mechanic_cooldowns_mechanic_id_fkey"
+            columns: ["mechanic_id"]
+            isOneToOne: false
+            referencedRelation: "mechanics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mechanics: {
+        Row: {
+          actions: Json
+          active: boolean
+          conditions: Json
+          cooldown_seconds: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          map_id: string
+          name: string
+          per_player: boolean
+          trigger: Json
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          active?: boolean
+          conditions?: Json
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          map_id: string
+          name: string
+          per_player?: boolean
+          trigger?: Json
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          active?: boolean
+          conditions?: Json
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          map_id?: string
+          name?: string
+          per_player?: boolean
+          trigger?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       npc_animations: {
         Row: {
           created_at: string
@@ -2043,6 +2120,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      player_state: {
+        Row: {
+          expires_at: string | null
+          key: string
+          map_id: string
+          updated_at: string
+          user_id: string
+          value: Json | null
+        }
+        Insert: {
+          expires_at?: string | null
+          key: string
+          map_id?: string
+          updated_at?: string
+          user_id: string
+          value?: Json | null
+        }
+        Update: {
+          expires_at?: string | null
+          key?: string
+          map_id?: string
+          updated_at?: string
+          user_id?: string
+          value?: Json | null
+        }
+        Relationships: []
       }
       profile_photos: {
         Row: {
