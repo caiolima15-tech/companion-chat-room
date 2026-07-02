@@ -5744,13 +5744,24 @@ function rebuildCustomLight(row) {
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
     sun.shadow.mapSize.set(2048, 2048);
+    // Fit shadow camera to env bounds so buildings across the map cast shadows.
+    let halfBox = 60;
+    try {
+      if (envGroup && envGroup.children.length) {
+        const bb = new THREE.Box3().setFromObject(envGroup);
+        if (isFinite(bb.min.x) && isFinite(bb.max.x)) {
+          const size = bb.getSize(new THREE.Vector3());
+          halfBox = Math.max(size.x, size.z) * 0.55 + 4;
+        }
+      }
+    } catch {}
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 80;
-    const halfBox = 24;
+    sun.shadow.camera.far = Math.max(120, halfBox * 3);
     sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
     sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
     sun.shadow.bias = -0.0002;
-    sun.shadow.normalBias = 0.03;
+    sun.shadow.normalBias = 0.05;
+    sun.shadow.camera.updateProjectionMatrix?.();
     const tgt = new THREE.Object3D();
     tgt.position.set(row.target_x, row.target_y, row.target_z);
     customLightsGroup.add(tgt);
@@ -5764,6 +5775,7 @@ function rebuildCustomLight(row) {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(sun.position);
     customLightsGroup.add(mesh);
+
 
     entry.light = sun;
     entry.target = tgt;
