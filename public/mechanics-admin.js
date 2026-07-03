@@ -170,6 +170,8 @@
           <div class="lv-field"><label>Raio</label><input type="number" data-tpn="proximity.r" value="${p.proximity?.r ?? 3}"/></div>
         </div></details>`;
         else if (f === "car_id_optional") html += `<div class="lv-field"><label>Car id (opcional)</label><input type="text" data-tp="car_id" value="${LV().esc(p.car_id||'')}"/></div>`;
+        else if (f === "emote_slot") html += `<div class="lv-field"><label>Emote/soco</label><select data-tp="slot"><option value="">— qualquer —</option>${["kickWeak","kickStrong","wave","dance"].map(s=>`<option value="${s}" ${p.slot===s?'selected':''}>${s}</option>`).join("")}</select></div>`;
+        else if (f === "npc_radius_optional") html += `<div class="lv-field"><label>Raio p/ exigir NPC próximo (0 = ignora)</label><input type="number" data-tp="npc_radius" value="${p.npc_radius ?? 0}"/></div>`;
       }
       host.innerHTML = html;
       host.querySelectorAll("[data-tp]").forEach(i => i.oninput = () => {
