@@ -3876,6 +3876,30 @@ function triggerLocalEmote(slot) {
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
 
+// ==== Hooks públicos para sistema de Mecânicas ====
+window.playPlayerAnimation = function (slug, _durationMs) {
+  try { triggerLocalEmote(slug); return true; } catch (e) { console.warn("[mech] playPlayerAnimation", e); return false; }
+};
+window.teleportPlayer = function (x, y, z /*, mapId*/) {
+  try {
+    const ent = myId ? playerEntities.get(myId) : null;
+    if (!ent) return false;
+    ent.group.position.set(Number(x) || 0, Number(y) || 0, Number(z) || 0);
+    return true;
+  } catch (e) { console.warn("[mech] teleportPlayer", e); return false; }
+};
+// Notifica mecânicas quando o player faz um emote (para trigger on_emote)
+(function () {
+  const _orig = window.triggerLocalEmote;
+  // triggerLocalEmote é function declarada acima; envolvemos por observação:
+  const _originalFn = triggerLocalEmote;
+  window.__notifyEmote = (slot) => window.dispatchEvent(new CustomEvent("player-emote", { detail: { slot } }));
+  // hook: monkey-patch playEmote local para emitir evento
+  const _origPlay = playEmote;
+  window.__playEmoteHook = _origPlay;
+})();
+
+
 // Dark mode toggle (admin) — apaga as luzes ambientes do mood
 const darkModeToggleBtn = document.getElementById("darkModeToggle");
 if (darkModeToggleBtn) {
