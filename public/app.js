@@ -5857,6 +5857,34 @@ function rebuildCustomLight(row) {
   customLightsMap.set(row.id, entry);
 }
 
+// Each frame: keep sun globes and their shadow cameras attached to the
+// current player position, so shadows are dense where the player is and the
+// sun mesh remains visible regardless of distance.
+const _sunFollowRef = new THREE.Vector3();
+function updateCustomLights() {
+  if (!customLightsMap.size) return;
+  const ent = myId ? playerEntities.get(myId) : null;
+  if (ent) _sunFollowRef.copy(ent.group.position);
+  else _sunFollowRef.copy(controls.target);
+  for (const entry of customLightsMap.values()) {
+    if (!entry.followsPlayer || !entry.light || !entry.target) continue;
+    const dir = entry.sunDir;
+    const dist = entry.sunDist || 80;
+    entry.target.position.copy(_sunFollowRef);
+    entry.light.position.set(
+      _sunFollowRef.x + dir.x * dist,
+      _sunFollowRef.y + dir.y * dist,
+      _sunFollowRef.z + dir.z * dist,
+    );
+    if (entry.sunMesh) entry.sunMesh.position.copy(entry.light.position);
+    entry.light.target.updateMatrixWorld();
+    if (entry.light.shadow && entry.light.shadow.camera) {
+      entry.light.shadow.camera.updateProjectionMatrix?.();
+    }
+  }
+}
+window.__updateCustomLights = updateCustomLights;
+
 async function reloadMapLights(mapId) {
   clearAllCustomLights();
   try {
