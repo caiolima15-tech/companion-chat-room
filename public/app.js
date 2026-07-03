@@ -3865,6 +3865,7 @@ function triggerLocalEmote(slot) {
   const entity = playerEntities.get(myId);
   if (!entity) return;
   playEmote(entity, slot);
+  try { window.dispatchEvent(new CustomEvent("player-emote", { detail: { slot } })); } catch {}
   movementChannel?.send({
     type: "broadcast",
     event: "emote",
