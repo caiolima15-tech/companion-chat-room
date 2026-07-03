@@ -13,6 +13,7 @@
     vehicle_enter:     { label: "Ao entrar em carro",   fields: ["car_id_optional"] },
     vehicle_exit:      { label: "Ao sair do carro",     fields: ["car_id_optional"] },
     on_join_map:       { label: "Ao entrar no mapa",    fields: [] },
+    on_emote:          { label: "Ao fazer emote/soco",  fields: ["emote_slot","npc_radius_optional"] },
     manual:            { label: "Manual (outra mecânica chama)", fields: [] },
   };
 
