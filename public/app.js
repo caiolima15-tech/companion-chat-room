@@ -3186,6 +3186,20 @@ function refreshEnvShadows() {
     if (!node.isMesh) return;
     node.castShadow = true;
     node.receiveShadow = true;
+    // Force materials to render shadows on both sides and avoid transparent
+    // materials silently discarding shadow contribution.
+    const mats = Array.isArray(node.material) ? node.material : (node.material ? [node.material] : []);
+    for (const m of mats) {
+      if (!m) continue;
+      m.shadowSide = THREE.FrontSide;
+      // If a material is flagged transparent but is basically opaque (opacity ~1
+      // and no alpha map), treat it as opaque so it can receive shadows properly.
+      if (m.transparent && (m.opacity == null || m.opacity >= 0.98) && !m.alphaMap && !(m.map && m.map.image && m.map.format === THREE.RGBAFormat && m.alphaTest === 0)) {
+        m.transparent = false;
+        m.depthWrite = true;
+      }
+      if (m.needsUpdate !== undefined) m.needsUpdate = true;
+    }
   });
 }
 
