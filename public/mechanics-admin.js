@@ -25,6 +25,7 @@
     inside_vehicle:  { label: "Dentro do carro", fields: [] },
     variable_equals: { label: "Variável = ", fields: [["key","Chave","text"], ["value","Valor","text"]] },
     variable_gte:    { label: "Variável ≥ ", fields: [["key","Chave","text"], ["value","Valor","num"]] },
+    near_npc:        { label: "NPC por perto", fields: [["radius","Raio","num"], ["npc_id","NPC id (opcional)","text"]] },
   };
 
   const ACTIONS = {
