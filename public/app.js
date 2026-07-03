@@ -4496,7 +4496,9 @@ function updatePlayerAnimation(delta) {
         // Follow terrain: stairs, ramps, raised floors. Pula raycast quando culled.
         if (!culled) {
           const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-          entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+          // Nunca deixa os pés afundarem: sobe instantaneamente ao chão; desce suave.
+          if (groundY > entity.group.position.y) entity.group.position.y = groundY;
+          else entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
         }
         const moved = entity.group.position.clone().sub(before);
         if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
@@ -4510,7 +4512,8 @@ function updatePlayerAnimation(delta) {
       // Mantém Y do terreno mesmo parado (pula se invisível)
       if (!culled) {
         const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        if (groundY > entity.group.position.y) entity.group.position.y = groundY;
+        else entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
       }
       entity.running = false;
       if (entity.player?.id === myId && me) me.running = false;
