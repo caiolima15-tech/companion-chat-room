@@ -189,6 +189,12 @@
           return (data?.length || 0) > 0;
         } catch { return false; }
       }
+      case "near_npc": {
+        const near = findNearestNpc(Number(p.radius || 3));
+        if (!near) return false;
+        if (p.npc_id && near.id !== p.npc_id) return false;
+        return true;
+      }
       default: return true;
     }
   }
