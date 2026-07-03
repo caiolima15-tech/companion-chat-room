@@ -44,6 +44,7 @@
     trigger_mechanic:{ label: "Disparar outra mecânica", fields: [["mechanic_id","Mecânica id","text"]] },
     start_job:       { label: "Iniciar emprego", fields: [["job_id","Job id","text"]] },
     wait:            { label: "Aguardar (ms)", fields: [["ms","Tempo ms","num"]] },
+    npc_play_animation: { label: "NPC: tocar animação", fields: [["anim","Animação (idle/walk/talk/…)","text"],["radius","Raio p/ escolher","num"],["npc_id","NPC id (opcional)","text"],["duration_ms","Duração ms","num"]] },
   };
 
   document.addEventListener("click", (ev) => {
