@@ -4801,6 +4801,7 @@ function animate() {
   if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
   applyHeldMovement(delta);
   updatePlayerAnimation(delta);
+  try { updateCustomLights(); } catch {}
   if (assetMixers.size) { for (const m of assetMixers) { try { m.update(delta); } catch {} } }
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
