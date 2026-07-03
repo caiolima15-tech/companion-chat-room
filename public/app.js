@@ -4736,6 +4736,7 @@ function _rebuildEnvCullCache() {
 function _lodCullChildren(group) {
   if (!group || !group.children) return;
   for (const child of group.children) {
+    if (child.userData && child.userData.noLodCull) { child.visible = true; continue; }
     child.getWorldPosition(_lodTmp);
     child.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
   }
