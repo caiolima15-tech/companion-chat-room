@@ -3186,6 +3186,20 @@ function refreshEnvShadows() {
     if (!node.isMesh) return;
     node.castShadow = true;
     node.receiveShadow = true;
+    // Force materials to render shadows on both sides and avoid transparent
+    // materials silently discarding shadow contribution.
+    const mats = Array.isArray(node.material) ? node.material : (node.material ? [node.material] : []);
+    for (const m of mats) {
+      if (!m) continue;
+      m.shadowSide = THREE.FrontSide;
+      // If a material is flagged transparent but is basically opaque (opacity ~1
+      // and no alpha map), treat it as opaque so it can receive shadows properly.
+      if (m.transparent && (m.opacity == null || m.opacity >= 0.98) && !m.alphaMap && !(m.map && m.map.image && m.map.format === THREE.RGBAFormat && m.alphaTest === 0)) {
+        m.transparent = false;
+        m.depthWrite = true;
+      }
+      if (m.needsUpdate !== undefined) m.needsUpdate = true;
+    }
   });
 }
 
@@ -4482,7 +4496,9 @@ function updatePlayerAnimation(delta) {
         // Follow terrain: stairs, ramps, raised floors. Pula raycast quando culled.
         if (!culled) {
           const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-          entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+          // Nunca deixa os pés afundarem: sobe instantaneamente ao chão; desce suave.
+          if (groundY > entity.group.position.y) entity.group.position.y = groundY;
+          else entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
         }
         const moved = entity.group.position.clone().sub(before);
         if (Math.abs(moved.x) + Math.abs(moved.z) > 0.00001) {
@@ -4496,7 +4512,8 @@ function updatePlayerAnimation(delta) {
       // Mantém Y do terreno mesmo parado (pula se invisível)
       if (!culled) {
         const groundY = groundHeightAt(entity.group.position, entity.group.position.y);
-        entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
+        if (groundY > entity.group.position.y) entity.group.position.y = groundY;
+        else entity.group.position.y += (groundY - entity.group.position.y) * Math.min(1, delta * 12);
       }
       entity.running = false;
       if (entity.player?.id === myId && me) me.running = false;
@@ -4736,6 +4753,7 @@ function _rebuildEnvCullCache() {
 function _lodCullChildren(group) {
   if (!group || !group.children) return;
   for (const child of group.children) {
+    if (child.userData && child.userData.noLodCull) { child.visible = true; continue; }
     child.getWorldPosition(_lodTmp);
     child.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
   }
@@ -4786,6 +4804,7 @@ function animate() {
   if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
   applyHeldMovement(delta);
   updatePlayerAnimation(delta);
+  try { updateCustomLights(); } catch {}
   if (assetMixers.size) { for (const m of assetMixers) { try { m.update(delta); } catch {} } }
   if (myId && !window.__freeCameraMode && !window.__footballMode && !window.__drivingCar) {
     const entity = playerEntities.get(myId);
@@ -5769,21 +5788,14 @@ function rebuildCustomLight(row) {
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
     sun.shadow.mapSize.set(2048, 2048);
-    // Fit shadow camera to env bounds so buildings across the map cast shadows.
-    let halfBox = 60;
-    try {
-      if (envGroup && envGroup.children.length) {
-        const bb = new THREE.Box3().setFromObject(envGroup);
-        if (isFinite(bb.min.x) && isFinite(bb.max.x)) {
-          const size = bb.getSize(new THREE.Vector3());
-          halfBox = Math.max(size.x, size.z) * 0.55 + 4;
-        }
-      }
-    } catch {}
+    // Shadow camera follows the player (see updateCustomLights) — use a
+    // moderate frustum so shadow-map pixels are dense enough to actually
+    // render on the ground within the visible area.
+    const half = Math.max(30, Math.min(120, (window.RENDER_DISTANCE || 260) * 0.35));
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = Math.max(120, halfBox * 3);
-    sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
-    sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
+    sun.shadow.camera.far = Math.max(200, half * 4);
+    sun.shadow.camera.left = -half; sun.shadow.camera.right = half;
+    sun.shadow.camera.top = half; sun.shadow.camera.bottom = -half;
     sun.shadow.bias = -0.0002;
     sun.shadow.normalBias = 0.05;
     sun.shadow.camera.updateProjectionMatrix?.();
@@ -5796,11 +5808,27 @@ function rebuildCustomLight(row) {
     // Visible globe (the "sun") — emissive sphere
     const radius = Math.max(0.1, row.radius ?? 1.5);
     const geo = new THREE.SphereGeometry(radius, 32, 16);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 999;
     mesh.position.copy(sun.position);
+    mesh.frustumCulled = false;
     customLightsGroup.add(mesh);
 
+    // Sun is always visible — bypass LOD culling for its children.
+    sun.userData.noLodCull = true;
+    tgt.userData.noLodCull = true;
+    mesh.userData.noLodCull = true;
+
+    // Store direction & distance so the sun can follow the player while
+    // preserving the artist-chosen sky angle.
+    const dir = new THREE.Vector3(row.pos_x - row.target_x, row.pos_y - row.target_y, row.pos_z - row.target_z);
+    const dist = Math.max(1, dir.length());
+    dir.normalize();
+    entry.sunDir = dir;
+    entry.sunDist = dist;
+    entry.followsPlayer = true;
+    entry.shadowHalf = half;
 
     entry.light = sun;
     entry.target = tgt;
@@ -5832,6 +5860,34 @@ function rebuildCustomLight(row) {
   }
   customLightsMap.set(row.id, entry);
 }
+
+// Each frame: keep sun globes and their shadow cameras attached to the
+// current player position, so shadows are dense where the player is and the
+// sun mesh remains visible regardless of distance.
+const _sunFollowRef = new THREE.Vector3();
+function updateCustomLights() {
+  if (!customLightsMap.size) return;
+  const ent = myId ? playerEntities.get(myId) : null;
+  if (ent) _sunFollowRef.copy(ent.group.position);
+  else _sunFollowRef.copy(controls.target);
+  for (const entry of customLightsMap.values()) {
+    if (!entry.followsPlayer || !entry.light || !entry.target) continue;
+    const dir = entry.sunDir;
+    const dist = entry.sunDist || 80;
+    entry.target.position.copy(_sunFollowRef);
+    entry.light.position.set(
+      _sunFollowRef.x + dir.x * dist,
+      _sunFollowRef.y + dir.y * dist,
+      _sunFollowRef.z + dir.z * dist,
+    );
+    if (entry.sunMesh) entry.sunMesh.position.copy(entry.light.position);
+    entry.light.target.updateMatrixWorld();
+    if (entry.light.shadow && entry.light.shadow.camera) {
+      entry.light.shadow.camera.updateProjectionMatrix?.();
+    }
+  }
+}
+window.__updateCustomLights = updateCustomLights;
 
 async function reloadMapLights(mapId) {
   clearAllCustomLights();
