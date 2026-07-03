@@ -253,6 +253,18 @@
       case "start_job":
         if (window.startJob) window.startJob(p.job_id);
         break;
+      case "npc_play_animation": {
+        const target = p.npc_id
+          ? { id: p.npc_id, ent: window.__npcEntities?.get(p.npc_id) }
+          : findNearestNpc(Number(p.radius || 3));
+        if (!target?.id) break;
+        try { window.__setNpcFacePlayer?.(target.id, true); } catch {}
+        try { window.__setNpcAnim?.(target.id, p.anim || "talk"); } catch {}
+        if (p.duration_ms) setTimeout(() => {
+          try { window.__setNpcAnim?.(target.id, "idle"); window.__setNpcFacePlayer?.(target.id, false); } catch {}
+        }, p.duration_ms);
+        break;
+      }
     }
   }
 
