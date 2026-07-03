@@ -3865,6 +3865,7 @@ function triggerLocalEmote(slot) {
   const entity = playerEntities.get(myId);
   if (!entity) return;
   playEmote(entity, slot);
+  try { window.dispatchEvent(new CustomEvent("player-emote", { detail: { slot } })); } catch {}
   movementChannel?.send({
     type: "broadcast",
     event: "emote",
@@ -3875,6 +3876,30 @@ function triggerLocalEmote(slot) {
 // jump removido: animação desativada
 emoteDanceButton?.addEventListener("click", () => triggerLocalEmote("dance"));
 emoteWaveButton?.addEventListener("click", () => triggerLocalEmote("wave"));
+
+// ==== Hooks públicos para sistema de Mecânicas ====
+window.playPlayerAnimation = function (slug, _durationMs) {
+  try { triggerLocalEmote(slug); return true; } catch (e) { console.warn("[mech] playPlayerAnimation", e); return false; }
+};
+window.teleportPlayer = function (x, y, z /*, mapId*/) {
+  try {
+    const ent = myId ? playerEntities.get(myId) : null;
+    if (!ent) return false;
+    ent.group.position.set(Number(x) || 0, Number(y) || 0, Number(z) || 0);
+    return true;
+  } catch (e) { console.warn("[mech] teleportPlayer", e); return false; }
+};
+// Notifica mecânicas quando o player faz um emote (para trigger on_emote)
+(function () {
+  const _orig = window.triggerLocalEmote;
+  // triggerLocalEmote é function declarada acima; envolvemos por observação:
+  const _originalFn = triggerLocalEmote;
+  window.__notifyEmote = (slot) => window.dispatchEvent(new CustomEvent("player-emote", { detail: { slot } }));
+  // hook: monkey-patch playEmote local para emitir evento
+  const _origPlay = playEmote;
+  window.__playEmoteHook = _origPlay;
+})();
+
 
 // Dark mode toggle (admin) — apaga as luzes ambientes do mood
 const darkModeToggleBtn = document.getElementById("darkModeToggle");
@@ -5744,13 +5769,24 @@ function rebuildCustomLight(row) {
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
     sun.shadow.mapSize.set(2048, 2048);
+    // Fit shadow camera to env bounds so buildings across the map cast shadows.
+    let halfBox = 60;
+    try {
+      if (envGroup && envGroup.children.length) {
+        const bb = new THREE.Box3().setFromObject(envGroup);
+        if (isFinite(bb.min.x) && isFinite(bb.max.x)) {
+          const size = bb.getSize(new THREE.Vector3());
+          halfBox = Math.max(size.x, size.z) * 0.55 + 4;
+        }
+      }
+    } catch {}
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = 80;
-    const halfBox = 24;
+    sun.shadow.camera.far = Math.max(120, halfBox * 3);
     sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
     sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
     sun.shadow.bias = -0.0002;
-    sun.shadow.normalBias = 0.03;
+    sun.shadow.normalBias = 0.05;
+    sun.shadow.camera.updateProjectionMatrix?.();
     const tgt = new THREE.Object3D();
     tgt.position.set(row.target_x, row.target_y, row.target_z);
     customLightsGroup.add(tgt);
@@ -5764,6 +5800,7 @@ function rebuildCustomLight(row) {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.copy(sun.position);
     customLightsGroup.add(mesh);
+
 
     entry.light = sun;
     entry.target = tgt;

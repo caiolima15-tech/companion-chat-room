@@ -26,9 +26,35 @@
     window.addEventListener("keydown", onKey);
     window.addEventListener("vehicle-entered", onVehicleEvent("vehicle_enter"));
     window.addEventListener("vehicle-exited", onVehicleEvent("vehicle_exit"));
+    window.addEventListener("player-emote", onEmote);
     setInterval(tick, 350);
     await loadForMap();
   }
+
+  function onEmote(ev) {
+    const slot = ev?.detail?.slot;
+    for (const m of mechanics) {
+      if (m.trigger?.kind !== "on_emote") continue;
+      const want = m.trigger.params?.slot;
+      if (want && want !== slot) continue;
+      const rad = Number(m.trigger.params?.npc_radius || 0);
+      if (rad > 0 && !findNearestNpc(rad)) continue;
+      fire(m, { slot, npc_id: findNearestNpc(rad || 3)?.id });
+    }
+  }
+
+  function findNearestNpc(radius) {
+    const p = window.__player; if (!p) return null;
+    const ents = window.__npcEntities; if (!ents) return null;
+    let best = null, bestD = Infinity;
+    for (const [id, e] of ents) {
+      const pos = e?.group?.position; if (!pos) continue;
+      const d = Math.hypot(pos.x - p.position.x, pos.z - p.position.z);
+      if (d <= radius && d < bestD) { bestD = d; best = { id, ent: e, d }; }
+    }
+    return best;
+  }
+
 
   async function loadForMap() {
     mapId = window.__currentMapId;
@@ -163,6 +189,12 @@
           return (data?.length || 0) > 0;
         } catch { return false; }
       }
+      case "near_npc": {
+        const near = findNearestNpc(Number(p.radius || 3));
+        if (!near) return false;
+        if (p.npc_id && near.id !== p.npc_id) return false;
+        return true;
+      }
       default: return true;
     }
   }
@@ -221,6 +253,18 @@
       case "start_job":
         if (window.startJob) window.startJob(p.job_id);
         break;
+      case "npc_play_animation": {
+        const target = p.npc_id
+          ? { id: p.npc_id, ent: window.__npcEntities?.get(p.npc_id) }
+          : findNearestNpc(Number(p.radius || 3));
+        if (!target?.id) break;
+        try { window.__setNpcFacePlayer?.(target.id, true); } catch {}
+        try { window.__setNpcAnim?.(target.id, p.anim || "talk"); } catch {}
+        if (p.duration_ms) setTimeout(() => {
+          try { window.__setNpcAnim?.(target.id, "idle"); window.__setNpcFacePlayer?.(target.id, false); } catch {}
+        }, p.duration_ms);
+        break;
+      }
     }
   }
 

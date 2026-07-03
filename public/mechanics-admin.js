@@ -13,6 +13,7 @@
     vehicle_enter:     { label: "Ao entrar em carro",   fields: ["car_id_optional"] },
     vehicle_exit:      { label: "Ao sair do carro",     fields: ["car_id_optional"] },
     on_join_map:       { label: "Ao entrar no mapa",    fields: [] },
+    on_emote:          { label: "Ao fazer emote/soco",  fields: ["emote_slot","npc_radius_optional"] },
     manual:            { label: "Manual (outra mecânica chama)", fields: [] },
   };
 
@@ -24,6 +25,7 @@
     inside_vehicle:  { label: "Dentro do carro", fields: [] },
     variable_equals: { label: "Variável = ", fields: [["key","Chave","text"], ["value","Valor","text"]] },
     variable_gte:    { label: "Variável ≥ ", fields: [["key","Chave","text"], ["value","Valor","num"]] },
+    near_npc:        { label: "NPC por perto", fields: [["radius","Raio","num"], ["npc_id","NPC id (opcional)","text"]] },
   };
 
   const ACTIONS = {
@@ -42,6 +44,7 @@
     trigger_mechanic:{ label: "Disparar outra mecânica", fields: [["mechanic_id","Mecânica id","text"]] },
     start_job:       { label: "Iniciar emprego", fields: [["job_id","Job id","text"]] },
     wait:            { label: "Aguardar (ms)", fields: [["ms","Tempo ms","num"]] },
+    npc_play_animation: { label: "NPC: tocar animação", fields: [["anim","Animação (idle/walk/talk/…)","text"],["radius","Raio p/ escolher","num"],["npc_id","NPC id (opcional)","text"],["duration_ms","Duração ms","num"]] },
   };
 
   document.addEventListener("click", (ev) => {
@@ -167,6 +170,8 @@
           <div class="lv-field"><label>Raio</label><input type="number" data-tpn="proximity.r" value="${p.proximity?.r ?? 3}"/></div>
         </div></details>`;
         else if (f === "car_id_optional") html += `<div class="lv-field"><label>Car id (opcional)</label><input type="text" data-tp="car_id" value="${LV().esc(p.car_id||'')}"/></div>`;
+        else if (f === "emote_slot") html += `<div class="lv-field"><label>Emote/soco</label><select data-tp="slot"><option value="">— qualquer —</option>${["kickWeak","kickStrong","wave","dance"].map(s=>`<option value="${s}" ${p.slot===s?'selected':''}>${s}</option>`).join("")}</select></div>`;
+        else if (f === "npc_radius_optional") html += `<div class="lv-field"><label>Raio p/ exigir NPC próximo (0 = ignora)</label><input type="number" data-tp="npc_radius" value="${p.npc_radius ?? 0}"/></div>`;
       }
       host.innerHTML = html;
       host.querySelectorAll("[data-tp]").forEach(i => i.oninput = () => {

@@ -96,7 +96,7 @@
   }
 
   window.addEventListener("keydown", (e) => {
-    if (e.key.toLowerCase() === "j" && nearHub && !currentJob) acceptJob(nearHub);
+    if ((e.key || "").toLowerCase() === "j" && nearHub && !currentJob) acceptJob(nearHub);
   });
 
   async function acceptJob(hub) {

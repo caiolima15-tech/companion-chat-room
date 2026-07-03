@@ -543,13 +543,13 @@
     if (e.key.toLowerCase() === "e" && nearestNpc && !engagedNpc) {
       engageNpc(nearestNpc.id, nearestNpc.ent);
     }
-    if (e.key.toLowerCase() === "v" && nearestNpc && !e.repeat) {
+    if ((e.key || "").toLowerCase() === "v" && nearestNpc && !e.repeat) {
       if (!engagedNpc) engageNpc(nearestNpc.id, nearestNpc.ent);
       startPushToTalk(engagedNpc.id, engagedNpc.ent);
     }
   });
   window.addEventListener("keyup", (e) => {
-    if (e.key.toLowerCase() === "v") stopPushToTalk();
+    if ((e.key || "").toLowerCase() === "v") stopPushToTalk();
   });
 
   // ===== Speech bubble acima da cabeça do NPC (somente texto) =====
