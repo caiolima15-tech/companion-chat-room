@@ -5770,21 +5770,14 @@ function rebuildCustomLight(row) {
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
     sun.shadow.mapSize.set(2048, 2048);
-    // Fit shadow camera to env bounds so buildings across the map cast shadows.
-    let halfBox = 60;
-    try {
-      if (envGroup && envGroup.children.length) {
-        const bb = new THREE.Box3().setFromObject(envGroup);
-        if (isFinite(bb.min.x) && isFinite(bb.max.x)) {
-          const size = bb.getSize(new THREE.Vector3());
-          halfBox = Math.max(size.x, size.z) * 0.55 + 4;
-        }
-      }
-    } catch {}
+    // Shadow camera follows the player (see updateCustomLights) — use a
+    // moderate frustum so shadow-map pixels are dense enough to actually
+    // render on the ground within the visible area.
+    const half = Math.max(30, Math.min(120, (window.RENDER_DISTANCE || 260) * 0.35));
     sun.shadow.camera.near = 0.5;
-    sun.shadow.camera.far = Math.max(120, halfBox * 3);
-    sun.shadow.camera.left = -halfBox; sun.shadow.camera.right = halfBox;
-    sun.shadow.camera.top = halfBox; sun.shadow.camera.bottom = -halfBox;
+    sun.shadow.camera.far = Math.max(200, half * 4);
+    sun.shadow.camera.left = -half; sun.shadow.camera.right = half;
+    sun.shadow.camera.top = half; sun.shadow.camera.bottom = -half;
     sun.shadow.bias = -0.0002;
     sun.shadow.normalBias = 0.05;
     sun.shadow.camera.updateProjectionMatrix?.();
@@ -5797,11 +5790,27 @@ function rebuildCustomLight(row) {
     // Visible globe (the "sun") — emissive sphere
     const radius = Math.max(0.1, row.radius ?? 1.5);
     const geo = new THREE.SphereGeometry(radius, 32, 16);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95 });
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, depthTest: false, depthWrite: false });
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 999;
     mesh.position.copy(sun.position);
+    mesh.frustumCulled = false;
     customLightsGroup.add(mesh);
 
+    // Sun is always visible — bypass LOD culling for its children.
+    sun.userData.noLodCull = true;
+    tgt.userData.noLodCull = true;
+    mesh.userData.noLodCull = true;
+
+    // Store direction & distance so the sun can follow the player while
+    // preserving the artist-chosen sky angle.
+    const dir = new THREE.Vector3(row.pos_x - row.target_x, row.pos_y - row.target_y, row.pos_z - row.target_z);
+    const dist = Math.max(1, dir.length());
+    dir.normalize();
+    entry.sunDir = dir;
+    entry.sunDist = dist;
+    entry.followsPlayer = true;
+    entry.shadowHalf = half;
 
     entry.light = sun;
     entry.target = tgt;
