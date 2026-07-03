@@ -26,9 +26,35 @@
     window.addEventListener("keydown", onKey);
     window.addEventListener("vehicle-entered", onVehicleEvent("vehicle_enter"));
     window.addEventListener("vehicle-exited", onVehicleEvent("vehicle_exit"));
+    window.addEventListener("player-emote", onEmote);
     setInterval(tick, 350);
     await loadForMap();
   }
+
+  function onEmote(ev) {
+    const slot = ev?.detail?.slot;
+    for (const m of mechanics) {
+      if (m.trigger?.kind !== "on_emote") continue;
+      const want = m.trigger.params?.slot;
+      if (want && want !== slot) continue;
+      const rad = Number(m.trigger.params?.npc_radius || 0);
+      if (rad > 0 && !findNearestNpc(rad)) continue;
+      fire(m, { slot, npc_id: findNearestNpc(rad || 3)?.id });
+    }
+  }
+
+  function findNearestNpc(radius) {
+    const p = window.__player; if (!p) return null;
+    const ents = window.__npcEntities; if (!ents) return null;
+    let best = null, bestD = Infinity;
+    for (const [id, e] of ents) {
+      const pos = e?.group?.position; if (!pos) continue;
+      const d = Math.hypot(pos.x - p.position.x, pos.z - p.position.z);
+      if (d <= radius && d < bestD) { bestD = d; best = { id, ent: e, d }; }
+    }
+    return best;
+  }
+
 
   async function loadForMap() {
     mapId = window.__currentMapId;
