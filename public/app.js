@@ -6078,11 +6078,47 @@ function lightControlRow(row) {
 function renderLightsAdminList() {
   if (!lightsAdminList) return;
   const rows = [...customLightsMap.values()].map((e) => e.row);
+  const p = window.__postFx || {};
+  const ppHtml = `
+    <details open style="border:1px solid #2a3040;border-radius:6px;padding:6px 8px;margin-bottom:8px;background:rgba(255,255,255,0.03);">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;">🎨 Pós-processamento (estilo GTA V)</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:11px;">
+        <label>Tone mapping
+          <select data-pp="tonemap" style="width:100%;background:#0e1117;color:#eee;border:1px solid #333;border-radius:4px;padding:3px;">
+            <option value="aces" ${p.tonemap==="aces"?"selected":""}>ACES Filmic (recomendado)</option>
+            <option value="filmic" ${p.tonemap==="filmic"?"selected":""}>Cineon / Filmic</option>
+            <option value="reinhard" ${p.tonemap==="reinhard"?"selected":""}>Reinhard (suave)</option>
+            <option value="linear" ${p.tonemap==="linear"?"selected":""}>Linear</option>
+            <option value="neutral" ${p.tonemap==="neutral"?"selected":""}>Neutro (sem tone)</option>
+          </select>
+        </label>
+        <label>Exposição <b data-pp-val="exposure">${(p.exposure??1).toFixed(2)}</b>
+          <input type="range" data-pp="exposure" min="0.2" max="2.5" step="0.05" value="${p.exposure??1}" style="width:100%">
+        </label>
+        <label>Luz ambiente (evita sombra preta) <b data-pp-val="ambient">${(p.ambient??0.35).toFixed(2)}</b>
+          <input type="range" data-pp="ambient" min="0" max="2" step="0.05" value="${p.ambient??0.35}" style="width:100%">
+        </label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <label style="flex:1;">Céu
+            <input type="color" data-pp="ambientSkyColor" value="${p.ambientSkyColor||"#bfd4ff"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+          <label style="flex:1;">Chão
+            <input type="color" data-pp="ambientGroundColor" value="${p.ambientGroundColor||"#1a1f2a"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+        </div>
+        <label>Suavidade da sombra <b data-pp-val="shadowSoftness">${(p.shadowSoftness??1).toFixed(2)}</b>
+          <input type="range" data-pp="shadowSoftness" min="0" max="4" step="0.1" value="${p.shadowSoftness??1}" style="width:100%">
+        </label>
+        <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
+      </div>
+    </details>`;
   if (!rows.length) {
-    lightsAdminList.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    lightsAdminList.innerHTML = ppHtml + `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    wirePostFxControls();
     return;
   }
-  lightsAdminList.innerHTML = rows.map(lightControlRow).join("");
+  lightsAdminList.innerHTML = ppHtml + rows.map(lightControlRow).join("");
+  wirePostFxControls();
   // Wire each control
   lightsAdminList.querySelectorAll("[data-light-id]").forEach((card) => {
     const id = card.dataset.lightId;
