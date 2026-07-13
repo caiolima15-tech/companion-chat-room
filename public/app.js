@@ -6125,12 +6125,16 @@ function wirePostFxControls() {
   if (!lightsAdminList) return;
   lightsAdminList.querySelectorAll("[data-pp]").forEach((el) => {
     const key = el.dataset.pp;
-    const evt = el.type === "color" || el.tagName === "SELECT" ? "change" : "input";
+    const isCheck = el.type === "checkbox";
+    const evt = (el.type === "color" || el.tagName === "SELECT" || isCheck) ? "change" : "input";
     el.addEventListener(evt, () => {
-      const v = (el.type === "range" || el.type === "number") ? parseFloat(el.value) : el.value;
+      let v;
+      if (isCheck) v = el.checked;
+      else if (el.type === "range" || el.type === "number") v = parseFloat(el.value);
+      else v = el.value;
       window.__postFx[key] = v;
       const label = lightsAdminList.querySelector(`[data-pp-val="${key}"]`);
-      if (label && typeof v === "number") label.textContent = v.toFixed(2);
+      if (label && typeof v === "number") label.textContent = key === "anisotropy" ? (v.toFixed(0) + "×") : (v.toFixed(2));
       applyPostFx();
       savePostFx();
     });
