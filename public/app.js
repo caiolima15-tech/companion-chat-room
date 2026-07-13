@@ -6075,6 +6075,26 @@ function lightControlRow(row) {
     </div>`;
 }
 
+function wirePostFxControls() {
+  if (!lightsAdminList) return;
+  lightsAdminList.querySelectorAll("[data-pp]").forEach((el) => {
+    const key = el.dataset.pp;
+    const evt = el.type === "color" || el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(evt, () => {
+      const v = (el.type === "range" || el.type === "number") ? parseFloat(el.value) : el.value;
+      window.__postFx[key] = v;
+      const label = lightsAdminList.querySelector(`[data-pp-val="${key}"]`);
+      if (label && typeof v === "number") label.textContent = v.toFixed(2);
+      applyPostFx();
+      savePostFx();
+    });
+  });
+  lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
+    window.__postFx = { exposure:1.0, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0 };
+    applyPostFx(); savePostFx(); renderLightsAdminList();
+  });
+}
+
 function renderLightsAdminList() {
   if (!lightsAdminList) return;
   const rows = [...customLightsMap.values()].map((e) => e.row);
