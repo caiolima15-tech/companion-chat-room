@@ -6253,6 +6253,25 @@ function renderLightsAdminList() {
         <label>Nitidez de texturas (anisotropia) <b data-pp-val="anisotropy">${(p.anisotropy??8).toFixed(0)}×</b>
           <input type="range" data-pp="anisotropy" min="1" max="16" step="1" value="${p.anisotropy??8}" style="width:100%">
         </label>
+        <hr style="border:none;border-top:1px solid #2a3040;margin:4px 0"/>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;">
+          <input type="checkbox" data-pp="postEnabled" ${p.postEnabled!==false?"checked":""}/> ✨ Pipeline pós-processo (Bloom/SMAA)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-pp="bloom" ${p.bloom!==false?"checked":""}/> Bloom (brilho em faróis/sol/neon)
+        </label>
+        <label>Intensidade do bloom <b data-pp-val="bloomStrength">${(p.bloomStrength??0.35).toFixed(2)}</b>
+          <input type="range" data-pp="bloomStrength" min="0" max="1.5" step="0.05" value="${p.bloomStrength??0.35}" style="width:100%">
+        </label>
+        <label>Limiar do bloom <b data-pp-val="bloomThreshold">${(p.bloomThreshold??0.85).toFixed(2)}</b>
+          <input type="range" data-pp="bloomThreshold" min="0" max="1" step="0.02" value="${p.bloomThreshold??0.85}" style="width:100%">
+        </label>
+        <label>Raio do bloom <b data-pp-val="bloomRadius">${(p.bloomRadius??0.6).toFixed(2)}</b>
+          <input type="range" data-pp="bloomRadius" min="0" max="1" step="0.05" value="${p.bloomRadius??0.6}" style="width:100%">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-pp="smaa" ${p.smaa!==false?"checked":""}/> SMAA (anti-serrilhado)
+        </label>
         <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
       </div>
     </details>`;
