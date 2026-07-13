@@ -519,8 +519,9 @@ window.__renderer = renderer;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
 // ============ Dark / lights-only mode (admin) ============
@@ -528,9 +529,60 @@ renderer.toneMappingExposure = 1.0;
 // só as luzes custom (spots + sol custom) iluminam a cena.
 let DARK_MODE = false; // controlado por currentMapTransform.dark_mode
 let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// ============ Global post-processing / lighting tweaks ============
+// Persistidos por mapa em localStorage. Aplicados sobre qualquer mood.
+const PP_TONEMAPS = {
+  aces: THREE.ACESFilmicToneMapping,
+  filmic: THREE.CineonToneMapping,
+  reinhard: THREE.ReinhardToneMapping,
+  linear: THREE.LinearToneMapping,
+  neutral: THREE.NoToneMapping,
+};
+const _ppFill = new THREE.HemisphereLight(0xbfd4ff, 0x1a1f2a, 0);
+_ppFill.name = "__ppFill";
+scene.add(_ppFill);
+window.__postFx = {
+  exposure: 1.0,
+  ambient: 0.35,          // fill hemisférico extra p/ evitar sombras 100% pretas
+  ambientSkyColor: "#bfd4ff",
+  ambientGroundColor: "#1a1f2a",
+  tonemap: "aces",
+  shadowSoftness: 1.0,    // multiplica shadow.radius e normalBias das luzes custom
+};
+function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
+function loadPostFx() {
+  try {
+    const raw = localStorage.getItem(_ppStorageKey());
+    if (raw) Object.assign(window.__postFx, JSON.parse(raw));
+  } catch {}
+  applyPostFx();
+}
+function savePostFx() {
+  try { localStorage.setItem(_ppStorageKey(), JSON.stringify(window.__postFx)); } catch {}
+}
+function applyPostFx() {
+  const p = window.__postFx;
+  renderer.toneMapping = PP_TONEMAPS[p.tonemap] ?? THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = Math.max(0.1, Math.min(3, p.exposure));
+  _ppFill.color.set(p.ambientSkyColor);
+  _ppFill.groundColor.set(p.ambientGroundColor);
+  _ppFill.intensity = Math.max(0, Math.min(3, p.ambient));
+  // aplica suavidade nas luzes custom já criadas
+  const s = Math.max(0, Math.min(4, p.shadowSoftness));
+  for (const entry of customLightsMap?.values?.() || []) {
+    const l = entry.light; if (!l?.shadow) continue;
+    const baseR = (typeof entry.row?.shadow_radius === "number") ? entry.row.shadow_radius : (l.isDirectionalLight ? 4 : 2);
+    const baseN = (typeof entry.row?.shadow_normal_bias === "number") ? entry.row.shadow_normal_bias : (l.isDirectionalLight ? 0.035 : 0.02);
+    l.shadow.radius = baseR * s;
+    l.shadow.normalBias = baseN * (0.5 + 0.5 * s);
+    l.shadow.needsUpdate = true;
+  }
+}
+window.applyPostFx = applyPostFx;
+window.savePostFx = savePostFx;
+window.loadPostFx = loadPostFx;
+
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
