@@ -5953,6 +5953,7 @@ async function reloadMapLights(mapId) {
       .eq("map_id", mapId);
     if (error) { console.warn("map_lights load", error.message); return; }
     for (const row of data || []) rebuildCustomLight(row);
+    loadPostFx();
     renderLightsAdminList();
   } catch (e) { console.warn("map_lights load", e); }
 }
