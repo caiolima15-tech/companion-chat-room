@@ -563,6 +563,13 @@ window.__postFx = {
   anisotropy: 8,          // 1..16. Grande impacto visual, custo quase zero.
   // ---- Sky tint applied to scene.background when fog is on ----
   skyTint: true,
+  // ---- Post-processing (EffectComposer) ----
+  postEnabled: true,         // master switch
+  bloom: true,               // brilho realista em highlights (faróis, sol, neon)
+  bloomStrength: 0.35,       // 0..1.5
+  bloomThreshold: 0.85,      // 0..1 — só highlights acima disso brilham
+  bloomRadius: 0.6,          // 0..1
+  smaa: true,                // anti-aliasing (barato, remove serrilhado)
 };
 function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
 function loadPostFx() {
