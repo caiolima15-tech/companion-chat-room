@@ -5974,8 +5974,9 @@ function rebuildCustomLight(row) {
     tgt.userData.noLodCull = true;
     mesh.userData.noLodCull = true;
 
-    // Store direction & distance so the sun can follow the player while
-    // preserving the artist-chosen sky angle.
+    // Store direction & distance so the shadow camera can follow the player while
+    // preserving the artist-chosen sky angle. The visible sun globe stays anchored
+    // in world space (does NOT follow the player).
     const dir = new THREE.Vector3(row.pos_x - row.target_x, row.pos_y - row.target_y, row.pos_z - row.target_z);
     const dist = Math.max(1, dir.length());
     dir.normalize();
@@ -5983,6 +5984,7 @@ function rebuildCustomLight(row) {
     entry.sunDist = dist;
     entry.followsPlayer = true;
     entry.shadowHalf = half;
+    entry.sunAnchor = new THREE.Vector3(row.pos_x, row.pos_y, row.pos_z);
 
     entry.light = sun;
     entry.target = tgt;
