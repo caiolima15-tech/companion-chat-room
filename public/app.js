@@ -6193,7 +6193,7 @@ function wirePostFxControls() {
     });
   });
   lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
-    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true };
+    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true, postEnabled:true, bloom:true, bloomStrength:0.35, bloomThreshold:0.85, bloomRadius:0.6, smaa:true };
     applyPostFx(); savePostFx(); renderLightsAdminList();
   });
 }
