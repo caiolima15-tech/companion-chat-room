@@ -52,11 +52,16 @@
       new L().load(url, (fbx) => {
         const clip = fbx?.animations?.[0];
         if (!clip) return resolve(null);
-        // Strip "mixamorig" prefix from track names so they bind to RPM/generic skeletons
         const remapped = clip.clone();
+        // Strip mixamorig prefix + drop hips translation (root motion) so the
+        // character animates in place while the game engine drives movement.
+        const kept = [];
         for (const t of remapped.tracks) {
           t.name = t.name.replace(/^mixamorig[:_]?/i, "").replace(/\.mixamorig/gi, ".");
+          if (/^Hips\.position$/i.test(t.name)) continue;
+          kept.push(t);
         }
+        remapped.tracks = kept;
         remapped.name = url.split("/").pop() || clip.name;
         resolve(remapped);
       }, undefined, () => resolve(null));
