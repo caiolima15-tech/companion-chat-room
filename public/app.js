@@ -3975,6 +3975,10 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
+  // Weapon animation overlay (rifle/pistol packs) — local player only
+  if (entity?.player?.id === myId && window.__weaponAnim?.overrideLoco) {
+    try { if (window.__weaponAnim.overrideLoco(entity, name)) return; } catch {}
+  }
   // Movimento (walk/run) cancela emotes em loop como dance. Idle NÃO cancela.
   if (entity.emoteAction) {
     const isLoopEmote = entity.emoteAction.loop === THREE.LoopRepeat;
