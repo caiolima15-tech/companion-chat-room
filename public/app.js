@@ -4,6 +4,11 @@ import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
 import { FBXLoader } from "/vendor/FBXLoader.js";
 import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
+import { EffectComposer } from "/vendor/postprocessing/EffectComposer.js";
+import { RenderPass } from "/vendor/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "/vendor/postprocessing/UnrealBloomPass.js";
+import { SMAAPass } from "/vendor/postprocessing/SMAAPass.js";
+import { OutputPass } from "/vendor/postprocessing/OutputPass.js";
 
 // Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
 const SHARED_ANIM_LIBRARY = {
