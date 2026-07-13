@@ -215,6 +215,8 @@ const EMOTE_SLOTS = new Set(["dance", "wave"]);
 const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
+window.__playerEntities = playerEntities;
+Object.defineProperty(window, "__myId", { get: () => myId });
 
 // ============ Pose debug (ajuste manual de inclinação do personagem) ============
 const POSE_DEBUG_KEY = "neon-tap-room-pose-debug";
