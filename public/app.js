@@ -5004,7 +5004,7 @@ function animate() {
   }
   _lodAccum += delta;
   if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
-  renderer.render(scene, camera);
+  if (composer && window.__postFx?.postEnabled) composer.render(delta); else renderer.render(scene, camera);
   updateNameplates();
   // Atualiza o listener 3D do áudio
   if (window.GameAudio?.setListener) {
