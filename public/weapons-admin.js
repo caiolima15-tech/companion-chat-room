@@ -182,6 +182,17 @@
         sfx_empty: m.body.querySelector("#sSfxEmpty").value || null,
         sfx_impact: m.body.querySelector("#sSfxImpact").value || null,
         active: m.body.querySelector("#wActive").checked,
+        anim_pack: m.body.querySelector("#wPack").value || null,
+        hand_bone: m.body.querySelector("#wBone").value.trim() || "mixamorigRightHand",
+        hand_offset: {
+          px: parseFloat(m.body.querySelector("#hoPx").value || "0"),
+          py: parseFloat(m.body.querySelector("#hoPy").value || "0"),
+          pz: parseFloat(m.body.querySelector("#hoPz").value || "0"),
+          rx: parseFloat(m.body.querySelector("#hoRx").value || "0"),
+          ry: parseFloat(m.body.querySelector("#hoRy").value || "0"),
+          rz: parseFloat(m.body.querySelector("#hoRz").value || "0"),
+          scale: parseFloat(m.body.querySelector("#hoSc").value || "1"),
+        },
       };
       if (!payload.slug || !payload.name) return LV().toast("Preencha slug e nome", "error");
       const sb = SB();
