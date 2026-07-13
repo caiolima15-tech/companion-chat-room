@@ -137,12 +137,6 @@
     const s = stateMap.get(entity);
     if (!s?.attach) return;
     try { s.attach.obj.parent?.remove(s.attach.obj); } catch {}
-    try {
-      s.attach.obj.traverse((o) => {
-        o.geometry?.dispose?.();
-        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => m.dispose?.());
-      });
-    } catch {}
     s.attach = null;
   }
 
