@@ -1265,6 +1265,8 @@
           ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
         </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
+        <label style="font-size:11px" title="Aceita dano de armas/socos"><input type="checkbox" ${i.hostile?'checked':''} data-id="${i.id}" class="npc-hostile"/> ⚔ hostil</label>
+        <label style="font-size:11px">HP <input type="number" min="1" value="${i.max_hp||100}" data-id="${i.id}" class="npc-hp" style="width:60px;background:#000;color:#fff;border:1px solid #444;border-radius:3px;padding:2px"/></label>
         <button data-id="${i.id}" class="npc-bs-toggle" style="background:#444;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📖 História</button>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
         <div class="npc-bs-panel" data-id="${i.id}" style="display:none;width:100%;margin-top:6px">
