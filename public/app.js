@@ -3297,6 +3297,8 @@ function refreshEnvShadows() {
       if (m.needsUpdate !== undefined) m.needsUpdate = true;
     }
   });
+  // Reaplica anisotropia nas texturas recém-carregadas do cenário
+  try { window.__applyAnisotropy?.(); } catch {}
 }
 
 function setDarkMode(on, { persistLocal = false } = {}) {
