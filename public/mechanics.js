@@ -277,6 +277,15 @@
         }, p.duration_ms);
         break;
       }
+      case "give_weapon": {
+        if (window.giveWeaponToPlayer) await window.giveWeaponToPlayer(p.slug);
+        break;
+      }
+      case "damage_npc": {
+        const target = p.npc_id ? { id: p.npc_id } : findNearestNpc(Number(p.radius || 3));
+        if (target?.id) try { window.__damageNpc?.(target.id, Number(p.damage || 10)); } catch {}
+        break;
+      }
     }
   }
 
