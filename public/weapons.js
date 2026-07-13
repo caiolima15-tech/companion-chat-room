@@ -287,8 +287,11 @@
       // fists: use existing kick if available
       try { window.triggerLocalEmote?.("kickStrong"); } catch {}
     }
-    // animation
-    if (w.anim_shoot && window.playPlayerAnimation) {
+    // animation — prefer weapon-anim pack; fallback to legacy emote
+    const entity = getMyEntity();
+    if (entity && window.__weaponAnim?.isReady?.(entity)) {
+      // small recoil: reuse idle briefly — packs don't ship a shoot clip
+    } else if (w.anim_shoot && window.playPlayerAnimation) {
       try { window.playPlayerAnimation(w.anim_shoot, 400); } catch {}
     }
     // hit test
