@@ -3322,7 +3322,7 @@ function buildMap() {
   envBaseFloor.receiveShadow = true;
   stage.add(envBaseFloor);
 
-  scene.fog = null;
+  // fog é gerenciado pelo applyPostFx (chamado por loadPostFx no boot)
   stage.add(envGroup);
 
   // Cenário NÃO é carregado aqui — só dentro de enterRoom()/switchRoom(),
