@@ -2578,6 +2578,7 @@ export type Database = {
         Row: {
           active: boolean
           anim_idle: string | null
+          anim_pack: string | null
           anim_reload: string | null
           anim_shoot: string | null
           created_at: string
@@ -2585,6 +2586,8 @@ export type Database = {
           damage: number
           fire_rate_ms: number
           hand: string
+          hand_bone: string | null
+          hand_offset: Json | null
           icon_url: string | null
           id: string
           kind: string
@@ -2606,6 +2609,7 @@ export type Database = {
         Insert: {
           active?: boolean
           anim_idle?: string | null
+          anim_pack?: string | null
           anim_reload?: string | null
           anim_shoot?: string | null
           created_at?: string
@@ -2613,6 +2617,8 @@ export type Database = {
           damage?: number
           fire_rate_ms?: number
           hand?: string
+          hand_bone?: string | null
+          hand_offset?: Json | null
           icon_url?: string | null
           id?: string
           kind?: string
@@ -2634,6 +2640,7 @@ export type Database = {
         Update: {
           active?: boolean
           anim_idle?: string | null
+          anim_pack?: string | null
           anim_reload?: string | null
           anim_shoot?: string | null
           created_at?: string
@@ -2641,6 +2648,8 @@ export type Database = {
           damage?: number
           fire_rate_ms?: number
           hand?: string
+          hand_bone?: string | null
+          hand_offset?: Json | null
           icon_url?: string | null
           id?: string
           kind?: string

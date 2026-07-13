@@ -69,7 +69,11 @@
       icon_url: "", model_url: "",
       sfx_shoot: null, sfx_reload: null, sfx_empty: null, sfx_impact: null,
       active: true,
+      anim_pack: "",
+      hand_bone: "mixamorigRightHand",
+      hand_offset: { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, scale: 1 },
     };
+    const ho = w.hand_offset || { px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, scale: 1 };
     const m = LV().modal({
       title: isNew ? "Nova arma" : ("Editar: " + w.name),
       large: true,
@@ -96,11 +100,39 @@
         <label>Reserva inicial<input id="wRes" type="number" value="${w.reserve_start}"/></label>
         <label>Recarga (ms)<input id="wReload" type="number" value="${w.reload_ms}"/></label>
         <label>Dispersão<input id="wSpread" type="number" step="0.005" value="${w.spread}"/></label>
-        <label>Anim tiro<input id="wAnimShoot" value="${LV().esc(w.anim_shoot||'')}" placeholder="wave"/></label>
-        <label>Anim recarga<input id="wAnimReload" value="${LV().esc(w.anim_reload||'')}" placeholder="wave"/></label>
+        <label>Anim tiro (fallback)<input id="wAnimShoot" value="${LV().esc(w.anim_shoot||'')}" placeholder="wave"/></label>
+        <label>Anim recarga (fallback)<input id="wAnimReload" value="${LV().esc(w.anim_reload||'')}" placeholder="wave"/></label>
         <label>Ícone (URL)<input id="wIcon" value="${LV().esc(w.icon_url||'')}" placeholder="https://…"/></label>
         <label>Modelo GLB (URL)<input id="wModel" value="${LV().esc(w.model_url||'')}"/></label>
       </div>
+
+      <fieldset style="margin-top:14px;border:1px solid #333;padding:10px;border-radius:8px">
+        <legend>🎬 Pack de animação de locomoção</legend>
+        <div class="lv-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <label>Pack
+            <select id="wPack">
+              <option value="" ${!w.anim_pack?"selected":""}>Nenhum (usa animação padrão)</option>
+              <option value="pistol" ${w.anim_pack==="pistol"?"selected":""}>Pistola (8 clips)</option>
+              <option value="rifle" ${w.anim_pack==="rifle"?"selected":""}>Rifle / AK (15 clips)</option>
+            </select>
+          </label>
+          <label>Bone da mão<input id="wBone" value="${LV().esc(w.hand_bone||'mixamorigRightHand')}"/></label>
+        </div>
+        <div style="font-size:12px;opacity:.7;margin-top:6px">O pack só toca em avatares com esqueleto compatível (RPM/Mixamo).</div>
+      </fieldset>
+
+      <fieldset style="margin-top:10px;border:1px solid #333;padding:10px;border-radius:8px">
+        <legend>🖐 Offset visual da arma na mão</legend>
+        <div class="lv-grid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <label>Pos X<input id="hoPx" type="number" step="0.005" value="${ho.px ?? 0}"/></label>
+          <label>Pos Y<input id="hoPy" type="number" step="0.005" value="${ho.py ?? 0}"/></label>
+          <label>Pos Z<input id="hoPz" type="number" step="0.005" value="${ho.pz ?? 0}"/></label>
+          <label>Escala<input id="hoSc" type="number" step="0.05" value="${ho.scale ?? 1}"/></label>
+          <label>Rot X (rad)<input id="hoRx" type="number" step="0.05" value="${ho.rx ?? 0}"/></label>
+          <label>Rot Y (rad)<input id="hoRy" type="number" step="0.05" value="${ho.ry ?? 0}"/></label>
+          <label>Rot Z (rad)<input id="hoRz" type="number" step="0.05" value="${ho.rz ?? 0}"/></label>
+        </div>
+      </fieldset>
 
       <fieldset style="margin-top:14px;border:1px solid #333;padding:10px;border-radius:8px">
         <legend>🔊 Áudios (clip id do painel Áudio)</legend>
@@ -150,6 +182,17 @@
         sfx_empty: m.body.querySelector("#sSfxEmpty").value || null,
         sfx_impact: m.body.querySelector("#sSfxImpact").value || null,
         active: m.body.querySelector("#wActive").checked,
+        anim_pack: m.body.querySelector("#wPack").value || null,
+        hand_bone: m.body.querySelector("#wBone").value.trim() || "mixamorigRightHand",
+        hand_offset: {
+          px: parseFloat(m.body.querySelector("#hoPx").value || "0"),
+          py: parseFloat(m.body.querySelector("#hoPy").value || "0"),
+          pz: parseFloat(m.body.querySelector("#hoPz").value || "0"),
+          rx: parseFloat(m.body.querySelector("#hoRx").value || "0"),
+          ry: parseFloat(m.body.querySelector("#hoRy").value || "0"),
+          rz: parseFloat(m.body.querySelector("#hoRz").value || "0"),
+          scale: parseFloat(m.body.querySelector("#hoSc").value || "1"),
+        },
       };
       if (!payload.slug || !payload.name) return LV().toast("Preencha slug e nome", "error");
       const sb = SB();

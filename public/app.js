@@ -215,6 +215,8 @@ const EMOTE_SLOTS = new Set(["dance", "wave"]);
 const CHARACTER_DEFAULT_ROT_X = -Math.PI / 2;
 
 const playerEntities = new Map(); // id -> { group, mixer, actions, currentAction, target, plate, player, avatarUrl }
+window.__playerEntities = playerEntities;
+Object.defineProperty(window, "__myId", { get: () => myId });
 
 // ============ Pose debug (ajuste manual de inclinação do personagem) ============
 const POSE_DEBUG_KEY = "neon-tap-room-pose-debug";
@@ -492,6 +494,7 @@ window.__applyAnimSpeeds = applyAnimSpeedsAll;
 const assetObjects = new Map();
 const assetMixers = new Set(); // mixers de GLBs do mapa com animação embutida
 const keyState = new Set();
+window.__keyState = keyState;
 
 // ============ Maps catalog ============
 const BUILTIN_MAPS = [
@@ -3966,6 +3969,7 @@ function applyAvatar(entity, url) {
       entity.mixer = new THREE.AnimationMixer(next);
       entity.actions = { idle: null, walk: null };
       entity.currentAction = "idle";
+      try { window.dispatchEvent(new CustomEvent("player-avatar-loaded", { detail: { userId: entity.player?.id } })); } catch {}
     },
     undefined,
     () => {
@@ -3975,6 +3979,10 @@ function applyAvatar(entity, url) {
 }
 
 function setPlayerAction(entity, name) {
+  // Weapon animation overlay (rifle/pistol packs) — local player only
+  if (entity?.player?.id === myId && window.__weaponAnim?.overrideLoco) {
+    try { if (window.__weaponAnim.overrideLoco(entity, name)) return; } catch {}
+  }
   // Movimento (walk/run) cancela emotes em loop como dance. Idle NÃO cancela.
   if (entity.emoteAction) {
     const isLoopEmote = entity.emoteAction.loop === THREE.LoopRepeat;

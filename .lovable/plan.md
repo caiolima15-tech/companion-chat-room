@@ -1,73 +1,53 @@
-# Mecânica de Armas — MVP validável
+## Escopo
 
-Começar pequeno e sólido: 1 arma (pistola) + punhos, roda de seleção estilo GTA V (desktop e mobile), 1 NPC inimigo que leva dano e morre com SFX e animações. Depois expandimos.
+Integrar os packs `movimentacao_pistola.zip` (20 clips) e `movimentacao_rifle.zip` (49 clips), os modelos `ak47_psx.glb` e `pistola_9mm.glb`, e os áudios `recargarifle.mp3` / `efeitosonororecargarifle.mp3` ao sistema de armas existente — de forma que a locomoção do jogador troque automaticamente para as animações de arma quando um rifle ou pistola estiver equipado.
 
-## O que entra nesta etapa
+## Entregas
 
-### 1. Catálogo de armas (banco + painel admin)
-Nova tabela `weapons` (config global) com:
-- slug, nome, ícone, slot da roda (0–7), tipo (`melee` | `firearm`)
-- dano, alcance, cadência, tamanho do pente, munição de reserva inicial, tempo de recarga
-- IDs de clipes de áudio: tiro, recarga, click-vazio, impacto
-- Slug de animação: idle, shoot, reload (usa animações já instaladas do avatar)
-- Modelo GLB opcional na mão do player (upload no painel; se vazio, usa um placeholder simples)
+### 1. Upload dos assets ao CDN
+- 20 FBX de pistola → `public/anims/pistol/*.fbx.asset.json`
+- 49 FBX de rifle → `public/anims/rifle/*.fbx.asset.json`
+- 2 GLB de armas → `public/models/weapons/*.glb.asset.json`
+- 2 MP3 de recarga → registrados em `audio_clips` (categoria `weapons`)
 
-Painel **⚔ Armas** (novo, ao lado de Mecânicas/Empregos):
-- Lista + editor por arma (mesma UX simples do painel de empregos revisado)
-- Upload de GLB da arma, upload de SFX (cria audio_clips automaticamente)
-- Botão "Dar ao jogador" para testar rapidamente
-- Botão "Testar tiro" no editor
+### 2. Novo módulo `public/weapon-animation.js`
+- **Loader lazy**: baixa cada FBX na primeira vez que é necessário e cacheia o `AnimationClip` (Map por url).
+- **Overlay de locomoção**: quando `equippedSlug !== null`, intercepta o `playPlayerAnimation`/loop de idle-walk-run do `app.js` e troca a AnimationAction do jogador local pela correspondente do pack (idle, walk fwd/back/left/right, run, sprint, jump up/loop/down, strafe).
+- **Blend/crossfade** de 0.15 s entre estados; volta ao idle quando parado.
+- **Direção**: usa `moveDir` (vetor) já usado no `app.js` para escolher entre walk_forward/backward/left/right (rifle) ou walk/strafe (pistola).
+- **Retarget**: usa `SkeletonUtils.retargetClip` (já presente em `public/vendor/utils/`) para adaptar os clips Mixamo ao esqueleto do avatar do jogador.
 
-### 2. Inventário de armas do jogador
-Tabela `player_weapons` (user_id, weapon_slug, ammo_in_mag, ammo_reserve, owned).
-Client mantém cache em `window.__inv` e sincroniza no shutdown/pickup/reload.
+### 3. Attach do modelo da arma à mão
+- Substitui a "box" atual em `weapons.js` por um GLB carregado do `weapon.model_url`.
+- Faz parent no bone `mixamorigRightHand` (ou fallback `RightHand`) com offset/rot configuráveis por arma.
+- Ao desequipar, remove e cancela overlay de anim.
 
-### 3. Roda de armas (GTA-style)
-Novo módulo `public/weapon-wheel.js`:
-- Desktop: **segurar Tab** abre a roda (slow-mo leve no HUD), mouse escolhe o setor, soltar confirma.
-- Mobile: botão dedicado no HUD (ao lado do volante/joystick) — toque e arrasto radial escolhe, soltar confirma.
-- 8 slots: slot 0 = **Punhos/sem arma** (mão livre, igual GTA), slots 1–7 populados pelo catálogo. Setores vazios ficam esmaecidos.
-- Mostra nome, ícone, munição atual/reserva. Setinhas ‹ 1/3 › para variantes do mesmo slot (compat GTA), mas nesta etapa só 1 por slot.
+### 4. Ciclo de tiro/recarga com anim
+- `fire()` → toca `pistol shoot` (usaremos `pistol idle` como base + kick manual já que não veio anim de tiro no pack; para rifle, um recuo curto no braço).
+- `reload()` → toca clip `recargarifle.mp3` (rifle) e um som curto para pistola (fallback existente).
+- Bloqueia locomoção-overlay durante a janela de recarga.
 
-### 4. Ações de combate
-`public/weapons.js` (runtime):
-- **Atirar**: click esquerdo / botão de tiro no mobile. Consome 1 do pente, toca SFX + animação `shoot`, raycast a partir da câmera até o alcance, aplica dano em NPC/entidade atingida. Se pente=0, toca click-vazio.
-- **Recarregar**: tecla **R** / botão recarregar no mobile. Trava input por `reload_ms`, toca SFX e animação `reload`, move munição da reserva para o pente.
-- **Guardar arma**: selecionar slot 0 na roda → animação de guardar, remove modelo da mão.
-- HUD compacto no canto: ícone da arma + `pente / reserva`.
+### 5. Banco de dados
+Migration que:
+- Adiciona colunas `weapons.anim_pack` (`'pistol'|'rifle'|null`), `weapons.hand_offset` (jsonb), `weapons.hand_bone` (text, default `mixamorigRightHand`).
+- Faz UPSERT de duas armas: `pistol_9mm` (slot 2, pack=pistol) e `ak47` (slot 3, pack=rifle) já com `model_url`, `icon_url` opcional, `sfx_reload` apontando para os `audio_clips` criados.
+- Insere `audio_clips` para os 2 mp3 de recarga.
 
-### 5. NPC inimigo (teste)
-Nova coluna `npcs.hostile` (bool) + `hp` (int, default 100). Quando `hostile=true`:
-- Recebe dano dos tiros/socos; barra de HP flutuante aparece só quando ferido.
-- Ao chegar em 0 HP: toca animação `die` (fallback: `hit` mantido; se não houver `die`, cai deitado via ragdoll simples de rotação), remove-se após 6s, dispara evento `npc-killed` para o sistema de Mecânicas.
-- Reage a tiro próximo: vira pro atirador e toca `hit`.
-
-### 6. Integração com Mecânicas
-Novos gatilhos: `on_weapon_shot`, `on_npc_killed`, `on_reload`.
-Nova ação: `give_weapon` (dar arma + munição ao jogador).
-Isso te permite criar missões futuras tipo "matar 5 inimigos" sem tocar em código.
+### 6. Painel admin
+- Novo select no `weapons-admin.js`: **Pack de animação** (`nenhum | pistol | rifle`).
+- Campo **Bone da mão** e **Offset (x/y/z + rot)** — assim você calibra a posição visual da arma sem editar código.
 
 ## Detalhes técnicos
 
-- **Mira**: nesta MVP, tiro *hip-fire* com dispersão pequena baseada em movimento; sem ADS/scope ainda.
-- **Impacto**: partícula simples (sprite) + som de impacto; buraco de bala é um decal opcional numa próxima iteração.
-- **Sombra/perf**: modelo da arma reutiliza materiais existentes (`shadowSide`, `castShadow`) para não regredir a iluminação.
-- **Mobile**: novo botão flutuante 🎯 (tiro) e 🔄 (recarga); botão da roda ⚙️ substitui atual atalho de emote quando arma está equipada (emote continua acessível segurando o botão).
-- **Persistência**: `player_weapons` com RLS por `auth.uid()`; `weapons` legível por `authenticated`, editável só por `admin` (via `has_role`).
-- **Segurança**: dano validado só do lado do dono do NPC/servidor de tick — nesta MVP, dano em NPCs é aplicado localmente + broadcast realtime (igual ao chute atual). Endurecemos depois.
+- FBXs são grandes (~19 MB rifle pack, ~7 MB pistol pack). O loader carrega **sob demanda** — só quando o jogador equipa a arma pela primeira vez.
+- Cache global em `window.__weaponClipCache`; um único `FBXLoader` reutilizado.
+- Se o avatar do jogador não tiver bones Mixamo compatíveis, cai no comportamento anterior (locomoção padrão + arma na mão fixa).
+- Sem quebrar o sistema atual de emotes/dance: overlay só ativa quando `equippedSlug` está setado.
 
-## Fluxo de validação (o que vamos testar no fim)
+## Fora do escopo agora (posso adicionar depois se pedir)
+- Death animations (5 clips do pack rifle) — hoje NPCs só somem.
+- Crouching / aiming pose (tem clips prontos, mas exigem novo botão/tecla).
+- Blend tree 8-direções com pesos — vou usar seleção discreta por direção para performance mobile.
 
-1. Abrir painel **⚔ Armas** → criar "Pistola" com SFX e ícone → salvar.
-2. Painel → "Dar ao jogador" → abrir roda → selecionar Pistola.
-3. Criar NPC com `hostile=true` e HP 100.
-4. Atirar 5x → NPC toma dano e morre com animação/SFX.
-5. Recarregar (R) → animação + SFX + munição volta ao pente.
-6. Selecionar slot 0 na roda → arma some da mão.
-7. Repetir no mobile.
-
-## Perguntas rápidas antes de codar
-
-1. **Câmera durante o tiro**: mantém a câmera 3ª pessoa atual (mais próximo dos ombros ao equipar arma) ou você quer também uma mira em 1ª pessoa opcional?
-2. **Modelo da pistola**: você tem GLB pra subir agora, ou uso um placeholder low-poly gerado por código pra validar e você troca depois no painel?
-3. **NPC inimigo revida**: nesta MVP o inimigo só apanha e morre, ou já quer que ele tente correr atrás e dar soco quando você chega perto?
+## Confirmação
+Se ok, executo tudo. Se quiser recortar (ex.: só rifle, ou pular retarget e usar avatar padrão), me diga antes que eu suba os ~70 FBX ao CDN.
