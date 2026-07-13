@@ -543,12 +543,21 @@ const _ppFill = new THREE.HemisphereLight(0xbfd4ff, 0x1a1f2a, 0);
 _ppFill.name = "__ppFill";
 scene.add(_ppFill);
 window.__postFx = {
-  exposure: 1.0,
+  exposure: 1.05,
   ambient: 0.35,          // fill hemisférico extra p/ evitar sombras 100% pretas
   ambientSkyColor: "#bfd4ff",
   ambientGroundColor: "#1a1f2a",
   tonemap: "aces",
   shadowSoftness: 1.0,    // multiplica shadow.radius e normalBias das luzes custom
+  // ---- Atmospheric fog (GTA V-style distance haze) ----
+  fog: true,
+  fogColor: "#b6c4d1",
+  fogNear: 55,
+  fogFar: 380,
+  // ---- Texture crispness ----
+  anisotropy: 8,          // 1..16. Grande impacto visual, custo quase zero.
+  // ---- Sky tint applied to scene.background when fog is on ----
+  skyTint: true,
 };
 function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
 function loadPostFx() {
@@ -578,10 +587,45 @@ function applyPostFx() {
     l.shadow.normalBias = baseN * (0.5 + 0.5 * s);
     l.shadow.needsUpdate = true;
   }
+  // -------- FOG: haze de distância pra somar profundidade estilo GTA V --------
+  if (p.fog) {
+    const near = Math.max(1, p.fogNear || 55);
+    const far  = Math.max(near + 10, p.fogFar || 380);
+    if (!scene.fog || !(scene.fog instanceof THREE.Fog)) scene.fog = new THREE.Fog(p.fogColor, near, far);
+    else { scene.fog.color.set(p.fogColor); scene.fog.near = near; scene.fog.far = far; }
+    // O céu sólido cortava o horizonte: tinge o background com a cor da névoa
+    if (p.skyTint) { try { scene.background = new THREE.Color(p.fogColor); } catch {} }
+  } else {
+    scene.fog = null;
+  }
+  // -------- ANISOTROPY: nitidez em texturas em ângulos rasos (asfalto, chão) --------
+  applyAnisotropy();
+}
+function applyAnisotropy() {
+  try {
+    const maxA = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
+    const want = Math.max(1, Math.min(maxA, window.__postFx?.anisotropy || 1));
+    if (window.__lastAniso === want) return;
+    window.__lastAniso = want;
+    const seen = new Set();
+    scene.traverse((n) => {
+      if (!n.isMesh) return;
+      const mats = Array.isArray(n.material) ? n.material : (n.material ? [n.material] : []);
+      for (const m of mats) {
+        for (const k of ["map","normalMap","roughnessMap","metalnessMap","aoMap","emissiveMap","bumpMap"]) {
+          const t = m?.[k]; if (!t || seen.has(t)) continue;
+          seen.add(t);
+          t.anisotropy = want;
+          t.needsUpdate = true;
+        }
+      }
+    });
+  } catch (e) { /* noop */ }
 }
 window.applyPostFx = applyPostFx;
 window.savePostFx = savePostFx;
 window.loadPostFx = loadPostFx;
+window.__applyAnisotropy = applyAnisotropy;
 
 
 const controls = new OrbitControls(camera, renderer.domElement);
@@ -3200,7 +3244,7 @@ function applyLightingForMood(mood) {
     configSun(sun);
     lightingGroup.add(sun);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   } else if (mood === "sunset") {
     lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
     const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
@@ -3211,7 +3255,7 @@ function applyLightingForMood(mood) {
     fill.position.set(4, 3, -4);
     lightingGroup.add(fill);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   } else {
     lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
     const key = new THREE.DirectionalLight("#ffffff", 1.0);
@@ -3227,7 +3271,7 @@ function applyLightingForMood(mood) {
     teal.position.set(5.7, 3.4, 3.6);
     lightingGroup.add(teal);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   }
 }
 
@@ -3253,6 +3297,8 @@ function refreshEnvShadows() {
       if (m.needsUpdate !== undefined) m.needsUpdate = true;
     }
   });
+  // Reaplica anisotropia nas texturas recém-carregadas do cenário
+  try { window.__applyAnisotropy?.(); } catch {}
 }
 
 function setDarkMode(on, { persistLocal = false } = {}) {
@@ -3276,7 +3322,7 @@ function buildMap() {
   envBaseFloor.receiveShadow = true;
   stage.add(envBaseFloor);
 
-  scene.fog = null;
+  // fog é gerenciado pelo applyPostFx (chamado por loadPostFx no boot)
   stage.add(envGroup);
 
   // Cenário NÃO é carregado aqui — só dentro de enterRoom()/switchRoom(),
@@ -6079,18 +6125,22 @@ function wirePostFxControls() {
   if (!lightsAdminList) return;
   lightsAdminList.querySelectorAll("[data-pp]").forEach((el) => {
     const key = el.dataset.pp;
-    const evt = el.type === "color" || el.tagName === "SELECT" ? "change" : "input";
+    const isCheck = el.type === "checkbox";
+    const evt = (el.type === "color" || el.tagName === "SELECT" || isCheck) ? "change" : "input";
     el.addEventListener(evt, () => {
-      const v = (el.type === "range" || el.type === "number") ? parseFloat(el.value) : el.value;
+      let v;
+      if (isCheck) v = el.checked;
+      else if (el.type === "range" || el.type === "number") v = parseFloat(el.value);
+      else v = el.value;
       window.__postFx[key] = v;
       const label = lightsAdminList.querySelector(`[data-pp-val="${key}"]`);
-      if (label && typeof v === "number") label.textContent = v.toFixed(2);
+      if (label && typeof v === "number") label.textContent = key === "anisotropy" ? (v.toFixed(0) + "×") : (v.toFixed(2));
       applyPostFx();
       savePostFx();
     });
   });
   lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
-    window.__postFx = { exposure:1.0, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0 };
+    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true };
     applyPostFx(); savePostFx(); renderLightsAdminList();
   });
 }
@@ -6128,6 +6178,27 @@ function renderLightsAdminList() {
         </div>
         <label>Suavidade da sombra <b data-pp-val="shadowSoftness">${(p.shadowSoftness??1).toFixed(2)}</b>
           <input type="range" data-pp="shadowSoftness" min="0" max="4" step="0.1" value="${p.shadowSoftness??1}" style="width:100%">
+        </label>
+        <hr style="border:none;border-top:1px solid #2a3040;margin:4px 0"/>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;">
+          <input type="checkbox" data-pp="fog" ${p.fog!==false?"checked":""}/> 🌫 Névoa de distância (GTA-style)
+        </label>
+        <label>Início da névoa (m) <b data-pp-val="fogNear">${(p.fogNear??55).toFixed(0)}</b>
+          <input type="range" data-pp="fogNear" min="5" max="300" step="1" value="${p.fogNear??55}" style="width:100%">
+        </label>
+        <label>Distância máxima (m) <b data-pp-val="fogFar">${(p.fogFar??380).toFixed(0)}</b>
+          <input type="range" data-pp="fogFar" min="60" max="1200" step="5" value="${p.fogFar??380}" style="width:100%">
+        </label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <label style="flex:1;">Cor da névoa / céu
+            <input type="color" data-pp="fogColor" value="${p.fogColor||"#b6c4d1"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+          <label style="flex:1;font-size:11px;display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" data-pp="skyTint" ${p.skyTint!==false?"checked":""}/> tingir o céu
+          </label>
+        </div>
+        <label>Nitidez de texturas (anisotropia) <b data-pp-val="anisotropy">${(p.anisotropy??8).toFixed(0)}×</b>
+          <input type="range" data-pp="anisotropy" min="1" max="16" step="1" value="${p.anisotropy??8}" style="width:100%">
         </label>
         <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
       </div>
