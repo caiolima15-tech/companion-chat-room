@@ -94,6 +94,37 @@
   window.__setNpcAnim = (id, name) => { const e = npcEntities.get(id); if (e) { e.currentAnimName = name; try { setAnim(e, name); } catch {} } };
   window.__setNpcFacePlayer = (id, on) => { const e = npcEntities.get(id); if (e) { e.lockToPlayer = !!on; e._talkLock = !!on; if (on) e.targetPos = null; } };
   window.__getNpcPos = (id) => { const e = npcEntities.get(id); return e?.group?.position || null; };
+
+  // -------- Damage system (weapons/mechanics) --------
+  window.__damageNpc = function (id, dmg, meta) {
+    const ent = npcEntities.get(id); if (!ent || ent.__dead) return;
+    const inst = npcInstances.get(id) || {};
+    if (ent.hp == null) ent.hp = Number(inst.hp ?? 100);
+    if (ent.maxHp == null) ent.maxHp = Number(inst.max_hp ?? ent.hp ?? 100);
+    ent.hp = Math.max(0, ent.hp - Number(dmg || 0));
+    // React: face attacker + hit anim briefly
+    try {
+      ent.lockToPlayer = true; ent._talkLock = true; ent.targetPos = null;
+      setAnim(ent, "hit");
+    } catch {}
+    setTimeout(() => { if (!ent.__dead) { try { setAnim(ent, ent.currentAnimName || "idle"); } catch {} ent.lockToPlayer = false; ent._talkLock = false; } }, 700);
+    // HP toast
+    try { window.LV?.toast?.(`${inst.display_name || "NPC"}: ${ent.hp}/${ent.maxHp} HP`, ent.hp <= 0 ? "warn" : "ok"); } catch {}
+    if (ent.hp <= 0) killNpc(id, ent);
+  };
+  function killNpc(id, ent) {
+    ent.__dead = true;
+    try { setAnim(ent, "die"); } catch { try { setAnim(ent, "hit"); } catch {} }
+    try { ent.group.rotation.z = Math.PI / 2; } catch {}
+    window.dispatchEvent(new CustomEvent("npc-killed", { detail: { npc_id: id } }));
+    setTimeout(() => {
+      try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
+      try { scene().remove(ent.group); } catch {}
+      try { ent.bubble?.remove(); } catch {}
+      npcEntities.delete(id);
+    }, 6000);
+  }
+
   const npcInstances = new Map();  // id -> instance row (filtered by current map)
   const npcStateCache = new Map(); // id -> latest state row (lightweight, kept for all NPCs in map)
   const npcModels = new Map();
