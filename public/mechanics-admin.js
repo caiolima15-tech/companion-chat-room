@@ -14,6 +14,9 @@
     vehicle_exit:      { label: "Ao sair do carro",     fields: ["car_id_optional"] },
     on_join_map:       { label: "Ao entrar no mapa",    fields: [] },
     on_emote:          { label: "Ao fazer emote/soco",  fields: ["emote_slot","npc_radius_optional"] },
+    on_weapon_shot:    { label: "Ao atirar (arma)",     fields: [] },
+    on_reload:         { label: "Ao recarregar",        fields: [] },
+    on_npc_killed:     { label: "Ao matar NPC",         fields: [] },
     manual:            { label: "Manual (outra mecânica chama)", fields: [] },
   };
 
@@ -45,6 +48,8 @@
     start_job:       { label: "Iniciar emprego", fields: [["job_id","Job id","text"]] },
     wait:            { label: "Aguardar (ms)", fields: [["ms","Tempo ms","num"]] },
     npc_play_animation: { label: "NPC: tocar animação", fields: [["anim","Animação (idle/walk/talk/…)","text"],["radius","Raio p/ escolher","num"],["npc_id","NPC id (opcional)","text"],["duration_ms","Duração ms","num"]] },
+    give_weapon:     { label: "Dar arma ao jogador", fields: [["slug","Slug da arma","text"]] },
+    damage_npc:      { label: "Dano em NPC", fields: [["damage","Dano","num"],["radius","Raio","num"],["npc_id","NPC id (opcional)","text"]] },
   };
 
   document.addEventListener("click", (ev) => {

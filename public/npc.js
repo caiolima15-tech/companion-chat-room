@@ -94,6 +94,37 @@
   window.__setNpcAnim = (id, name) => { const e = npcEntities.get(id); if (e) { e.currentAnimName = name; try { setAnim(e, name); } catch {} } };
   window.__setNpcFacePlayer = (id, on) => { const e = npcEntities.get(id); if (e) { e.lockToPlayer = !!on; e._talkLock = !!on; if (on) e.targetPos = null; } };
   window.__getNpcPos = (id) => { const e = npcEntities.get(id); return e?.group?.position || null; };
+
+  // -------- Damage system (weapons/mechanics) --------
+  window.__damageNpc = function (id, dmg, meta) {
+    const ent = npcEntities.get(id); if (!ent || ent.__dead) return;
+    const inst = npcInstances.get(id) || {};
+    if (ent.hp == null) ent.hp = Number(inst.hp ?? 100);
+    if (ent.maxHp == null) ent.maxHp = Number(inst.max_hp ?? ent.hp ?? 100);
+    ent.hp = Math.max(0, ent.hp - Number(dmg || 0));
+    // React: face attacker + hit anim briefly
+    try {
+      ent.lockToPlayer = true; ent._talkLock = true; ent.targetPos = null;
+      setAnim(ent, "hit");
+    } catch {}
+    setTimeout(() => { if (!ent.__dead) { try { setAnim(ent, ent.currentAnimName || "idle"); } catch {} ent.lockToPlayer = false; ent._talkLock = false; } }, 700);
+    // HP toast
+    try { window.LV?.toast?.(`${inst.display_name || "NPC"}: ${ent.hp}/${ent.maxHp} HP`, ent.hp <= 0 ? "warn" : "ok"); } catch {}
+    if (ent.hp <= 0) killNpc(id, ent);
+  };
+  function killNpc(id, ent) {
+    ent.__dead = true;
+    try { setAnim(ent, "die"); } catch { try { setAnim(ent, "hit"); } catch {} }
+    try { ent.group.rotation.z = Math.PI / 2; } catch {}
+    window.dispatchEvent(new CustomEvent("npc-killed", { detail: { npc_id: id } }));
+    setTimeout(() => {
+      try { window.GameAudio?.unregisterRemote?.("npc:" + id); } catch {}
+      try { scene().remove(ent.group); } catch {}
+      try { ent.bubble?.remove(); } catch {}
+      npcEntities.delete(id);
+    }, 6000);
+  }
+
   const npcInstances = new Map();  // id -> instance row (filtered by current map)
   const npcStateCache = new Map(); // id -> latest state row (lightweight, kept for all NPCs in map)
   const npcModels = new Map();
@@ -1234,6 +1265,8 @@
           ${routeOpts.replace(`value="${i.route_id}"`, `value="${i.route_id}" selected`)}
         </select>
         <label style="font-size:11px"><input type="checkbox" ${i.active?'checked':''} data-id="${i.id}" class="npc-act"/> ativo</label>
+        <label style="font-size:11px" title="Aceita dano de armas/socos"><input type="checkbox" ${i.hostile?'checked':''} data-id="${i.id}" class="npc-hostile"/> ⚔ hostil</label>
+        <label style="font-size:11px">HP <input type="number" min="1" value="${i.max_hp||100}" data-id="${i.id}" class="npc-hp" style="width:60px;background:#000;color:#fff;border:1px solid #444;border-radius:3px;padding:2px"/></label>
         <button data-id="${i.id}" class="npc-bs-toggle" style="background:#444;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer;font-size:11px">📖 História</button>
         <button data-id="${i.id}" class="npc-inst-del" style="background:#c33;color:#fff;border:none;padding:3px 8px;border-radius:4px;cursor:pointer">×</button>
         <div class="npc-bs-panel" data-id="${i.id}" style="display:none;width:100%;margin-top:6px">
@@ -1248,6 +1281,13 @@
       </div>`).join('') : `<p style="opacity:.5;font-size:12px">Nenhum NPC nesta sala. Use a aba Modelos pra spawnar.</p>`);
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
+    });
+    el.querySelectorAll(".npc-hostile").forEach((c) => c.onchange = async () => {
+      await sb.from("npc_instances").update({ hostile: c.checked }).eq("id", c.dataset.id);
+    });
+    el.querySelectorAll(".npc-hp").forEach((c) => c.onchange = async () => {
+      const v = Math.max(1, parseInt(c.value||"100",10));
+      await sb.from("npc_instances").update({ max_hp: v, hp: v }).eq("id", c.dataset.id);
     });
     el.querySelectorAll(".npc-route-sel").forEach((s) => s.onchange = async () => {
       const npcId = s.dataset.id;

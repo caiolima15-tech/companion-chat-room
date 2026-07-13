@@ -3355,3 +3355,51 @@ body.world-ready .cam-toggle-pill { display: inline-flex; }
   /* No mobile já existe o botão na barra inferior */
   .chat-open-fab { display: none !important; }
 }
+
+/* ============ Weapons HUD ============ */
+#weaponHud {
+  position: fixed; right: 14px; bottom: calc(80px + env(safe-area-inset-bottom));
+  z-index: 45; pointer-events: none;
+  background: rgba(10,12,18,.7); border: 1px solid rgba(255,255,255,.14);
+  border-radius: 12px; padding: 8px 12px; color: #fff;
+  font: 500 13px system-ui; backdrop-filter: blur(10px) saturate(150%);
+  min-width: 130px; display: none;
+}
+body.in-world #weaponHud { display: block; }
+#weaponHud .wh-inner { display: flex; align-items: center; gap: 10px; }
+#weaponHud .wh-icon { width: 34px; height: 34px; display:flex; align-items:center; justify-content:center; font-size: 22px; }
+#weaponHud .wh-icon img { max-width: 100%; max-height: 100%; }
+#weaponHud .wh-name { flex: 1; }
+#weaponHud .wh-ammo { font-variant-numeric: tabular-nums; opacity: .9; }
+#weaponHud .wh-ammo b { font-size: 16px; color: #ffe08a; }
+
+/* ============ Weapon wheel ============ */
+#weaponWheel {
+  position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.35); backdrop-filter: blur(6px);
+  z-index: 60; user-select: none; -webkit-user-select: none; touch-action: none;
+}
+#weaponWheel.open { display: flex; }
+#weaponWheel #wwSvg { width: min(78vmin, 520px); height: min(78vmin, 520px); filter: drop-shadow(0 6px 20px rgba(0,0,0,.6)); }
+#weaponWheel #wwSvg path { transition: fill .1s; cursor: pointer; }
+#weaponWheel #wwCenter {
+  position: absolute; color: #fff; text-align: center; pointer-events: none;
+  font: 600 15px system-ui;
+}
+#weaponWheel #wwCenter #wwName { font-size: 18px; margin-bottom: 4px; }
+#weaponWheel #wwCenter #wwAmmo { opacity: .8; font-weight: 500; }
+
+/* ============ Weapons mobile bar ============ */
+#weaponMobBar {
+  position: fixed; right: 12px; bottom: calc(160px + env(safe-area-inset-bottom));
+  display: none; flex-direction: column; gap: 10px; z-index: 46;
+}
+#weaponMobBar button {
+  width: 56px; height: 56px; border-radius: 999px;
+  background: linear-gradient(180deg, rgba(40,38,80,.9), rgba(18,16,44,.9));
+  color: #fff; font-size: 22px; border: 1px solid rgba(255,255,255,.2);
+  box-shadow: 0 8px 22px rgba(0,0,0,.45); cursor: pointer;
+}
+@media (max-width: 900px), (pointer: coarse) {
+  body.in-world #weaponMobBar { display: flex; }
+}

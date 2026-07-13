@@ -27,8 +27,20 @@
     window.addEventListener("vehicle-entered", onVehicleEvent("vehicle_enter"));
     window.addEventListener("vehicle-exited", onVehicleEvent("vehicle_exit"));
     window.addEventListener("player-emote", onEmote);
+    window.addEventListener("weapon-shot", (ev) => fireByKind("on_weapon_shot", ev?.detail || {}));
+    window.addEventListener("weapon-reload", (ev) => fireByKind("on_reload", ev?.detail || {}));
+    window.addEventListener("npc-killed", (ev) => fireByKind("on_npc_killed", ev?.detail || {}));
     setInterval(tick, 350);
     await loadForMap();
+  }
+
+  function fireByKind(kind, ctx) {
+    for (const m of mechanics) {
+      if (m.trigger?.kind !== kind) continue;
+      const p = m.trigger.params || {};
+      if (p.slug && ctx.slug && p.slug !== ctx.slug) continue;
+      fire(m, ctx);
+    }
   }
 
   function onEmote(ev) {
@@ -263,6 +275,15 @@
         if (p.duration_ms) setTimeout(() => {
           try { window.__setNpcAnim?.(target.id, "idle"); window.__setNpcFacePlayer?.(target.id, false); } catch {}
         }, p.duration_ms);
+        break;
+      }
+      case "give_weapon": {
+        if (window.giveWeaponToPlayer) await window.giveWeaponToPlayer(p.slug);
+        break;
+      }
+      case "damage_npc": {
+        const target = p.npc_id ? { id: p.npc_id } : findNearestNpc(Number(p.radius || 3));
+        if (target?.id) try { window.__damageNpc?.(target.id, Number(p.damage || 10)); } catch {}
         break;
       }
     }

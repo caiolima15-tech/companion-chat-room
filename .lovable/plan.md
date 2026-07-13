@@ -1,185 +1,73 @@
-## Objetivo
+# Mecânica de Armas — MVP validável
 
-Tornar a criação de missões e mecânicas 100% sem código: formulários por tipo de etapa, uploads direto pelo painel, novo painel "Mecânicas" com construtor visual (gatilho → condições → ações) e estado por jogador. Também: corrige seletor de NPC dador e baixa o ícone de câmera.
+Começar pequeno e sólido: 1 arma (pistola) + punhos, roda de seleção estilo GTA V (desktop e mobile), 1 NPC inimigo que leva dano e morre com SFX e animações. Depois expandimos.
 
----
+## O que entra nesta etapa
 
-## 1. UI: ícone de câmera abaixo do escudo admin
+### 1. Catálogo de armas (banco + painel admin)
+Nova tabela `weapons` (config global) com:
+- slug, nome, ícone, slot da roda (0–7), tipo (`melee` | `firearm`)
+- dano, alcance, cadência, tamanho do pente, munição de reserva inicial, tempo de recarga
+- IDs de clipes de áudio: tiro, recarga, click-vazio, impacto
+- Slug de animação: idle, shoot, reload (usa animações já instaladas do avatar)
+- Modelo GLB opcional na mão do player (upload no painel; se vazio, usa um placeholder simples)
 
-`public/styles.css` — mover o botão de troca de câmera para `top: 116px` (abaixo do escudo em `64px`) e garantir `z-index` consistente. Verificar mobile.
+Painel **⚔ Armas** (novo, ao lado de Mecânicas/Empregos):
+- Lista + editor por arma (mesma UX simples do painel de empregos revisado)
+- Upload de GLB da arma, upload de SFX (cria audio_clips automaticamente)
+- Botão "Dar ao jogador" para testar rapidamente
+- Botão "Testar tiro" no editor
 
-## 2. Painel de Empregos — reescrita do `jobs-admin.js`
+### 2. Inventário de armas do jogador
+Tabela `player_weapons` (user_id, weapon_slug, ammo_in_mag, ammo_reserve, owned).
+Client mantém cache em `window.__inv` e sincroniza no shutdown/pickup/reload.
 
-Substituir todos os `prompt()`/`confirm()`/`alert()` por modais HTML reais. Toda janela tem botão ✕ no canto e fecha clicando no backdrop ou Esc.
+### 3. Roda de armas (GTA-style)
+Novo módulo `public/weapon-wheel.js`:
+- Desktop: **segurar Tab** abre a roda (slow-mo leve no HUD), mouse escolhe o setor, soltar confirma.
+- Mobile: botão dedicado no HUD (ao lado do volante/joystick) — toque e arrasto radial escolhe, soltar confirma.
+- 8 slots: slot 0 = **Punhos/sem arma** (mão livre, igual GTA), slots 1–7 populados pelo catálogo. Setores vazios ficam esmaecidos.
+- Mostra nome, ícone, munição atual/reserva. Setinhas ‹ 1/3 › para variantes do mesmo slot (compat GTA), mas nesta etapa só 1 por slot.
 
-### 2.1 Selecionar NPC dador agora aparece no formulário de criação
-Hoje, se a lista de NPCs vier vazia o seletor é pulado e o campo nunca aparece na edição. Mudanças:
-- Form de criação/edição com `<select>` populado por `npc_instances` do mapa atual + opção "Nenhum (auto-aparecer ao chegar perto)".
-- Botão "Atualizar lista" ao lado.
-- Animação ociosa via `<select>` populado por `npc_animations`.
+### 4. Ações de combate
+`public/weapons.js` (runtime):
+- **Atirar**: click esquerdo / botão de tiro no mobile. Consome 1 do pente, toca SFX + animação `shoot`, raycast a partir da câmera até o alcance, aplica dano em NPC/entidade atingida. Se pente=0, toca click-vazio.
+- **Recarregar**: tecla **R** / botão recarregar no mobile. Trava input por `reload_ms`, toca SFX e animação `reload`, move munição da reserva para o pente.
+- **Guardar arma**: selecionar slot 0 na roda → animação de guardar, remove modelo da mão.
+- HUD compacto no canto: ícone da arma + `pente / reserva`.
 
-### 2.2 Editor de etapas com formulário por `kind`
-Em vez do `prompt("Config JSON...")`, cada `kind` abre um form dedicado:
+### 5. NPC inimigo (teste)
+Nova coluna `npcs.hostile` (bool) + `hp` (int, default 100). Quando `hostile=true`:
+- Recebe dano dos tiros/socos; barra de HP flutuante aparece só quando ferido.
+- Ao chegar em 0 HP: toca animação `die` (fallback: `hit` mantido; se não houver `die`, cai deitado via ragdoll simples de rotação), remove-se após 6s, dispara evento `npc-killed` para o sistema de Mecânicas.
+- Reage a tiro próximo: vira pro atirador e toca `hit`.
 
-| kind | campos |
-|---|---|
-| talk_to_giver | falas (textarea por linha) |
-| pickup_item | select item_catalog + botão "📍 capturar posição", raio (slider) |
-| deliver_item | select item, x/y/z (capturar), raio |
-| goto_point | x/y/z (capturar), raio, texto do prompt |
-| enter_vehicle | select map_cars |
-| drive_to | select map_cars, x/y/z, raio |
-| park_vehicle | select map_cars, x/y/z, raio, checkbox "despawn ao concluir" |
-| deliver_to_spawned_npc | select npc_models, raio spawn aleatório, "anda embora após entregar?", distância |
-| talk_to_npc | select npc_instances, raio |
-| interact_asset | select map_asset_interactions, select animação |
-| play_animation | select animação, duração (ms) |
-| complete/fail | só rótulo |
-
-Cada form tem aba "Avançado" expansível com JSON cru pra quem quiser (fallback).
-
-### 2.3 Uploads diretos no painel
-Botão "📦 Itens" no toolbar do painel principal abre um modal pra:
-- Subir GLB → cria registro em `item_catalog` (slug auto a partir do nome).
-- Definir bone de anexo, offset e rotação com inputs numéricos.
-
-Botão "🎵 Áudios" do passo abre upload de mp3 → `audio_clips` (categoria `job_step`), e amarra ao step via `config.sound_clip_id`.
-
-Botão "🖼️ Capa" do emprego sobe imagem pro bucket `map-assets/jobs/` e salva em `job_templates.cover_url` (coluna nova).
-
-Botão "🚩 Marcador" permite trocar o cone padrão de destinos por GLB.
-
-### 2.4 Transições editadas visualmente
-Em vez de digitar "on_success", lista das etapas existentes em cada step row com setas → pra escolher destino e tipo.
-
-## 3. Novo painel **Mecânicas**
-
-Botão novo no admin dock: 🧩 Mecânicas. Estrutura geral:
-
-```
-Mecânica
- ├── Trigger (1)
- ├── Conditions (N - AND/OR)
- └── Actions (N, em sequência, com await)
-```
-
-### 3.1 Schema (nova migração)
-
-```sql
-CREATE TABLE public.mechanics (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  map_id text NOT NULL,
-  name text NOT NULL,
-  description text,
-  active boolean DEFAULT true,
-  trigger jsonb NOT NULL,        -- { kind, params }
-  conditions jsonb DEFAULT '[]', -- [{ kind, params }]
-  actions jsonb NOT NULL,        -- [{ kind, params, delay_ms }]
-  cooldown_seconds int DEFAULT 0,
-  per_player boolean DEFAULT true,
-  created_by uuid REFERENCES auth.users(id),
-  created_at timestamptz DEFAULT now()
-);
-
-CREATE TABLE public.player_state (
-  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  map_id text,
-  key text NOT NULL,
-  value jsonb,
-  expires_at timestamptz,
-  PRIMARY KEY (user_id, map_id, key)
-);
-
-CREATE TABLE public.mechanic_cooldowns (
-  mechanic_id uuid REFERENCES public.mechanics(id) ON DELETE CASCADE,
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
-  available_at timestamptz NOT NULL,
-  PRIMARY KEY (mechanic_id, user_id)
-);
-```
-
-+ GRANTs + RLS (leitura/escrita só com `has_role('admin')` para mechanics; player_state só do próprio user).
-
-### 3.2 Blocos disponíveis
-
-**Triggers**
-- `zone_enter` / `zone_exit` (x,y,z,radius)
-- `key_press` (tecla, opcional `requires_proximity_to: {x,y,z,r}` ou `requires_npc_id`)
-- `proximity_to_npc` / `proximity_to_asset`
-- `interval` (a cada N segundos)
-- `vehicle_enter` / `vehicle_exit` (opcional `car_id`)
-- `on_join_map`
-- `manual` (chamado por outra mecânica)
-
-**Conditions**
-- `has_item` (item_slug, qty)
-- `has_money` (cents)
-- `time_of_day` (entre H:M e H:M)
-- `is_admin`
-- `inside_vehicle`
-- `variable_equals` (key, value)
-- `variable_gte` (key, n)
-
-**Actions**
-- `give_item` / `remove_item`
-- `play_sound` (clip_id, 2d ou 3d local)
-- `play_animation` (no player, slug, duração)
-- `spawn_npc` (model_id, x/y/z, walk_to opcional, lifetime)
-- `spawn_vehicle` (car_id, x/y/z)
-- `teleport_player` (x/y/z, map_id opcional)
-- `add_money` (cents) / `remove_money`
-- `damage_player` (hp)
-- `show_message` (texto, duração, ícone)
-- `set_variable` / `inc_variable`
-- `trigger_mechanic` (id) — encadeia
-- `wait` (ms)
-- `start_job` (job_template_id)
-
-### 3.3 Runtime cliente
-
-Novo `public/mechanics.js`:
-- Carrega mechanics do mapa via realtime.
-- Hooks no loop principal: checa zonas/proximidade.
-- Handlers de tecla / entrada-de-veículo.
-- Executa ações chamando helpers já existentes (`window.GameAudio`, `window.spawnNpc`, etc).
-- Estado por jogador via tabela `player_state` (cooldown/contadores).
-
-### 3.4 UI do painel
-Mesma linguagem do jobs-admin reescrito:
-- Lista de mecânicas (cards: nome, ativo, último trigger).
-- "+ Nova" → modal step-by-step (1. nome, 2. gatilho, 3. condições, 4. ações).
-- Cada action/condition é um card com form específico ao seu `kind`.
-- Reordenar ações com drag (HTML5 nativo).
-- Botão "▶ Testar" simula a mecânica no próprio admin.
-
-## 4. UX comum dos modais
-- Backdrop escurecido + scroll travado no body.
-- ✕ no header + click-fora + tecla Esc fecham.
-- Empilháveis (modal sobre modal com z-index dinâmico).
-- Toasts (não `alert`) pra sucesso/erro.
-
-## 5. Bug atual em `jobs-admin.js` (linkCar)
-A função `linkCar` está com chaves quebradas (faltou `}` antes da `linkNpc` e o `await sb.from("job_steps")...` aparece duas vezes). Reescrita do arquivo já corrige.
-
----
+### 6. Integração com Mecânicas
+Novos gatilhos: `on_weapon_shot`, `on_npc_killed`, `on_reload`.
+Nova ação: `give_weapon` (dar arma + munição ao jogador).
+Isso te permite criar missões futuras tipo "matar 5 inimigos" sem tocar em código.
 
 ## Detalhes técnicos
-- Buckets: usar `map-assets` (já existe, público) pra GLBs/itens/capas; `audio-clips` (privado) pra áudios — com signed URL pra player.
-- Não tocar em `client.ts`, `types.ts`.
-- Realtime em `mechanics` pra refletir mudanças entre jogadores.
-- Sem dependências novas: tudo em JS vanilla nos arquivos `public/`.
 
-## Arquivos tocados
-- `public/styles.css` — botão câmera, classes de modal.
-- `public/jobs-admin.js` — reescrita.
-- `public/jobs.js` — adicionar suporte a `cover_url`, `walk_away_after_deliver`, `repeat`, `sound_clip_id`.
-- `public/mechanics.js` — **novo** (runtime).
-- `public/mechanics-admin.js` — **novo** (painel).
-- `public/index.html` — incluir os dois scripts.
-- `public/app.js` — registrar botão Mecânicas no dock admin + hooks de loop.
-- Migração SQL — 3 tabelas + grants + RLS + `cover_url` em `job_templates`.
+- **Mira**: nesta MVP, tiro *hip-fire* com dispersão pequena baseada em movimento; sem ADS/scope ainda.
+- **Impacto**: partícula simples (sprite) + som de impacto; buraco de bala é um decal opcional numa próxima iteração.
+- **Sombra/perf**: modelo da arma reutiliza materiais existentes (`shadowSide`, `castShadow`) para não regredir a iluminação.
+- **Mobile**: novo botão flutuante 🎯 (tiro) e 🔄 (recarga); botão da roda ⚙️ substitui atual atalho de emote quando arma está equipada (emote continua acessível segurando o botão).
+- **Persistência**: `player_weapons` com RLS por `auth.uid()`; `weapons` legível por `authenticated`, editável só por `admin` (via `has_role`).
+- **Segurança**: dano validado só do lado do dono do NPC/servidor de tick — nesta MVP, dano em NPCs é aplicado localmente + broadcast realtime (igual ao chute atual). Endurecemos depois.
 
-## Fora de escopo (proposto pra próxima rodada)
-- Editor visual de zonas no mapa (por enquanto: capturar posição do player + raio).
-- Importar/exportar mecânicas como JSON.
-- Versionamento/histórico de edições.
+## Fluxo de validação (o que vamos testar no fim)
+
+1. Abrir painel **⚔ Armas** → criar "Pistola" com SFX e ícone → salvar.
+2. Painel → "Dar ao jogador" → abrir roda → selecionar Pistola.
+3. Criar NPC com `hostile=true` e HP 100.
+4. Atirar 5x → NPC toma dano e morre com animação/SFX.
+5. Recarregar (R) → animação + SFX + munição volta ao pente.
+6. Selecionar slot 0 na roda → arma some da mão.
+7. Repetir no mobile.
+
+## Perguntas rápidas antes de codar
+
+1. **Câmera durante o tiro**: mantém a câmera 3ª pessoa atual (mais próximo dos ombros ao equipar arma) ou você quer também uma mira em 1ª pessoa opcional?
+2. **Modelo da pistola**: você tem GLB pra subir agora, ou uso um placeholder low-poly gerado por código pra validar e você troca depois no painel?
+3. **NPC inimigo revida**: nesta MVP o inimigo só apanha e morre, ou já quer que ele tente correr atrás e dar soco quando você chega perto?
