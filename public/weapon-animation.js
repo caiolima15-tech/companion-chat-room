@@ -52,11 +52,16 @@
       new L().load(url, (fbx) => {
         const clip = fbx?.animations?.[0];
         if (!clip) return resolve(null);
-        // Strip "mixamorig" prefix from track names so they bind to RPM/generic skeletons
         const remapped = clip.clone();
+        // Strip mixamorig prefix + drop hips translation (root motion) so the
+        // character animates in place while the game engine drives movement.
+        const kept = [];
         for (const t of remapped.tracks) {
           t.name = t.name.replace(/^mixamorig[:_]?/i, "").replace(/\.mixamorig/gi, ".");
+          if (/^Hips\.position$/i.test(t.name)) continue;
+          kept.push(t);
         }
+        remapped.tracks = kept;
         remapped.name = url.split("/").pop() || clip.name;
         resolve(remapped);
       }, undefined, () => resolve(null));
@@ -205,6 +210,23 @@
     s.current = null;
   }
 
+  function fadeOutBaseActions(entity, fade = 0.2) {
+    if (!entity?.actions) return;
+    for (const k in entity.actions) {
+      const a = entity.actions[k];
+      if (a && a.isRunning && a.isRunning()) { try { a.fadeOut(fade); } catch {} }
+    }
+    entity.__baseSuspendedBy = "weaponAnim";
+    entity.currentAction = null;
+  }
+
+  function restoreBaseIdle(entity, fade = 0.2) {
+    if (!entity?.actions) return;
+    entity.__baseSuspendedBy = null;
+    const idle = entity.actions.idle;
+    if (idle) { try { idle.reset().fadeIn(fade).play(); entity.currentAction = "idle"; } catch {} }
+  }
+
   // ---------- Public API ----------
   window.__weaponAnim = {
     async setWeapon(entity, weapon) {
@@ -214,8 +236,10 @@
         attachWeapon(entity, weapon),
         pack ? loadPack(entity, pack) : Promise.resolve(),
       ]);
-      // start on idle
-      if (pack) crossFadeTo(entity, "idle", 0.25);
+      if (pack) {
+        fadeOutBaseActions(entity, 0.2);
+        crossFadeTo(entity, "idle", 0.25);
+      }
     },
     clearWeapon(entity) {
       if (!entity) return;
@@ -223,17 +247,18 @@
       stopAll(entity, 0.2);
       const s = stateMap.get(entity);
       if (s) { s.packName = null; s.actions = {}; s.current = null; s.tempAction = null; s.tempUntil = 0; }
+      restoreBaseIdle(entity, 0.2);
     },
-    // Called from patched setPlayerAction. Return true if we handled locomotion.
     overrideLoco(entity, name) {
       const s = stateMap.get(entity);
       if (!s?.packName || !Object.keys(s.actions).length) return false;
+      // Make sure base locomotion never fights us
+      if (entity.__baseSuspendedBy !== "weaponAnim") fadeOutBaseActions(entity, 0.15);
       const key = pickLocoKey(entity, name);
       if (!key) return false;
       crossFadeTo(entity, key, 0.15);
       return true;
     },
-    // One-shot animations (reload/shoot recoil). Returns duration in ms.
     playOnce(entity, key, ms) {
       const s = stateMap.get(entity); if (!s?.actions?.[key]) return 0;
       const action = s.actions[key];
@@ -245,7 +270,6 @@
       s.tempUntil = performance.now() + (ms || (action.getClip().duration * 1000));
       setTimeout(() => {
         if (s.tempAction === action) { s.tempAction = null; s.tempUntil = 0; }
-        // resume idle
         try { action.fadeOut(0.15); } catch {}
         s.current = null;
         crossFadeTo(entity, "idle", 0.15);
