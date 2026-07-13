@@ -519,8 +519,9 @@ window.__renderer = renderer;
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
 // ============ Dark / lights-only mode (admin) ============
@@ -528,9 +529,60 @@ renderer.toneMappingExposure = 1.0;
 // só as luzes custom (spots + sol custom) iluminam a cena.
 let DARK_MODE = false; // controlado por currentMapTransform.dark_mode
 let currentMapTransform = { offset_x: 0, offset_y: 0, offset_z: 0, rotation_y: 0, scale_mul: 1, mood: null };
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// ============ Global post-processing / lighting tweaks ============
+// Persistidos por mapa em localStorage. Aplicados sobre qualquer mood.
+const PP_TONEMAPS = {
+  aces: THREE.ACESFilmicToneMapping,
+  filmic: THREE.CineonToneMapping,
+  reinhard: THREE.ReinhardToneMapping,
+  linear: THREE.LinearToneMapping,
+  neutral: THREE.NoToneMapping,
+};
+const _ppFill = new THREE.HemisphereLight(0xbfd4ff, 0x1a1f2a, 0);
+_ppFill.name = "__ppFill";
+scene.add(_ppFill);
+window.__postFx = {
+  exposure: 1.0,
+  ambient: 0.35,          // fill hemisférico extra p/ evitar sombras 100% pretas
+  ambientSkyColor: "#bfd4ff",
+  ambientGroundColor: "#1a1f2a",
+  tonemap: "aces",
+  shadowSoftness: 1.0,    // multiplica shadow.radius e normalBias das luzes custom
+};
+function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
+function loadPostFx() {
+  try {
+    const raw = localStorage.getItem(_ppStorageKey());
+    if (raw) Object.assign(window.__postFx, JSON.parse(raw));
+  } catch {}
+  applyPostFx();
+}
+function savePostFx() {
+  try { localStorage.setItem(_ppStorageKey(), JSON.stringify(window.__postFx)); } catch {}
+}
+function applyPostFx() {
+  const p = window.__postFx;
+  renderer.toneMapping = PP_TONEMAPS[p.tonemap] ?? THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = Math.max(0.1, Math.min(3, p.exposure));
+  _ppFill.color.set(p.ambientSkyColor);
+  _ppFill.groundColor.set(p.ambientGroundColor);
+  _ppFill.intensity = Math.max(0, Math.min(3, p.ambient));
+  // aplica suavidade nas luzes custom já criadas
+  const s = Math.max(0, Math.min(4, p.shadowSoftness));
+  for (const entry of customLightsMap?.values?.() || []) {
+    const l = entry.light; if (!l?.shadow) continue;
+    const baseR = (typeof entry.row?.shadow_radius === "number") ? entry.row.shadow_radius : (l.isDirectionalLight ? 4 : 2);
+    const baseN = (typeof entry.row?.shadow_normal_bias === "number") ? entry.row.shadow_normal_bias : (l.isDirectionalLight ? 0.035 : 0.02);
+    l.shadow.radius = baseR * s;
+    l.shadow.normalBias = baseN * (0.5 + 0.5 * s);
+    l.shadow.needsUpdate = true;
+  }
+}
+window.applyPostFx = applyPostFx;
+window.savePostFx = savePostFx;
+window.loadPostFx = loadPostFx;
+
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -5787,17 +5839,20 @@ function rebuildCustomLight(row) {
     const sun = new THREE.DirectionalLight(color, intensity);
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
-    sun.shadow.mapSize.set(2048, 2048);
-    // Shadow camera follows the player (see updateCustomLights) — use a
-    // moderate frustum so shadow-map pixels are dense enough to actually
-    // render on the ground within the visible area.
-    const half = Math.max(30, Math.min(120, (window.RENDER_DISTANCE || 260) * 0.35));
+    // Mapa de sombra maior + bias/normalBias balanceados — evita o "listrado"
+    // (shadow acne / self-shadowing) que aparecia com bias muito negativo.
+    const caps = window.__renderer?.capabilities;
+    const mapSize = caps && caps.maxTextureSize >= 4096 ? 4096 : 2048;
+    sun.shadow.mapSize.set(mapSize, mapSize);
+    const half = Math.max(30, Math.min(140, (window.RENDER_DISTANCE || 260) * 0.35));
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = Math.max(200, half * 4);
     sun.shadow.camera.left = -half; sun.shadow.camera.right = half;
     sun.shadow.camera.top = half; sun.shadow.camera.bottom = -half;
-    sun.shadow.bias = -0.0002;
-    sun.shadow.normalBias = 0.05;
+    sun.shadow.bias = (typeof row.shadow_bias === "number") ? row.shadow_bias : -0.00008;
+    sun.shadow.normalBias = (typeof row.shadow_normal_bias === "number") ? row.shadow_normal_bias : 0.035;
+    sun.shadow.radius = (typeof row.shadow_radius === "number") ? row.shadow_radius : 4;
+    sun.shadow.blurSamples = 16;
     sun.shadow.camera.updateProjectionMatrix?.();
     const tgt = new THREE.Object3D();
     tgt.position.set(row.target_x, row.target_y, row.target_z);
@@ -5898,6 +5953,7 @@ async function reloadMapLights(mapId) {
       .eq("map_id", mapId);
     if (error) { console.warn("map_lights load", error.message); return; }
     for (const row of data || []) rebuildCustomLight(row);
+    loadPostFx();
     renderLightsAdminList();
   } catch (e) { console.warn("map_lights load", e); }
 }
@@ -6019,14 +6075,70 @@ function lightControlRow(row) {
     </div>`;
 }
 
+function wirePostFxControls() {
+  if (!lightsAdminList) return;
+  lightsAdminList.querySelectorAll("[data-pp]").forEach((el) => {
+    const key = el.dataset.pp;
+    const evt = el.type === "color" || el.tagName === "SELECT" ? "change" : "input";
+    el.addEventListener(evt, () => {
+      const v = (el.type === "range" || el.type === "number") ? parseFloat(el.value) : el.value;
+      window.__postFx[key] = v;
+      const label = lightsAdminList.querySelector(`[data-pp-val="${key}"]`);
+      if (label && typeof v === "number") label.textContent = v.toFixed(2);
+      applyPostFx();
+      savePostFx();
+    });
+  });
+  lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
+    window.__postFx = { exposure:1.0, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0 };
+    applyPostFx(); savePostFx(); renderLightsAdminList();
+  });
+}
+
 function renderLightsAdminList() {
   if (!lightsAdminList) return;
   const rows = [...customLightsMap.values()].map((e) => e.row);
+  const p = window.__postFx || {};
+  const ppHtml = `
+    <details open style="border:1px solid #2a3040;border-radius:6px;padding:6px 8px;margin-bottom:8px;background:rgba(255,255,255,0.03);">
+      <summary style="cursor:pointer;font-size:12px;font-weight:600;">🎨 Pós-processamento (estilo GTA V)</summary>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-size:11px;">
+        <label>Tone mapping
+          <select data-pp="tonemap" style="width:100%;background:#0e1117;color:#eee;border:1px solid #333;border-radius:4px;padding:3px;">
+            <option value="aces" ${p.tonemap==="aces"?"selected":""}>ACES Filmic (recomendado)</option>
+            <option value="filmic" ${p.tonemap==="filmic"?"selected":""}>Cineon / Filmic</option>
+            <option value="reinhard" ${p.tonemap==="reinhard"?"selected":""}>Reinhard (suave)</option>
+            <option value="linear" ${p.tonemap==="linear"?"selected":""}>Linear</option>
+            <option value="neutral" ${p.tonemap==="neutral"?"selected":""}>Neutro (sem tone)</option>
+          </select>
+        </label>
+        <label>Exposição <b data-pp-val="exposure">${(p.exposure??1).toFixed(2)}</b>
+          <input type="range" data-pp="exposure" min="0.2" max="2.5" step="0.05" value="${p.exposure??1}" style="width:100%">
+        </label>
+        <label>Luz ambiente (evita sombra preta) <b data-pp-val="ambient">${(p.ambient??0.35).toFixed(2)}</b>
+          <input type="range" data-pp="ambient" min="0" max="2" step="0.05" value="${p.ambient??0.35}" style="width:100%">
+        </label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <label style="flex:1;">Céu
+            <input type="color" data-pp="ambientSkyColor" value="${p.ambientSkyColor||"#bfd4ff"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+          <label style="flex:1;">Chão
+            <input type="color" data-pp="ambientGroundColor" value="${p.ambientGroundColor||"#1a1f2a"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+        </div>
+        <label>Suavidade da sombra <b data-pp-val="shadowSoftness">${(p.shadowSoftness??1).toFixed(2)}</b>
+          <input type="range" data-pp="shadowSoftness" min="0" max="4" step="0.1" value="${p.shadowSoftness??1}" style="width:100%">
+        </label>
+        <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
+      </div>
+    </details>`;
   if (!rows.length) {
-    lightsAdminList.innerHTML = `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    lightsAdminList.innerHTML = ppHtml + `<div style="color:#7a8290;font-size:11px;padding:8px;text-align:center;">Nenhuma luz. Clique em <b>+ Spot</b> ou <b>+ Sol</b>.</div>`;
+    wirePostFxControls();
     return;
   }
-  lightsAdminList.innerHTML = rows.map(lightControlRow).join("");
+  lightsAdminList.innerHTML = ppHtml + rows.map(lightControlRow).join("");
+  wirePostFxControls();
   // Wire each control
   lightsAdminList.querySelectorAll("[data-light-id]").forEach((card) => {
     const id = card.dataset.lightId;
