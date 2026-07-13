@@ -3966,6 +3966,7 @@ function applyAvatar(entity, url) {
       entity.mixer = new THREE.AnimationMixer(next);
       entity.actions = { idle: null, walk: null };
       entity.currentAction = "idle";
+      try { window.dispatchEvent(new CustomEvent("player-avatar-loaded", { detail: { userId: entity.player?.id } })); } catch {}
     },
     undefined,
     () => {
