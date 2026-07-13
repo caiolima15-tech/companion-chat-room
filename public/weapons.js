@@ -307,7 +307,11 @@
     if (it.ammo_reserve <= 0) { toast("Sem munição reserva", "warn"); return; }
     reloading = true;
     playClip(w.sfx_reload, 0.9);
-    if (w.anim_reload && window.playPlayerAnimation) { try { window.playPlayerAnimation(w.anim_reload, w.reload_ms); } catch {} }
+    const entity2 = getMyEntity();
+    if (entity2 && window.__weaponAnim?.isReady?.(entity2)) {
+      // pack doesn't ship a reload clip — do a brief idleAim overlay if rifle
+      try { window.__weaponAnim.playOnce(entity2, w.anim_pack === "rifle" ? "idleAim" : "idle", w.reload_ms); } catch {}
+    } else if (w.anim_reload && window.playPlayerAnimation) { try { window.playPlayerAnimation(w.anim_reload, w.reload_ms); } catch {} }
     toast("Recarregando…", "ok");
     setTimeout(async () => {
       const need = w.mag_size - it.ammo_in_mag;
