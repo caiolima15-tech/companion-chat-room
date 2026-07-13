@@ -6175,6 +6175,27 @@ function renderLightsAdminList() {
         <label>Suavidade da sombra <b data-pp-val="shadowSoftness">${(p.shadowSoftness??1).toFixed(2)}</b>
           <input type="range" data-pp="shadowSoftness" min="0" max="4" step="0.1" value="${p.shadowSoftness??1}" style="width:100%">
         </label>
+        <hr style="border:none;border-top:1px solid #2a3040;margin:4px 0"/>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;">
+          <input type="checkbox" data-pp="fog" ${p.fog!==false?"checked":""}/> 🌫 Névoa de distância (GTA-style)
+        </label>
+        <label>Início da névoa (m) <b data-pp-val="fogNear">${(p.fogNear??55).toFixed(0)}</b>
+          <input type="range" data-pp="fogNear" min="5" max="300" step="1" value="${p.fogNear??55}" style="width:100%">
+        </label>
+        <label>Distância máxima (m) <b data-pp-val="fogFar">${(p.fogFar??380).toFixed(0)}</b>
+          <input type="range" data-pp="fogFar" min="60" max="1200" step="5" value="${p.fogFar??380}" style="width:100%">
+        </label>
+        <div style="display:flex;gap:6px;align-items:center;">
+          <label style="flex:1;">Cor da névoa / céu
+            <input type="color" data-pp="fogColor" value="${p.fogColor||"#b6c4d1"}" style="width:100%;height:26px;border:none;background:transparent;">
+          </label>
+          <label style="flex:1;font-size:11px;display:flex;align-items:center;gap:4px;">
+            <input type="checkbox" data-pp="skyTint" ${p.skyTint!==false?"checked":""}/> tingir o céu
+          </label>
+        </div>
+        <label>Nitidez de texturas (anisotropia) <b data-pp-val="anisotropy">${(p.anisotropy??8).toFixed(0)}×</b>
+          <input type="range" data-pp="anisotropy" min="1" max="16" step="1" value="${p.anisotropy??8}" style="width:100%">
+        </label>
         <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
       </div>
     </details>`;
