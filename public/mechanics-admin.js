@@ -48,6 +48,8 @@
     start_job:       { label: "Iniciar emprego", fields: [["job_id","Job id","text"]] },
     wait:            { label: "Aguardar (ms)", fields: [["ms","Tempo ms","num"]] },
     npc_play_animation: { label: "NPC: tocar animação", fields: [["anim","Animação (idle/walk/talk/…)","text"],["radius","Raio p/ escolher","num"],["npc_id","NPC id (opcional)","text"],["duration_ms","Duração ms","num"]] },
+    give_weapon:     { label: "Dar arma ao jogador", fields: [["slug","Slug da arma","text"]] },
+    damage_npc:      { label: "Dano em NPC", fields: [["damage","Dano","num"],["radius","Raio","num"],["npc_id","NPC id (opcional)","text"]] },
   };
 
   document.addEventListener("click", (ev) => {
