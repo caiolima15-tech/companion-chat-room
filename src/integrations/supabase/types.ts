@@ -1904,8 +1904,11 @@ export type Database = {
           backstory: string | null
           created_at: string
           display_name: string
+          hostile: boolean
+          hp: number
           id: string
           map_id: string | null
+          max_hp: number
           model_id: string
           persona: Json
           route_id: string | null
@@ -1916,8 +1919,11 @@ export type Database = {
           backstory?: string | null
           created_at?: string
           display_name?: string
+          hostile?: boolean
+          hp?: number
           id?: string
           map_id?: string | null
+          max_hp?: number
           model_id: string
           persona?: Json
           route_id?: string | null
@@ -1928,8 +1934,11 @@ export type Database = {
           backstory?: string | null
           created_at?: string
           display_name?: string
+          hostile?: boolean
+          hp?: number
           id?: string
           map_id?: string | null
+          max_hp?: number
           model_id?: string
           persona?: Json
           route_id?: string | null
@@ -2145,6 +2154,36 @@ export type Database = {
           updated_at?: string
           user_id?: string
           value?: Json | null
+        }
+        Relationships: []
+      }
+      player_weapons: {
+        Row: {
+          acquired_at: string
+          ammo_in_mag: number
+          ammo_reserve: number
+          equipped: boolean
+          updated_at: string
+          user_id: string
+          weapon_slug: string
+        }
+        Insert: {
+          acquired_at?: string
+          ammo_in_mag?: number
+          ammo_reserve?: number
+          equipped?: boolean
+          updated_at?: string
+          user_id: string
+          weapon_slug: string
+        }
+        Update: {
+          acquired_at?: string
+          ammo_in_mag?: number
+          ammo_reserve?: number
+          equipped?: boolean
+          updated_at?: string
+          user_id?: string
+          weapon_slug?: string
         }
         Relationships: []
       }
@@ -2534,6 +2573,122 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      weapons: {
+        Row: {
+          active: boolean
+          anim_idle: string | null
+          anim_reload: string | null
+          anim_shoot: string | null
+          created_at: string
+          created_by: string | null
+          damage: number
+          fire_rate_ms: number
+          hand: string
+          icon_url: string | null
+          id: string
+          kind: string
+          mag_size: number
+          model_url: string | null
+          name: string
+          range_m: number
+          reload_ms: number
+          reserve_start: number
+          sfx_empty: string | null
+          sfx_impact: string | null
+          sfx_reload: string | null
+          sfx_shoot: string | null
+          slug: string
+          spread: number
+          updated_at: string
+          wheel_slot: number
+        }
+        Insert: {
+          active?: boolean
+          anim_idle?: string | null
+          anim_reload?: string | null
+          anim_shoot?: string | null
+          created_at?: string
+          created_by?: string | null
+          damage?: number
+          fire_rate_ms?: number
+          hand?: string
+          icon_url?: string | null
+          id?: string
+          kind?: string
+          mag_size?: number
+          model_url?: string | null
+          name: string
+          range_m?: number
+          reload_ms?: number
+          reserve_start?: number
+          sfx_empty?: string | null
+          sfx_impact?: string | null
+          sfx_reload?: string | null
+          sfx_shoot?: string | null
+          slug: string
+          spread?: number
+          updated_at?: string
+          wheel_slot?: number
+        }
+        Update: {
+          active?: boolean
+          anim_idle?: string | null
+          anim_reload?: string | null
+          anim_shoot?: string | null
+          created_at?: string
+          created_by?: string | null
+          damage?: number
+          fire_rate_ms?: number
+          hand?: string
+          icon_url?: string | null
+          id?: string
+          kind?: string
+          mag_size?: number
+          model_url?: string | null
+          name?: string
+          range_m?: number
+          reload_ms?: number
+          reserve_start?: number
+          sfx_empty?: string | null
+          sfx_impact?: string | null
+          sfx_reload?: string | null
+          sfx_shoot?: string | null
+          slug?: string
+          spread?: number
+          updated_at?: string
+          wheel_slot?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weapons_sfx_empty_fkey"
+            columns: ["sfx_empty"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weapons_sfx_impact_fkey"
+            columns: ["sfx_impact"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weapons_sfx_reload_fkey"
+            columns: ["sfx_reload"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weapons_sfx_shoot_fkey"
+            columns: ["sfx_shoot"]
+            isOneToOne: false
+            referencedRelation: "audio_clips"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
