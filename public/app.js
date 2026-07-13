@@ -641,6 +641,17 @@ function applyPostFx() {
   }
   // -------- ANISOTROPY: nitidez em texturas em ângulos rasos (asfalto, chão) --------
   applyAnisotropy();
+  // -------- POST-PROCESSING (Bloom / SMAA) --------
+  if (p.postEnabled && !composer) initComposer();
+  if (composer) {
+    if (bloomPass) {
+      bloomPass.enabled = !!p.bloom;
+      bloomPass.strength = Math.max(0, Math.min(2, p.bloomStrength ?? 0.35));
+      bloomPass.radius = Math.max(0, Math.min(1, p.bloomRadius ?? 0.6));
+      bloomPass.threshold = Math.max(0, Math.min(1, p.bloomThreshold ?? 0.85));
+    }
+    if (smaaPass) smaaPass.enabled = !!p.smaa;
+  }
 }
 function applyAnisotropy() {
   try {
