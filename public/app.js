@@ -4,6 +4,11 @@ import { GLTFLoader } from "/vendor/GLTFLoader.js";
 import { GLTFExporter } from "/vendor/GLTFExporter.js";
 import { FBXLoader } from "/vendor/FBXLoader.js";
 import { clone as cloneSkeleton } from "/vendor/utils/SkeletonUtils.js";
+import { EffectComposer } from "/vendor/postprocessing/EffectComposer.js";
+import { RenderPass } from "/vendor/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "/vendor/postprocessing/UnrealBloomPass.js";
+import { SMAAPass } from "/vendor/postprocessing/SMAAPass.js";
+import { OutputPass } from "/vendor/postprocessing/OutputPass.js";
 
 // Biblioteca compartilhada de animações (GLB sem skin, só esqueleto + clip)
 const SHARED_ANIM_LIBRARY = {
@@ -524,6 +529,35 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
+// ============ Post-processing composer (EffectComposer) ============
+// Bloom + SMAA + tonemapping em pipeline unificado — visual mais próximo do GTA V
+// sem perder performance (SMAA é barato; Bloom com resolução reduzida).
+let composer = null, renderPass = null, bloomPass = null, smaaPass = null, outputPass = null;
+function initComposer() {
+  try {
+    const rect = worldShell?.getBoundingClientRect?.() || { width: window.innerWidth, height: window.innerHeight };
+    const w = Math.max(1, Math.floor(rect.width));
+    const h = Math.max(1, Math.floor(rect.height));
+    const rt = new THREE.WebGLRenderTarget(w, h, {
+      type: THREE.HalfFloatType,
+      samples: 0, // SMAA cuida do AA — sem MSAA duplicado
+    });
+    composer = new EffectComposer(renderer, rt);
+    composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    composer.setSize(w, h);
+    renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.6, 0.85);
+    composer.addPass(bloomPass);
+    smaaPass = new SMAAPass(w * (composer.pixelRatio||1), h * (composer.pixelRatio||1));
+    composer.addPass(smaaPass);
+    outputPass = new OutputPass();
+    composer.addPass(outputPass);
+  } catch (e) { console.warn("[postfx] composer indisponível", e); composer = null; }
+}
+window.__initComposer = initComposer;
+
+
 // ============ Dark / lights-only mode (admin) ============
 // Quando ON: hemi/sol do mood são apagados e o mapa fica escuro;
 // só as luzes custom (spots + sol custom) iluminam a cena.
@@ -558,6 +592,13 @@ window.__postFx = {
   anisotropy: 8,          // 1..16. Grande impacto visual, custo quase zero.
   // ---- Sky tint applied to scene.background when fog is on ----
   skyTint: true,
+  // ---- Post-processing (EffectComposer) ----
+  postEnabled: true,         // master switch
+  bloom: true,               // brilho realista em highlights (faróis, sol, neon)
+  bloomStrength: 0.35,       // 0..1.5
+  bloomThreshold: 0.85,      // 0..1 — só highlights acima disso brilham
+  bloomRadius: 0.6,          // 0..1
+  smaa: true,                // anti-aliasing (barato, remove serrilhado)
 };
 function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
 function loadPostFx() {
@@ -600,6 +641,17 @@ function applyPostFx() {
   }
   // -------- ANISOTROPY: nitidez em texturas em ângulos rasos (asfalto, chão) --------
   applyAnisotropy();
+  // -------- POST-PROCESSING (Bloom / SMAA) --------
+  if (p.postEnabled && !composer) initComposer();
+  if (composer) {
+    if (bloomPass) {
+      bloomPass.enabled = !!p.bloom;
+      bloomPass.strength = Math.max(0, Math.min(2, p.bloomStrength ?? 0.35));
+      bloomPass.radius = Math.max(0, Math.min(1, p.bloomRadius ?? 0.6));
+      bloomPass.threshold = Math.max(0, Math.min(1, p.bloomThreshold ?? 0.85));
+    }
+    if (smaaPass) smaaPass.enabled = !!p.smaa;
+  }
 }
 function applyAnisotropy() {
   try {
@@ -4663,6 +4715,7 @@ function resize() {
   const width = Math.max(1, Math.floor(rect.width));
   const height = Math.max(1, Math.floor(rect.height));
   renderer.setSize(width, height, false);
+  if (composer) { composer.setSize(width, height); if (smaaPass?.setSize) smaaPass.setSize(width * (composer.pixelRatio||1), height * (composer.pixelRatio||1)); }
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 }
@@ -4951,7 +5004,7 @@ function animate() {
   }
   _lodAccum += delta;
   if (_lodAccum >= 0.2) { _lodAccum = 0; updateRenderDistanceCulling(); }
-  renderer.render(scene, camera);
+  if (composer && window.__postFx?.postEnabled) composer.render(delta); else renderer.render(scene, camera);
   updateNameplates();
   // Atualiza o listener 3D do áudio
   if (window.GameAudio?.setListener) {
@@ -6140,7 +6193,7 @@ function wirePostFxControls() {
     });
   });
   lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
-    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true };
+    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true, postEnabled:true, bloom:true, bloomStrength:0.35, bloomThreshold:0.85, bloomRadius:0.6, smaa:true };
     applyPostFx(); savePostFx(); renderLightsAdminList();
   });
 }
@@ -6199,6 +6252,25 @@ function renderLightsAdminList() {
         </div>
         <label>Nitidez de texturas (anisotropia) <b data-pp-val="anisotropy">${(p.anisotropy??8).toFixed(0)}×</b>
           <input type="range" data-pp="anisotropy" min="1" max="16" step="1" value="${p.anisotropy??8}" style="width:100%">
+        </label>
+        <hr style="border:none;border-top:1px solid #2a3040;margin:4px 0"/>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:600;">
+          <input type="checkbox" data-pp="postEnabled" ${p.postEnabled!==false?"checked":""}/> ✨ Pipeline pós-processo (Bloom/SMAA)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-pp="bloom" ${p.bloom!==false?"checked":""}/> Bloom (brilho em faróis/sol/neon)
+        </label>
+        <label>Intensidade do bloom <b data-pp-val="bloomStrength">${(p.bloomStrength??0.35).toFixed(2)}</b>
+          <input type="range" data-pp="bloomStrength" min="0" max="1.5" step="0.05" value="${p.bloomStrength??0.35}" style="width:100%">
+        </label>
+        <label>Limiar do bloom <b data-pp-val="bloomThreshold">${(p.bloomThreshold??0.85).toFixed(2)}</b>
+          <input type="range" data-pp="bloomThreshold" min="0" max="1" step="0.02" value="${p.bloomThreshold??0.85}" style="width:100%">
+        </label>
+        <label>Raio do bloom <b data-pp-val="bloomRadius">${(p.bloomRadius??0.6).toFixed(2)}</b>
+          <input type="range" data-pp="bloomRadius" min="0" max="1" step="0.05" value="${p.bloomRadius??0.6}" style="width:100%">
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-pp="smaa" ${p.smaa!==false?"checked":""}/> SMAA (anti-serrilhado)
         </label>
         <button type="button" data-pp-reset style="background:#2a3040;color:#eee;border:1px solid #444;border-radius:4px;padding:4px;cursor:pointer;font-size:11px;">Restaurar padrões</button>
       </div>
