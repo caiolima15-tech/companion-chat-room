@@ -27,8 +27,20 @@
     window.addEventListener("vehicle-entered", onVehicleEvent("vehicle_enter"));
     window.addEventListener("vehicle-exited", onVehicleEvent("vehicle_exit"));
     window.addEventListener("player-emote", onEmote);
+    window.addEventListener("weapon-shot", (ev) => fireByKind("on_weapon_shot", ev?.detail || {}));
+    window.addEventListener("weapon-reload", (ev) => fireByKind("on_reload", ev?.detail || {}));
+    window.addEventListener("npc-killed", (ev) => fireByKind("on_npc_killed", ev?.detail || {}));
     setInterval(tick, 350);
     await loadForMap();
+  }
+
+  function fireByKind(kind, ctx) {
+    for (const m of mechanics) {
+      if (m.trigger?.kind !== kind) continue;
+      const p = m.trigger.params || {};
+      if (p.slug && ctx.slug && p.slug !== ctx.slug) continue;
+      fire(m, ctx);
+    }
   }
 
   function onEmote(ev) {
