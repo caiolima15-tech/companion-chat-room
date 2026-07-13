@@ -4715,6 +4715,7 @@ function resize() {
   const width = Math.max(1, Math.floor(rect.width));
   const height = Math.max(1, Math.floor(rect.height));
   renderer.setSize(width, height, false);
+  if (composer) { composer.setSize(width, height); if (smaaPass?.setSize) smaaPass.setSize(width * (composer.pixelRatio||1), height * (composer.pixelRatio||1)); }
   camera.aspect = width / height;
   camera.updateProjectionMatrix();
 }
