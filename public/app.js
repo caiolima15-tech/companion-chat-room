@@ -3244,7 +3244,7 @@ function applyLightingForMood(mood) {
     configSun(sun);
     lightingGroup.add(sun);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   } else if (mood === "sunset") {
     lightingGroup.add(new THREE.HemisphereLight("#ffb98a", "#3a2a3a", 1.2));
     const sun = new THREE.DirectionalLight("#ff9a55", 1.5);
@@ -3255,7 +3255,7 @@ function applyLightingForMood(mood) {
     fill.position.set(4, 3, -4);
     lightingGroup.add(fill);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   } else {
     lightingGroup.add(new THREE.HemisphereLight("#ffe7b0", "#243344", 1.1));
     const key = new THREE.DirectionalLight("#ffffff", 1.0);
@@ -3271,7 +3271,7 @@ function applyLightingForMood(mood) {
     teal.position.set(5.7, 3.4, 3.6);
     lightingGroup.add(teal);
     scene.background = new THREE.Color(currentMapTransform?.bg_color || "#0e1117");
-    scene.fog = null;
+    if (window.applyPostFx) applyPostFx(); else scene.fog = null;
   }
 }
 
