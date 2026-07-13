@@ -196,29 +196,33 @@
   window.__openWeaponWheel = openWheel;
 
   // ============ EQUIP ============
-  function equip(slug) {
+  function getMyEntity() {
+    try {
+      const me = window.__myId; const map = window.__playerEntities;
+      if (me && map?.get) return map.get(me);
+    } catch {}
+    return null;
+  }
+
+  async function equip(slug) {
     equippedSlug = slug;
     renderHud();
-    updateHandVisual();
+    await updateHandVisual();
     toast(slug ? ("🎯 " + (catalog.find(x => x.slug === slug)?.name || slug)) : "✊ Punhos", "ok");
     if (userId) SB().from("player_weapons").update({ equipped: false }).eq("user_id", userId).neq("weapon_slug", slug || "__none").then(() => {});
     if (slug && userId) SB().from("player_weapons").update({ equipped: true }).eq("user_id", userId).eq("weapon_slug", slug).then(() => {});
   }
-  function updateHandVisual() {
-    try {
-      const player = window.__player;
-      if (!player) return;
-      if (handMesh) { player.remove(handMesh); handMesh.geometry?.dispose?.(); handMesh.material?.dispose?.(); handMesh = null; }
-      if (!equippedSlug) return;
-      const T = THREE(); if (!T) return;
-      const g = new T.BoxGeometry(0.08, 0.08, 0.32);
-      const m = new T.MeshStandardMaterial({ color: 0x222222, metalness: 0.6, roughness: 0.35 });
-      handMesh = new T.Mesh(g, m);
-      handMesh.position.set(0.28, 1.05, 0.18);
-      handMesh.castShadow = true;
-      player.add(handMesh);
-    } catch (e) { console.warn("[weapons] hand", e); }
+
+  async function updateHandVisual() {
+    const entity = getMyEntity();
+    if (!entity) return;
+    const WA = window.__weaponAnim;
+    if (!equippedSlug) { WA?.clearWeapon?.(entity); return; }
+    const w = catalog.find(x => x.slug === equippedSlug); if (!w) return;
+    try { await WA?.setWeapon?.(entity, w); } catch (e) { console.warn("[weapons] setWeapon", e); }
   }
+  // Re-attach when the avatar changes
+  window.addEventListener("player-avatar-loaded", () => { if (equippedSlug) updateHandVisual(); });
 
   // ============ INPUTS ============
   function bindKeys() {
