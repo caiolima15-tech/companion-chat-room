@@ -6036,7 +6036,7 @@ function updateCustomLights() {
       _sunFollowRef.y + dir.y * dist,
       _sunFollowRef.z + dir.z * dist,
     );
-    if (entry.sunMesh) entry.sunMesh.position.copy(entry.light.position);
+    if (entry.sunMesh && entry.sunAnchor) entry.sunMesh.position.copy(entry.sunAnchor);
     entry.light.target.updateMatrixWorld();
     if (entry.light.shadow && entry.light.shadow.camera) {
       entry.light.shadow.camera.updateProjectionMatrix?.();
