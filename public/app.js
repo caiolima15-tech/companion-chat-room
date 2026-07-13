@@ -543,12 +543,21 @@ const _ppFill = new THREE.HemisphereLight(0xbfd4ff, 0x1a1f2a, 0);
 _ppFill.name = "__ppFill";
 scene.add(_ppFill);
 window.__postFx = {
-  exposure: 1.0,
+  exposure: 1.05,
   ambient: 0.35,          // fill hemisférico extra p/ evitar sombras 100% pretas
   ambientSkyColor: "#bfd4ff",
   ambientGroundColor: "#1a1f2a",
   tonemap: "aces",
   shadowSoftness: 1.0,    // multiplica shadow.radius e normalBias das luzes custom
+  // ---- Atmospheric fog (GTA V-style distance haze) ----
+  fog: true,
+  fogColor: "#b6c4d1",
+  fogNear: 55,
+  fogFar: 380,
+  // ---- Texture crispness ----
+  anisotropy: 8,          // 1..16. Grande impacto visual, custo quase zero.
+  // ---- Sky tint applied to scene.background when fog is on ----
+  skyTint: true,
 };
 function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
 function loadPostFx() {
@@ -578,10 +587,45 @@ function applyPostFx() {
     l.shadow.normalBias = baseN * (0.5 + 0.5 * s);
     l.shadow.needsUpdate = true;
   }
+  // -------- FOG: haze de distância pra somar profundidade estilo GTA V --------
+  if (p.fog) {
+    const near = Math.max(1, p.fogNear || 55);
+    const far  = Math.max(near + 10, p.fogFar || 380);
+    if (!scene.fog || !(scene.fog instanceof THREE.Fog)) scene.fog = new THREE.Fog(p.fogColor, near, far);
+    else { scene.fog.color.set(p.fogColor); scene.fog.near = near; scene.fog.far = far; }
+    // O céu sólido cortava o horizonte: tinge o background com a cor da névoa
+    if (p.skyTint) { try { scene.background = new THREE.Color(p.fogColor); } catch {} }
+  } else {
+    scene.fog = null;
+  }
+  // -------- ANISOTROPY: nitidez em texturas em ângulos rasos (asfalto, chão) --------
+  applyAnisotropy();
+}
+function applyAnisotropy() {
+  try {
+    const maxA = renderer?.capabilities?.getMaxAnisotropy?.() || 1;
+    const want = Math.max(1, Math.min(maxA, window.__postFx?.anisotropy || 1));
+    if (window.__lastAniso === want) return;
+    window.__lastAniso = want;
+    const seen = new Set();
+    scene.traverse((n) => {
+      if (!n.isMesh) return;
+      const mats = Array.isArray(n.material) ? n.material : (n.material ? [n.material] : []);
+      for (const m of mats) {
+        for (const k of ["map","normalMap","roughnessMap","metalnessMap","aoMap","emissiveMap","bumpMap"]) {
+          const t = m?.[k]; if (!t || seen.has(t)) continue;
+          seen.add(t);
+          t.anisotropy = want;
+          t.needsUpdate = true;
+        }
+      }
+    });
+  } catch (e) { /* noop */ }
 }
 window.applyPostFx = applyPostFx;
 window.savePostFx = savePostFx;
 window.loadPostFx = loadPostFx;
+window.__applyAnisotropy = applyAnisotropy;
 
 
 const controls = new OrbitControls(camera, renderer.domElement);
