@@ -5787,17 +5787,20 @@ function rebuildCustomLight(row) {
     const sun = new THREE.DirectionalLight(color, intensity);
     sun.position.set(row.pos_x, row.pos_y, row.pos_z);
     sun.castShadow = row.cast_shadow !== false;
-    sun.shadow.mapSize.set(2048, 2048);
-    // Shadow camera follows the player (see updateCustomLights) — use a
-    // moderate frustum so shadow-map pixels are dense enough to actually
-    // render on the ground within the visible area.
-    const half = Math.max(30, Math.min(120, (window.RENDER_DISTANCE || 260) * 0.35));
+    // Mapa de sombra maior + bias/normalBias balanceados — evita o "listrado"
+    // (shadow acne / self-shadowing) que aparecia com bias muito negativo.
+    const caps = window.__renderer?.capabilities;
+    const mapSize = caps && caps.maxTextureSize >= 4096 ? 4096 : 2048;
+    sun.shadow.mapSize.set(mapSize, mapSize);
+    const half = Math.max(30, Math.min(140, (window.RENDER_DISTANCE || 260) * 0.35));
     sun.shadow.camera.near = 0.5;
     sun.shadow.camera.far = Math.max(200, half * 4);
     sun.shadow.camera.left = -half; sun.shadow.camera.right = half;
     sun.shadow.camera.top = half; sun.shadow.camera.bottom = -half;
-    sun.shadow.bias = -0.0002;
-    sun.shadow.normalBias = 0.05;
+    sun.shadow.bias = (typeof row.shadow_bias === "number") ? row.shadow_bias : -0.00008;
+    sun.shadow.normalBias = (typeof row.shadow_normal_bias === "number") ? row.shadow_normal_bias : 0.035;
+    sun.shadow.radius = (typeof row.shadow_radius === "number") ? row.shadow_radius : 4;
+    sun.shadow.blurSamples = 16;
     sun.shadow.camera.updateProjectionMatrix?.();
     const tgt = new THREE.Object3D();
     tgt.position.set(row.target_x, row.target_y, row.target_z);
