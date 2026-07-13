@@ -529,6 +529,35 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 
+// ============ Post-processing composer (EffectComposer) ============
+// Bloom + SMAA + tonemapping em pipeline unificado — visual mais próximo do GTA V
+// sem perder performance (SMAA é barato; Bloom com resolução reduzida).
+let composer = null, renderPass = null, bloomPass = null, smaaPass = null, outputPass = null;
+function initComposer() {
+  try {
+    const rect = worldShell?.getBoundingClientRect?.() || { width: window.innerWidth, height: window.innerHeight };
+    const w = Math.max(1, Math.floor(rect.width));
+    const h = Math.max(1, Math.floor(rect.height));
+    const rt = new THREE.WebGLRenderTarget(w, h, {
+      type: THREE.HalfFloatType,
+      samples: 0, // SMAA cuida do AA — sem MSAA duplicado
+    });
+    composer = new EffectComposer(renderer, rt);
+    composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    composer.setSize(w, h);
+    renderPass = new RenderPass(scene, camera);
+    composer.addPass(renderPass);
+    bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.35, 0.6, 0.85);
+    composer.addPass(bloomPass);
+    smaaPass = new SMAAPass(w * (composer.pixelRatio||1), h * (composer.pixelRatio||1));
+    composer.addPass(smaaPass);
+    outputPass = new OutputPass();
+    composer.addPass(outputPass);
+  } catch (e) { console.warn("[postfx] composer indisponível", e); composer = null; }
+}
+window.__initComposer = initComposer;
+
+
 // ============ Dark / lights-only mode (admin) ============
 // Quando ON: hemi/sol do mood são apagados e o mapa fica escuro;
 // só as luzes custom (spots + sol custom) iluminam a cena.
