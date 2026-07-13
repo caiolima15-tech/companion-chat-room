@@ -2376,6 +2376,9 @@ function retargetClipToBones(clip, targetBoneNames, opts = {}) {
   out.tracks = tracks;
   return out;
 }
+// Expose retarget helpers globally so classic scripts (weapon-animation.js) can reuse them.
+window.__retargetClipToBones = retargetClipToBones;
+window.__collectBoneNames = collectBoneNames;
 
 function loadCharacterAssets(character) {
   if (!character?.slug) return Promise.reject(new Error("Sem personagem"));

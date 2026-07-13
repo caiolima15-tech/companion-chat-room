@@ -40,33 +40,25 @@
   window.__weaponAnimPacks = PACKS;
 
   // ---------- Clip / model caches ----------
-  const clipCache = new Map();   // url -> Promise<AnimationClip>
-  const modelCache = new Map();  // url -> Promise<Scene>
+  // Raw clips loaded from the FBX (mixamorig-prefixed track names kept intact so
+  // retargetClipToBones can match them against arbitrary avatars).
+  const rawClipCache = new Map();   // url -> Promise<AnimationClip>
+  const modelCache = new Map();     // url -> Promise<Scene>
 
-  function loadClip(url) {
+  function loadRawClip(url) {
     if (!url) return Promise.resolve(null);
-    if (clipCache.has(url)) return clipCache.get(url);
+    if (rawClipCache.has(url)) return rawClipCache.get(url);
     const L = FBXLoader();
     if (!L) return Promise.resolve(null);
     const p = new Promise((resolve) => {
       new L().load(url, (fbx) => {
         const clip = fbx?.animations?.[0];
         if (!clip) return resolve(null);
-        const remapped = clip.clone();
-        // Strip mixamorig prefix + drop hips translation (root motion) so the
-        // character animates in place while the game engine drives movement.
-        const kept = [];
-        for (const t of remapped.tracks) {
-          t.name = t.name.replace(/^mixamorig[:_]?/i, "").replace(/\.mixamorig/gi, ".");
-          if (/^Hips\.position$/i.test(t.name)) continue;
-          kept.push(t);
-        }
-        remapped.tracks = kept;
-        remapped.name = url.split("/").pop() || clip.name;
-        resolve(remapped);
+        clip.name = url.split("/").pop() || clip.name;
+        resolve(clip);
       }, undefined, () => resolve(null));
     });
-    clipCache.set(url, p);
+    rawClipCache.set(url, p);
     return p;
   }
 
@@ -88,7 +80,6 @@
   }
 
   // ---------- Per-entity weapon state ----------
-  // state[entity] = { packName, actions:Map(key->action), current, attach:{obj,bone}, savedActions, savedCurrent }
   const stateMap = new WeakMap();
 
   function ensureState(entity) {
@@ -97,15 +88,26 @@
     return s;
   }
 
+  function collectBones(entity) {
+    if (window.__collectBoneNames && entity.character) {
+      try { return window.__collectBoneNames(entity.character); } catch {}
+    }
+    const set = new Set();
+    entity.character?.traverse?.((o) => {
+      if (o.isBone) set.add(o.name);
+      if (o.isSkinnedMesh && o.skeleton) for (const b of o.skeleton.bones) set.add(b.name);
+    });
+    return set;
+  }
+
   function findBone(entity, boneName) {
     let out = null;
+    const strip = (n) => (n || "").replace(/^mixamorig\d*:?/i, "");
+    const want = strip(boneName).toLowerCase();
     entity.character?.traverse?.((o) => {
-      if (out) return;
-      if (o.isBone) {
-        const n = o.name || "";
-        if (n === boneName) out = o;
-        else if (n.replace(/^mixamorig[:_]?/i, "") === boneName.replace(/^mixamorig[:_]?/i, "")) out = o;
-      }
+      if (out || !o.isBone) return;
+      const n = o.name || "";
+      if (n === boneName || strip(n).toLowerCase() === want) out = o;
     });
     return out;
   }
@@ -131,7 +133,6 @@
       bone.add(wrap);
       s.attach = { obj: wrap, bone, char: entity.character };
     } else if (entity.character) {
-      // fallback: parent on character root — user can still see the model
       wrap.position.set(0.28, 1.05, 0.18);
       entity.character.add(wrap);
       s.attach = { obj: wrap, bone: null, char: entity.character };
@@ -152,16 +153,30 @@
     if (s.packName === packName && Object.keys(s.actions).length) return;
     s.packName = packName;
     s.actions = {};
+    const bones = collectBones(entity);
+    if (!bones.size) { console.warn("[weapon-anim] avatar sem bones"); return; }
     const keys = Object.keys(pack);
-    const clips = await Promise.all(keys.map((k) => loadClip(pack[k])));
+    const rawClips = await Promise.all(keys.map((k) => loadRawClip(pack[k])));
+    const retarget = window.__retargetClipToBones;
     for (let i = 0; i < keys.length; i++) {
-      const clip = clips[i]; if (!clip) continue;
+      const raw = rawClips[i]; if (!raw) continue;
+      let clip = raw;
+      if (retarget) {
+        // Game drives movement (strip root position); strip hip rotation only if it
+        // produces a lying-down pose — for Mixamo clips on RPM avatars this fixes the T-pose.
+        clip = retarget(raw, bones, { stripRootPosition: true, stripHipRotation: true }) || raw.clone();
+      } else {
+        clip = raw.clone();
+        for (const t of clip.tracks) t.name = t.name.replace(/^mixamorig\d*:?/i, "");
+      }
+      if (!clip.tracks.length) continue;
       try {
         const action = entity.mixer.clipAction(clip);
         action.enabled = true; action.setEffectiveWeight(0);
         s.actions[keys[i]] = action;
-      } catch {}
+      } catch (e) { console.warn("[weapon-anim] clipAction", keys[i], e); }
     }
+    if (!Object.keys(s.actions).length) console.warn("[weapon-anim] nenhuma clip bindou para o avatar");
   }
 
   function pickLocoKey(entity, name) {
