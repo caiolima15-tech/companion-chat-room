@@ -1282,6 +1282,13 @@
     el.querySelectorAll(".npc-act").forEach((c) => c.onchange = async () => {
       await sb.from("npc_instances").update({ active: c.checked }).eq("id", c.dataset.id);
     });
+    el.querySelectorAll(".npc-hostile").forEach((c) => c.onchange = async () => {
+      await sb.from("npc_instances").update({ hostile: c.checked }).eq("id", c.dataset.id);
+    });
+    el.querySelectorAll(".npc-hp").forEach((c) => c.onchange = async () => {
+      const v = Math.max(1, parseInt(c.value||"100",10));
+      await sb.from("npc_instances").update({ max_hp: v, hp: v }).eq("id", c.dataset.id);
+    });
     el.querySelectorAll(".npc-route-sel").forEach((s) => s.onchange = async () => {
       const npcId = s.dataset.id;
       const newRoute = s.value || null;
