@@ -522,9 +522,10 @@ const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
 camera.position.set(4.6, 4.2, 5.0);
 window.__camera = camera;
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
 window.__renderer = renderer;
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+let currentRenderPixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+renderer.setPixelRatio(currentRenderPixelRatio);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = true;
@@ -543,10 +544,11 @@ function initComposer() {
     const h = Math.max(1, Math.floor(rect.height));
     const rt = new THREE.WebGLRenderTarget(w, h, {
       type: THREE.HalfFloatType,
-      samples: 0, // SMAA cuida do AA — sem MSAA duplicado
+      // MSAA resolve bordas geométricas antes do bloom; SMAA finaliza linhas finas.
+      samples: renderer.capabilities.isWebGL2 && window.__postFx?.quality !== "performance" ? 4 : 0,
     });
     composer = new EffectComposer(renderer, rt);
-    composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    composer.setPixelRatio(currentRenderPixelRatio);
     composer.setSize(w, h);
     renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
@@ -602,6 +604,9 @@ window.__postFx = {
   bloomThreshold: 0.85,      // 0..1 — só highlights acima disso brilham
   bloomRadius: 0.6,          // 0..1
   smaa: true,                // anti-aliasing (barato, remove serrilhado)
+  quality: "balanced",      // performance | balanced | high
+  adaptiveQuality: true,     // reduz resolução somente quando o FPS cai
+  shadowDistance: 90,        // só objetos próximos projetam sombras
 };
 function _ppStorageKey() { return "neon-postfx:" + (window.__currentMapId || "global"); }
 function loadPostFx() {
@@ -654,6 +659,58 @@ function applyPostFx() {
       bloomPass.threshold = Math.max(0, Math.min(1, p.bloomThreshold ?? 0.85));
     }
     if (smaaPass) smaaPass.enabled = !!p.smaa;
+  }
+  applyGraphicsQuality(true);
+}
+
+function qualityPixelRatioLimit() {
+  const quality = window.__postFx?.quality || "balanced";
+  const device = Math.max(1, window.devicePixelRatio || 1);
+  if (quality === "high") return Math.min(device, 2);
+  if (quality === "performance") return Math.min(device, 1.15);
+  return Math.min(device, 1.5);
+}
+function setRenderPixelRatio(next) {
+  const cap = qualityPixelRatioLimit();
+  const floor = window.__postFx?.quality === "performance" ? 0.75 : 0.9;
+  next = Math.max(floor, Math.min(cap, next));
+  if (Math.abs(next - currentRenderPixelRatio) < 0.04) return;
+  currentRenderPixelRatio = next;
+  renderer.setPixelRatio(next);
+  if (composer) composer.setPixelRatio(next);
+  resize();
+  const label = document.querySelector('[data-pp-live="resolution"]');
+  if (label) label.textContent = next.toFixed(2) + "×";
+}
+function applyGraphicsQuality(resetResolution = false) {
+  const p = window.__postFx || {};
+  if (resetResolution || !p.adaptiveQuality) setRenderPixelRatio(qualityPixelRatioLimit());
+  renderer.shadowMap.type = p.quality === "performance" ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
+  renderer.shadowMap.needsUpdate = true;
+  updateRenderDistanceCulling?.(true);
+}
+
+let _qualityElapsed = 0;
+let _qualityFrames = 0;
+let _qualityCooldown = 0;
+function updateAdaptiveGraphics(delta) {
+  const p = window.__postFx;
+  if (!p?.adaptiveQuality || document.hidden) return;
+  _qualityElapsed += delta;
+  _qualityFrames += 1;
+  _qualityCooldown = Math.max(0, _qualityCooldown - delta);
+  if (_qualityElapsed < 2) return;
+  const fps = _qualityFrames / _qualityElapsed;
+  _qualityElapsed = 0;
+  _qualityFrames = 0;
+  if (_qualityCooldown > 0) return;
+  const cap = qualityPixelRatioLimit();
+  if (fps < 44 && currentRenderPixelRatio > 0.9) {
+    setRenderPixelRatio(currentRenderPixelRatio - 0.12);
+    _qualityCooldown = 2.5;
+  } else if (fps > 57 && currentRenderPixelRatio < cap) {
+    setRenderPixelRatio(currentRenderPixelRatio + 0.08);
+    _qualityCooldown = 4;
   }
 }
 function applyAnisotropy() {
@@ -3339,6 +3396,7 @@ function refreshEnvShadows() {
   envGroup.traverse((node) => {
     if (!node.isMesh) return;
     node.castShadow = true;
+    node.userData._lodBaseCastShadow = true;
     node.receiveShadow = true;
     // Force materials to render shadows on both sides and avoid transparent
     // materials silently discarding shadow contribution.
@@ -4892,7 +4950,7 @@ const _lodTmp = new THREE.Vector3();
 const _lodLastRef = new THREE.Vector3(Infinity, Infinity, Infinity);
 let _lodLastDistance = -1;
 let _lodAccum = 0;
-let _envCullCache = null; // [{node, cx,cy,cz, r}]
+let _envCullCache = null; // [{node, cx,cy,cz, r, baseCastShadow}]
 let _envCullDirty = true;
 function invalidateEnvCullCache() { _envCullDirty = true; }
 window.invalidateEnvCullCache = invalidateEnvCullCache;
@@ -4907,7 +4965,8 @@ function _rebuildEnvCullCache() {
     if (!bs) return;
     _lodTmp.copy(bs.center).applyMatrix4(node.matrixWorld);
     const s = node.matrixWorld.getMaxScaleOnAxis ? node.matrixWorld.getMaxScaleOnAxis() : 1;
-    list.push({ node, cx: _lodTmp.x, cy: _lodTmp.y, cz: _lodTmp.z, r: bs.radius * s });
+    if (node.userData._lodBaseCastShadow == null) node.userData._lodBaseCastShadow = node.castShadow;
+    list.push({ node, cx: _lodTmp.x, cy: _lodTmp.y, cz: _lodTmp.z, r: bs.radius * s, baseCastShadow: node.userData._lodBaseCastShadow });
   });
   _envCullCache = list;
   _envCullDirty = false;
@@ -4918,6 +4977,25 @@ function _lodCullChildren(group) {
     if (child.userData && child.userData.noLodCull) { child.visible = true; continue; }
     child.getWorldPosition(_lodTmp);
     child.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+  }
+}
+function _setRootShadowLod(root, enabled) {
+  if (!root || root.userData?._shadowLodEnabled === enabled) return;
+  root.userData._shadowLodEnabled = enabled;
+  root.traverse((node) => {
+    if (!node.isMesh) return;
+    if (node.userData._lodBaseCastShadow == null) node.userData._lodBaseCastShadow = node.castShadow;
+    node.castShadow = enabled && node.userData._lodBaseCastShadow;
+  });
+}
+function _lodCullAndShadowChildren(group, shadowDistanceSq) {
+  if (!group?.children) return;
+  for (const child of group.children) {
+    if (child.userData?.noLodCull) { child.visible = true; continue; }
+    child.getWorldPosition(_lodTmp);
+    const d2 = _lodTmp.distanceToSquared(_lodRef);
+    child.visible = d2 < RENDER_DISTANCE_SQ;
+    _setRootShadowLod(child, child.visible && d2 < shadowDistanceSq);
   }
 }
 function updateRenderDistanceCulling(force = false) {
@@ -4931,19 +5009,23 @@ function updateRenderDistanceCulling(force = false) {
   _lodLastRef.copy(_lodRef);
   _lodLastDistance = RENDER_DISTANCE;
 
+  const shadowDistance = Math.max(10, Math.min(RENDER_DISTANCE, window.__postFx?.shadowDistance || 90));
+  const shadowDistanceSq = shadowDistance * shadowDistance;
   // Outros jogadores (esconde quem está dirigindo um carro)
   const hidden = window.__hiddenDrivers;
   for (const [id, e] of playerEntities) {
     if (hidden && hidden.has(id)) { e.group.visible = false; continue; }
     if (id === myId) { e.group.visible = !window.__firstPerson; continue; }
     e.group.getWorldPosition(_lodTmp);
-    e.group.visible = _lodTmp.distanceToSquared(_lodRef) < RENDER_DISTANCE_SQ;
+    const d2 = _lodTmp.distanceToSquared(_lodRef);
+    e.group.visible = d2 < RENDER_DISTANCE_SQ;
+    _setRootShadowLod(e.group, e.group.visible && d2 < shadowDistanceSq);
   }
   // Bots / luzes customizadas / carros
-  _lodCullChildren(botsGroup);
+  _lodCullAndShadowChildren(botsGroup, shadowDistanceSq);
   _lodCullChildren(customLightsGroup);
   const carsRoot = scene.getObjectByName("CarsRoot");
-  if (carsRoot) _lodCullChildren(carsRoot);
+  if (carsRoot) _lodCullAndShadowChildren(carsRoot, shadowDistanceSq);
 
   // Malhas do mapa via cache (estático): só compara distância ao quadrado.
   if (_envCullDirty || !_envCullCache) _rebuildEnvCullCache();
@@ -4953,7 +5035,9 @@ function updateRenderDistanceCulling(force = false) {
     const m = cache[i];
     const dx = m.cx - rx, dy = m.cy - ry, dz = m.cz - rz;
     const lim = RENDER_DISTANCE + m.r;
-    m.node.visible = (dx*dx + dy*dy + dz*dz) < (lim * lim);
+    const d2 = dx*dx + dy*dy + dz*dz;
+    m.node.visible = d2 < (lim * lim);
+    m.node.castShadow = !!m.baseCastShadow && d2 < ((shadowDistance + m.r) * (shadowDistance + m.r));
   }
   if (envBaseFloor) envBaseFloor.visible = true;
 }
@@ -4961,6 +5045,7 @@ function updateRenderDistanceCulling(force = false) {
 function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
+  updateAdaptiveGraphics(delta);
   // Hook do modo futebol: dirige movimento/bola/câmera quando ativo.
   if (window.__footballFrame) { try { window.__footballFrame(delta); } catch (e) { console.warn("[football] frame", e); } }
   if (window.__carsFrame) { try { window.__carsFrame(delta); } catch (e) { console.warn("[cars] frame", e); } }
@@ -6206,7 +6291,7 @@ function wirePostFxControls() {
     });
   });
   lightsAdminList.querySelector("[data-pp-reset]")?.addEventListener("click", () => {
-    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true, postEnabled:true, bloom:true, bloomStrength:0.35, bloomThreshold:0.85, bloomRadius:0.6, smaa:true };
+    window.__postFx = { exposure:1.05, ambient:0.35, ambientSkyColor:"#bfd4ff", ambientGroundColor:"#1a1f2a", tonemap:"aces", shadowSoftness:1.0, fog:true, fogColor:"#b6c4d1", fogNear:55, fogFar:380, anisotropy:8, skyTint:true, postEnabled:true, bloom:true, bloomStrength:0.35, bloomThreshold:0.85, bloomRadius:0.6, smaa:true, quality:"balanced", adaptiveQuality:true, shadowDistance:90 };
     applyPostFx(); savePostFx(); renderLightsAdminList();
   });
 }
@@ -6265,6 +6350,20 @@ function renderLightsAdminList() {
         </div>
         <label>Nitidez de texturas (anisotropia) <b data-pp-val="anisotropy">${(p.anisotropy??8).toFixed(0)}×</b>
           <input type="range" data-pp="anisotropy" min="1" max="16" step="1" value="${p.anisotropy??8}" style="width:100%">
+        </label>
+        <label>Qualidade gráfica
+          <select data-pp="quality" style="width:100%;background:#0e1117;color:#eee;border:1px solid #333;border-radius:4px;padding:3px;">
+            <option value="performance" ${p.quality==="performance"?"selected":""}>Desempenho</option>
+            <option value="balanced" ${(p.quality||"balanced")==="balanced"?"selected":""}>Equilibrada</option>
+            <option value="high" ${p.quality==="high"?"selected":""}>Alta</option>
+          </select>
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" data-pp="adaptiveQuality" ${p.adaptiveQuality!==false?"checked":""}/> Qualidade adaptativa para manter FPS
+        </label>
+        <label>Resolução atual <b data-pp-live="resolution">${currentRenderPixelRatio.toFixed(2)}×</b></label>
+        <label>Sombras completas até <b data-pp-val="shadowDistance">${(p.shadowDistance??90).toFixed(0)}</b>m
+          <input type="range" data-pp="shadowDistance" min="20" max="250" step="5" value="${p.shadowDistance??90}" style="width:100%">
         </label>
         <hr style="border:none;border-top:1px solid #2a3040;margin:4px 0"/>
         <label style="display:flex;align-items:center;gap:6px;font-weight:600;">
