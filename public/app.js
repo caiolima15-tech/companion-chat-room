@@ -10102,6 +10102,31 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
   const _carFwd = new THREE.Vector3();
   const _carTmpA = new THREE.Vector3();
   const _carTmpB = new THREE.Vector3();
+  const CAR_CAMERA_MIN_DISTANCE = 4.2;
+  let cameraMinDistanceBeforeCar = null;
+
+  function beginVehicleCamera() {
+    if (!controls) return;
+    if (cameraMinDistanceBeforeCar == null) cameraMinDistanceBeforeCar = controls.minDistance;
+    controls.minDistance = CAR_CAMERA_MIN_DISTANCE;
+    controls.enabled = true;
+  }
+
+  function endVehicleCamera() {
+    if (!controls) return;
+    controls.minDistance = cameraMinDistanceBeforeCar ?? 0.35;
+    cameraMinDistanceBeforeCar = null;
+    controls.enabled = true;
+  }
+
+  function followVehicleCamera(target, delta) {
+    if (!controls) return;
+    const offset = camera.position.clone().sub(controls.target);
+    if (offset.lengthSq() < 0.0001) offset.set(0, 1.8, -CAR_CAMERA_MIN_DISTANCE);
+    controls.target.lerp(target, Math.min(1, delta * 12));
+    if (offset.length() < CAR_CAMERA_MIN_DISTANCE) offset.setLength(CAR_CAMERA_MIN_DISTANCE);
+    camera.position.copy(controls.target).add(offset);
+  }
 
   function disposeCar(c) {
     if (!c) return;
@@ -10549,7 +10574,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (hud) hud.hidden = false;
     const prompt = document.getElementById("carPrompt");
     if (prompt) prompt.hidden = true;
-    if (controls) controls.enabled = false;
+    beginVehicleCamera();
   }
 
   async function exitCar(force = false) {
@@ -10591,7 +10616,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         trackMe?.(true).catch(() => {});
       }
     }
-    if (controls) controls.enabled = true;
+    endVehicleCamera();
   }
 
   // ============ PASSENGER (carona) ============
@@ -10616,7 +10641,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     }
     const prompt = document.getElementById("carPrompt");
     if (prompt) prompt.hidden = true;
-    if (controls) controls.enabled = false;
+    beginVehicleCamera();
     addSystemLine?.("Você está de carona. Aperte F para sair.");
   }
 
@@ -10642,7 +10667,7 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
         trackMe?.(true).catch(() => {});
       }
     }
-    if (controls) controls.enabled = true;
+    endVehicleCamera();
   }
 
   function updatePassengerFrame(delta) {
@@ -10663,16 +10688,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     ent.group.position.copy(pos);
     ent.group.rotation.y = yaw;
     ent.target.copy(pos);
-    // Câmera 3a pessoa do carro (segue firme, sem double-smoothing)
+    // Segue o carro preservando exatamente a órbita escolhida pelo usuário.
+    // Ao aproximar demais, apenas afasta no mesmo eixo, sem elevar a câmera.
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const camWant = c.group.position.clone()
-      .addScaledVector(fwd, -6.5)
-      .add(new THREE.Vector3(0, 3.2, 0));
-    const camK = Math.min(1, delta * 12);
-    const tgtK = Math.min(1, delta * 16);
-    camera.position.lerp(camWant, camK);
-    controls.target.lerp(camTarget, tgtK);
-    camera.lookAt(controls.target);
+    followVehicleCamera(camTarget, delta);
     // Broadcast posição p/ outros players verem o passageiro andando
     if (me) {
       const pct = percentFromWorld(pos.x, pos.z);
@@ -10799,22 +10818,10 @@ document.getElementById("botsToggleBtn")?.addEventListener("click", () => {
     if (sv) sv.textContent = String(Math.round(Math.abs(c.state.vel) * 3.6));
     const exitBtn = document.getElementById("carExitBtn");
     if (exitBtn) exitBtn.disabled = Math.abs(c.state.vel) > 0.05;
-    // Câmera — segue o carro mas permite orbitar livremente com o mouse.
-    // Mantemos o offset atual (posição − alvo) ao mover o alvo, para a câmera
-    // acompanhar sem reposicionar. Só "auto-orbita" para trás se o jogador
-    // estiver dirigindo e não interagiu com a câmera recentemente.
+    // Câmera — segue o carro preservando ângulo, inclinação e órbita do usuário.
+    // Se chegar perto demais, recua no mesmo eixo em vez de ir para vista superior.
     const camTarget = c.group.position.clone().add(new THREE.Vector3(0, 1.4, 0));
-    const prevOffset = camera.position.clone().sub(controls.target);
-    controls.target.lerp(camTarget, Math.min(1, delta * 10));
-    camera.position.copy(controls.target).add(prevOffset);
-    const moving = Math.abs(c.state.vel) > 1.2;
-    const userIdle = !window.__camUserDragging && performance.now() > (window.__camUserHoldUntil || 0);
-    if (moving && userIdle) {
-      const camWant = c.group.position.clone()
-        .addScaledVector(fwd, -6.5)
-        .add(new THREE.Vector3(0, 3.2, 0));
-      camera.position.lerp(camWant, Math.min(1, delta * 1.5));
-    }
+    followVehicleCamera(camTarget, delta);
     // Mantém a entidade do jogador acompanhando o carro (evita "snap" ao sair
     // e garante que outros players vejam o avatar junto do carro).
     const ent = playerEntities.get(myId);
